@@ -55,11 +55,22 @@ The following internal contracts should be treated as stable v1 design targets e
 - `ThreadStore`
   - loads and upserts thread bindings and manages task records plus active task state
 - `CodexGateway`
-  - creates or resumes Codex threads, runs a turn, and returns a normalized final response
+  - runs a turn against an existing Codex thread when a thread ID is present
+  - creates the first remote thread implicitly when the first turn runs without a saved thread ID
+  - returns a normalized final response plus the thread ID that should be persisted
 - `TaskCommandService`
   - implements `/task`, `/task list`, `/task new <name>`, `/task switch <id>`, and `/task close <id>`
 
 The application layer should depend on these responsibilities rather than on Discord SDK details or raw SQL.
+
+The concrete v1 message path lives in the application layer rather than in the Discord runtime.
+The message service is responsible for:
+
+- ignoring unsupported non-mention chatter
+- resolving the logical thread key
+- rejecting overlapping turns for the same logical thread key
+- loading and upserting SQLite thread bindings
+- calling the Codex gateway and returning a normalized reply payload
 
 ## Persistence Defaults
 

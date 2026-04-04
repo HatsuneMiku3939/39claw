@@ -44,6 +44,15 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 			want: "2026-04-05",
 		},
 		{
+			name:  "daily rolls over at local midnight",
+			mode:  config.ModeDaily,
+			store: nil,
+			request: app.MessageRequest{
+				ReceivedAt: time.Date(2026, time.April, 5, 15, 1, 0, 0, time.UTC),
+			},
+			want: "2026-04-06",
+		},
+		{
 			name:  "task uses active task binding",
 			mode:  config.ModeTask,
 			store: store,
@@ -59,7 +68,7 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 			request: app.MessageRequest{
 				UserID: "user-1",
 			},
-			wantErr: ErrNoActiveTask,
+			wantErr: app.ErrNoActiveTask,
 		},
 		{
 			name:     "task mode requires store",
@@ -131,8 +140,8 @@ func TestGuardAcquire(t *testing.T) {
 		t.Fatal("Acquire() error = nil, want non-nil")
 	}
 
-	if err != ErrExecutionInProgress {
-		t.Fatalf("Acquire() error = %v, want %v", err, ErrExecutionInProgress)
+	if err != app.ErrExecutionInProgress {
+		t.Fatalf("Acquire() error = %v, want %v", err, app.ErrExecutionInProgress)
 	}
 
 	if secondRelease != nil {

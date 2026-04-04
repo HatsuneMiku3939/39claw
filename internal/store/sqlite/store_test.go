@@ -75,6 +75,64 @@ func TestStoreThreadBindingLifecycle(t *testing.T) {
 	}
 }
 
+func TestStoreThreadBindingPersistsAcrossReopen(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "39claw.db")
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+
+	store.clock = func() time.Time {
+		return time.Date(2026, time.April, 5, 15, 4, 0, 0, time.UTC)
+	}
+
+	if err := store.InitSchema(context.Background()); err != nil {
+		t.Fatalf("InitSchema() error = %v", err)
+	}
+
+	if err := store.UpsertThreadBinding(context.Background(), app.ThreadBinding{
+		Mode:             "daily",
+		LogicalThreadKey: "2026-04-05",
+		CodexThreadID:    "thread-1",
+	}); err != nil {
+		t.Fatalf("UpsertThreadBinding() error = %v", err)
+	}
+
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() reopen error = %v", err)
+	}
+	defer func() {
+		if closeErr := reopened.Close(); closeErr != nil {
+			t.Fatalf("Close() reopen error = %v", closeErr)
+		}
+	}()
+
+	if err := reopened.InitSchema(context.Background()); err != nil {
+		t.Fatalf("InitSchema() reopen error = %v", err)
+	}
+
+	binding, ok, err := reopened.GetThreadBinding(context.Background(), "daily", "2026-04-05")
+	if err != nil {
+		t.Fatalf("GetThreadBinding() reopen error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("GetThreadBinding() reopen ok = false, want true")
+	}
+
+	if binding.CodexThreadID != "thread-1" {
+		t.Fatalf("CodexThreadID after reopen = %q, want %q", binding.CodexThreadID, "thread-1")
+	}
+}
+
 func TestStoreTaskLifecycle(t *testing.T) {
 	t.Parallel()
 

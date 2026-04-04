@@ -10,8 +10,6 @@ import (
 	"github.com/HatsuneMiku3939/39claw/internal/config"
 )
 
-var ErrNoActiveTask = errors.New("no active task selected")
-
 type Policy struct {
 	mode     config.Mode
 	timezone *time.Location
@@ -45,7 +43,7 @@ func (p *Policy) ResolveMessageKey(ctx context.Context, request app.MessageReque
 		}
 
 		if !ok {
-			return "", ErrNoActiveTask
+			return "", app.ErrNoActiveTask
 		}
 
 		return BuildTaskKey(request.UserID, activeTask.TaskID), nil

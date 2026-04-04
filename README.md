@@ -19,7 +19,14 @@ The repository now includes a real startup spine for `cmd/39claw`:
 - a minimal Discord runtime shell in `internal/runtime/discord`
 
 The Discord runtime is still intentionally thin in this stage.
-It proves wiring, dependency boundaries, and graceful shutdown, but it does not yet implement the full `daily` or `task` interaction behavior.
+It proves wiring, dependency boundaries, and graceful shutdown, but it does not yet implement the full Discord adapter.
+The core `daily` message-routing path now exists in the application layer with tests for:
+
+- mention-only handling versus ignored chatter
+- same-day thread reuse
+- next-day rollover
+- SQLite-backed thread-binding persistence across reopen
+- busy-thread rejection
 
 The current direction is documented in the root architecture and product documents rather than in the executable surface alone.
 For the intended system shape, thread model, and user-facing behavior, start with the documents linked below.
