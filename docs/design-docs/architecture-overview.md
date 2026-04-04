@@ -1,6 +1,11 @@
 # Architecture Overview
 
-This document describes the concept-level application architecture for 39bot.
+This document is a short onboarding-oriented summary of the 39bot architecture.
+
+It is not the authoritative implementation reference.
+For architectural decisions, scope boundaries, and source-of-truth behavior, see the root `ARCHITECTURE.md`.
+
+Use this document when you want a quick mental model of the system before reading the full reference.
 
 ## System Role
 
@@ -8,6 +13,20 @@ This document describes the concept-level application architecture for 39bot.
 
 It does not act as a full local coding agent runtime.
 Instead, it delegates agent execution to Codex and manages the local application-side policy.
+
+## Codex Working Model
+
+39bot adopts Codex's repository-scoped operating model.
+Each bot instance is configured against a repository-shaped working directory, and Discord interactions are routed into Codex threads that operate against that repository.
+
+This leads to two distinct mode families on the same foundation:
+
+- `daily`
+  - knowledge-oriented interaction against repository instructions and documentation
+- `task`
+  - execution-oriented interaction against a work repository where Codex can help perform operational tasks
+
+The detailed rationale for these modes lives in `ARCHITECTURE.md` and `thread-modes.md`.
 
 ## High-Level Components
 
@@ -24,66 +43,27 @@ Discord Runtime
 
 ### Discord Runtime
 
-The Discord runtime is responsible for:
-
-- receiving messages and interaction commands
-- deciding whether the bot should respond
-- passing normalized requests into the application service
-- sending formatted responses back to Discord
+Receives Discord inputs and delivers formatted responses.
 
 ### Message Application Service
 
-This is the main orchestration layer.
-Its responsibility is to process one incoming user turn from start to finish.
-
-At a concept level, it should:
-
-1. receive a normalized user message
-2. ask the thread policy for the logical thread key
-3. load any existing Codex thread binding from storage
-4. create a new Codex thread if needed
-5. send the user turn to Codex
-6. present the result back to Discord
+Processes one user turn end to end by resolving the thread target, delegating to Codex, and returning the normalized result.
 
 ### Thread Policy
 
-The thread policy converts a Discord message context into a logical thread key.
-
-The policy depends on the global thread mode.
-Two v1 modes are planned:
-
-- `daily`
-- `task`
+Converts Discord context into a logical thread key according to the globally configured mode.
 
 ### Thread Store
 
-The thread store persists the relationship between:
-
-- a logical thread key
-- a Codex thread ID
-
-This is the local continuity layer that allows the bot to resume the correct remote conversation.
+Persists the local continuity data that lets 39bot resume the correct Codex thread.
 
 ### Codex Gateway
 
-The Codex gateway is the only component that talks to the Codex SDK or Codex API integration layer.
-
-Its responsibilities include:
-
-- creating threads
-- resuming existing threads by ID
-- sending a turn into a thread
-- returning the assistant result in a normalized application format
+Owns the direct integration with the Codex SDK or Codex API layer.
 
 ### Response Presenter
 
-The presenter adapts Codex responses for Discord output.
-
-It should handle:
-
-- message formatting
-- trimming or chunking if Discord limits are exceeded
-- error-friendly responses when backend requests fail
+Adapts normalized application output into Discord-safe responses.
 
 ## Request Flow
 
@@ -99,38 +79,11 @@ It should handle:
 9. Discord runtime posts the reply
 ```
 
-## What v1 Intentionally Does Not Include
+## Read Next
 
-The following concerns are intentionally outside the first concept:
-
-- local agent loop implementation
-- local tool orchestration
-- multi-provider LLM support
-- per-user or per-channel policy overrides
-- web or TUI runtime surfaces
-
-## Suggested Package Shape
-
-The exact package layout may change, but the current direction is roughly:
-
-```text
-cmd/39bot
-cmd/codexplay
-internal/app
-internal/runtime/discord
-internal/thread
-internal/store/sqlite
-internal/codex
-internal/config
-internal/observe
-```
-
-## Bootstrap Status
-
-The repository currently contains a minimal executable entrypoint at `cmd/39bot/main.go`.
-This file is only a bootstrap placeholder and does not yet implement Discord runtime wiring or Codex integration.
-
-The repository also includes an initial `internal/codex` package that experiments with direct Codex CLI integration in Go.
-Its current scope is intentionally narrow and focused on thread start or resume behavior, streamed event handling, and local image input support.
-
-An additional experimental CLI entrypoint at `cmd/codexplay` is available for manual integration checks against the real `codex` binary.
+- root `ARCHITECTURE.md`
+  - authoritative architecture reference
+- `thread-modes.md`
+  - mode definitions, behavior, and tradeoffs
+- `state-and-storage.md`
+  - persistence model and storage expectations

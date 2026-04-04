@@ -11,6 +11,7 @@ The goal of `daily` mode is to make the bot feel natural and low-friction for on
 ## Product Goal
 
 A user should be able to send a normal message and continue the conversation naturally throughout the day without needing to manage thread state explicitly.
+At a product level, this mode should feel like talking to a living knowledge base backed by repository instructions and documentation.
 
 ## User Promise
 

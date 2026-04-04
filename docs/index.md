@@ -6,10 +6,12 @@ It is organized into a small set of document layers so contributors can quickly 
 
 ## Document Map
 
+- [Root Architecture Reference](../ARCHITECTURE.md)
+  - The authoritative architecture document for the repository
 - [Product Specs](./product-specs/index.md)
   - Product-facing user journeys, interaction rules, and expected behavior
 - [Design Docs](./design-docs/index.md)
-  - Architecture direction, internal design boundaries, and system concepts
+  - Supporting design notes, focused concepts, and onboarding-oriented summaries
 - [References](./references/index.md)
   - External references and bundled source material
 
@@ -27,6 +29,12 @@ Use `docs/design-docs` when the question is about:
 - which responsibilities belong to which component
 - how thread routing, storage, and integration boundaries should work
 
+Use the root `ARCHITECTURE.md` when the question is about:
+
+- the authoritative architecture decision
+- the intended system boundaries or v1 scope
+- resolving ambiguity between design notes
+
 Use `docs/references` when the question is about:
 
 - external SDK behavior
@@ -42,6 +50,7 @@ Use `docs/references` when the question is about:
 ## Maintenance Notes
 
 - Keep product behavior in `docs/product-specs`.
-- Keep implementation design in `docs/design-docs`.
+- Keep the authoritative architecture model in `ARCHITECTURE.md`.
+- Keep supporting implementation design notes in `docs/design-docs`.
 - Keep external source material in `docs/references`.
 - Update this index when a new top-level documentation layer is introduced.
