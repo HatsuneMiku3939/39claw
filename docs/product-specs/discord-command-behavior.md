@@ -131,8 +131,8 @@ The `/task ...` command family should support user-facing actions for:
 
 `/help` should:
 
-- list the supported command surface
-- explain that `/task ...` is available only in `task` mode bot instances
+- list the supported command surface for the current bot instance
+- explain `/task ...` only when that workflow is available for the current bot instance
 - help users recover from missing-context situations without reading internal docs
 
 ### Success behavior
@@ -212,8 +212,9 @@ Possible mechanisms include:
 - task-mode guidance that points users toward `/task ...` commands when task context is missing
 - short affordance text after successful state-changing commands
 
-`/help` does not need mode-specific variation in v1.
-`daily` mode bot instances should simply avoid exposing unsupported slash command behavior.
+`/help` does not need deep mode-specific customization in v1.
+It should still reflect the commands that are actually available in the current bot instance.
+`daily` mode bot instances should avoid advertising unsupported `/task ...` workflow.
 
 ## Non-Goals
 
@@ -226,5 +227,5 @@ This command behavior layer is not intended to:
 ## Decisions
 
 - v1 normal-message triggering should be mention-only.
-- `daily` mode and `task` mode do not need different help text in v1; `daily` mode simply does not expose slash-command workflow.
+- `/help` should stay structurally simple in v1, but it should only describe commands that are actually available in the current bot instance.
 - Unsupported invocation patterns should be ignored rather than acknowledged with lightweight feedback.

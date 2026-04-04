@@ -365,7 +365,7 @@ Suggested responsibilities:
 The more exploratory design notes live under `docs/design-docs`.
 
 Those files are useful for background and rationale.
-This file is the shorter reference document that should guide implementation decisions at the project root.
+This file is the authoritative reference document that should guide implementation decisions at the project root.
 
 Relevant supporting documents:
 
