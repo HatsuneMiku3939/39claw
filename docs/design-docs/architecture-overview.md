@@ -123,3 +123,8 @@ internal/codex
 internal/config
 internal/observe
 ```
+
+## Bootstrap Status
+
+The repository currently contains a minimal executable entrypoint at `cmd/39bot/main.go`.
+This file is only a bootstrap placeholder and does not yet implement Discord runtime wiring or Codex integration.
