@@ -16,7 +16,8 @@ After this plan, a Discord user should be able to mention the bot with one or mo
 - [x] (2026-04-05 20:25Z) Implemented Discord attachment download, validation, and cleanup for qualifying image attachments.
 - [x] (2026-04-05 20:25Z) Implemented mention-plus-image and image-only message handling end to end, including tests and documentation updates.
 - [x] (2026-04-05 20:27Z) Ran `make test` and `make lint` after the implementation landed.
-- [ ] Run a manual Discord smoke test that proves attached images affect the reply in a live server.
+- [x] (2026-04-06 00:39Z) Deferred the remaining live Discord smoke test to the shared Discord runtime tech-debt entry because the implementation, automated validation, and documentation are complete.
+- [x] (2026-04-06 00:39Z) Archived this plan to `docs/exec-plans/completed/06-discord-image-input.md` because no implementation work remains in `active/`.
 
 ## Surprises & Discoveries
 
@@ -43,11 +44,17 @@ After this plan, a Discord user should be able to mention the bot with one or mo
   Rationale: The product goal is to let users ask about attached images naturally. Requiring non-empty typed text would prevent the second requested behavior.
   Date/Author: 2026-04-05 / Codex
 
+- Decision: Archive this plan without a dedicated image-only live Discord smoke run and track that remaining proof in the shared Discord runtime tech-debt entry instead.
+  Rationale: The remaining gap is operational validation, not unfinished implementation. Keeping the plan active would overstate the amount of pending engineering work while duplicating the existing live Discord smoke-test follow-up.
+  Date/Author: 2026-04-06 / Codex
+
 ## Outcomes & Retrospective
 
 This plan is now implemented for code, automated validation, and documentation updates. The intended outcome was a Discord runtime that can transform attached images into local temporary files, carry those file paths through the application layer, and invoke Codex with multipart input that combines optional text and image parts.
 
-The implementation has now landed for the code, automated tests, and documentation updates described above. The remaining gap is only the manual Discord smoke test with disposable credentials so the final proof can show that real Discord-hosted image attachments behave the same way as the automated coverage.
+The implementation has now landed for the code, automated tests, and documentation updates described above. The only remaining gap is live Discord smoke validation with disposable credentials, and that gap is now tracked explicitly in `docs/exec-plans/tech-debt-tracker.md` rather than keeping this completed implementation plan in `active/`.
+
+The plan therefore no longer belongs in `active/`: there is no remaining code, test, or documentation work scoped to this feature. What remains is a shared operational proof task for the Discord runtime as a whole, including image attachments.
 
 Automated proof completed during implementation:
 
@@ -228,3 +235,4 @@ Within `internal/runtime/discord`, keep the Discord SDK details and attachment d
 
 Revision Note: 2026-04-05 / Codex - Created this ExecPlan to add Discord image attachment support for both text-plus-image and image-only mention flows.
 Revision Note: 2026-04-05 / Codex - Renumbered this active ExecPlan from `05` to `06` because `05-queued-message-handling.md` already exists.
+Revision Note: 2026-04-06 / Codex - Archived this plan after implementation completion and moved the remaining live Discord smoke proof into the shared tech-debt tracker entry.
