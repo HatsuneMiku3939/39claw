@@ -1,0 +1,4 @@
+# Copy this file to .envrc, then run `direnv allow`.
+# Keep secrets in .env.local rather than in .envrc itself.
+
+dotenv_if_exists .env.local

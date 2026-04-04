@@ -58,6 +58,15 @@ The repository includes a `Makefile` for common development checks.
 - run unit tests with `make test`
 - run lint checks with `make lint`
 
+### 5. Keep local secrets out of tracked files
+
+For local development:
+
+- store real credentials in ignored local files such as `.env.local`
+- load local environment variables through an ignored `.envrc`
+- keep checked-in examples such as `.env.example` and `.envrc.example` placeholder-only
+- do not add plaintext bot tokens or API keys to tracked helper scripts, launcher snippets, or documentation examples
+
 ## Reference Documents
 
 ### Primary implementation reference

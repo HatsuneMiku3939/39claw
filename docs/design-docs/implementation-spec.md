@@ -154,6 +154,8 @@ When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guil
 `CLAW_CODEX_WEB_SEARCH_MODE` defaults to `live` when omitted.
 `CLAW_CODEX_ADDITIONAL_DIRECTORIES` uses the OS path-list separator such as `:` on Unix systems.
 `CLAW_DATADIR` points to a directory, and the SQLite database file is always stored as `39claw.sqlite` inside that directory.
+For local development, the safe-default workflow is an ignored `.env.local` file loaded through an ignored `.envrc`.
+Checked-in examples such as `.env.example` and `.envrc.example` must use placeholders only and must not contain live credentials.
 
 ## Validation Targets
 
