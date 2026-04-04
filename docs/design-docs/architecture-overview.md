@@ -115,6 +115,7 @@ The exact package layout may change, but the current direction is roughly:
 
 ```text
 cmd/39bot
+cmd/codexplay
 internal/app
 internal/runtime/discord
 internal/thread
@@ -131,3 +132,5 @@ This file is only a bootstrap placeholder and does not yet implement Discord run
 
 The repository also includes an initial `internal/codex` package that experiments with direct Codex CLI integration in Go.
 Its current scope is intentionally narrow and focused on thread start or resume behavior, streamed event handling, and local image input support.
+
+An additional experimental CLI entrypoint at `cmd/codexplay` is available for manual integration checks against the real `codex` binary.
