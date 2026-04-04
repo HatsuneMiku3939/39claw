@@ -13,12 +13,12 @@ This change is visible in Discord. In `daily` mode, if two people mention the bo
 ## Progress
 
 - [x] (2026-04-04 19:22Z) Synced the worktree to `origin/master`, created `feature/task-queue-busy-handling`, and wrote the first complete ExecPlan draft.
-- [ ] Replace busy rejection with capped queue admission at the logical-thread layer.
-- [ ] Refactor the app message orchestration so queued work can produce a deferred reply after the initial acknowledgment has already been sent.
-- [ ] Update Discord runtime handling so it can present both immediate acknowledgments and later queued-turn completions.
-- [ ] Add focused tests for queue admission, queue overflow, deferred follow-up delivery, and task-context freezing.
-- [ ] Update `ARCHITECTURE.md`, design docs, product specs, and `README.md` to describe the new queueing behavior and its in-memory limitations.
-- [ ] Run `make test` and `make lint`, then record proof artifacts in this plan.
+- [x] (2026-04-05 04:18Z) Replaced busy rejection with capped queue admission at the logical-thread layer by introducing the in-memory queue coordinator in `internal/thread`.
+- [x] (2026-04-05 04:27Z) Refactored `internal/app` message orchestration so queued work keeps frozen routing context, owns attachment cleanup, and can deliver deferred replies after the initial acknowledgment.
+- [x] (2026-04-05 04:35Z) Updated Discord runtime handling so it passes deferred delivery sinks, presents queued acknowledgments immediately, and reuses the normal presenter path for later queued-turn completions.
+- [x] (2026-04-05 04:45Z) Added focused tests for queue admission, queue overflow, deferred follow-up delivery, and task-context freezing across `internal/thread`, `internal/app`, and `internal/runtime/discord`.
+- [x] (2026-04-05 04:54Z) Updated `README.md`, `ARCHITECTURE.md`, design docs, and product specs to describe the new queueing behavior and its in-memory limitations.
+- [x] (2026-04-05 05:01Z) Ran `make test` and `make lint` successfully and recorded proof artifacts below.
 
 ## Surprises & Discoveries
 
@@ -30,6 +30,12 @@ This change is visible in Discord. In `daily` mode, if two people mention the bo
 
 - Observation: `task` mode currently consults the active task twice: once while resolving the logical key and again just before persisting the binding. That is safe for immediate execution, but it would be wrong for queued work because the active task may change before the queued item runs.
   Evidence: `internal/thread/policy.go`, `internal/app/message_service_impl.go`
+
+- Observation: Attachment cleanup ownership has to move with the queued work item. Otherwise image inputs downloaded by the Discord runtime are deleted before the queued Codex turn starts.
+  Evidence: `internal/runtime/discord/runtime.go`, `internal/app/message_service_impl.go`
+
+- Observation: Completing queue state asynchronously after returning the immediate response introduces a race where the next sequential request can still see the key as busy and be queued unexpectedly.
+  Evidence: `internal/app/message_service_impl.go`, `internal/app/message_service_test.go`
 
 ## Decision Log
 
@@ -49,11 +55,17 @@ This change is visible in Discord. In `daily` mode, if two people mention the bo
   Rationale: Queue admission rules depend on logical thread resolution, which is application behavior rather than Discord transport behavior. The runtime should remain a thin adapter that presents immediate and deferred responses.
   Date/Author: 2026-04-04 / Codex
 
+- Decision: Mark immediate-turn completion synchronously before returning from `HandleMessage`, then drain queued work asynchronously only when needed.
+  Rationale: This avoids a post-response race where the next sequential message could still observe the key as busy even though the first turn had already completed.
+  Date/Author: 2026-04-05 / Codex
+
 ## Outcomes & Retrospective
 
-This plan is not implemented yet. The intended outcome is a bot that feels patient instead of brittle during overlapping requests while still keeping concurrency boundaries explicit and bounded.
+This plan is now implemented in the feature branch.
+39claw now accepts up to five waiting normal messages per logical thread key, posts an immediate queued acknowledgment, and later posts the real answer as a reply to the original queued message.
 
-The main architectural cost is that normal-message handling can no longer be modeled as a single synchronous request/response call. The implementation must preserve the current thin-runtime boundary while adding a safe deferred-reply path for queued turns.
+The main architectural change is that normal-message handling is no longer purely synchronous from the runtime's perspective.
+The application layer now owns deferred queued execution and the runtime supplies a transport-neutral delivery sink.
 
 ## Context and Orientation
 
@@ -216,6 +228,23 @@ Useful implementation notes:
     request received while active task is task-7
     user switches to task-8 before queued execution starts
     queued request must still run against task:user-1:task-7
+
+Proof artifacts:
+
+    go test ./internal/app ./internal/thread ./internal/runtime/discord ./cmd/39claw
+    ok  	github.com/HatsuneMiku3939/39claw/internal/app	0.003s
+    ok  	github.com/HatsuneMiku3939/39claw/internal/thread	0.002s
+    ok  	github.com/HatsuneMiku3939/39claw/internal/runtime/discord	(cached)
+    ok  	github.com/HatsuneMiku3939/39claw/cmd/39claw	0.209s
+
+    make test
+    ok  	github.com/HatsuneMiku3939/39claw/internal/app	0.003s
+    ok  	github.com/HatsuneMiku3939/39claw/internal/runtime/discord	0.005s
+    ok  	github.com/HatsuneMiku3939/39claw/internal/thread	0.002s
+    ok  	github.com/HatsuneMiku3939/39claw/cmd/39claw	0.219s
+
+    make lint
+    golangci-lint run
 
 ## Interfaces and Dependencies
 

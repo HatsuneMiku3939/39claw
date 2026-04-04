@@ -6,6 +6,16 @@ type ThreadPolicy interface {
 	ResolveMessageKey(ctx context.Context, request MessageRequest) (string, error)
 }
 
+type DeferredReplySink interface {
+	Deliver(ctx context.Context, response MessageResponse) error
+}
+
+type DeferredReplySinkFunc func(ctx context.Context, response MessageResponse) error
+
+func (f DeferredReplySinkFunc) Deliver(ctx context.Context, response MessageResponse) error {
+	return f(ctx, response)
+}
+
 type ThreadStore interface {
 	GetThreadBinding(ctx context.Context, mode string, logicalThreadKey string) (ThreadBinding, bool, error)
 	UpsertThreadBinding(ctx context.Context, binding ThreadBinding) error
@@ -22,6 +32,11 @@ type CodexGateway interface {
 	RunTurn(ctx context.Context, threadID string, input CodexTurnInput) (RunTurnResult, error)
 }
 
+type QueueCoordinator interface {
+	Admit(key string, work func()) (QueueAdmission, error)
+	Complete(key string) (func(), bool)
+}
+
 type MessageService interface {
-	HandleMessage(ctx context.Context, request MessageRequest) (MessageResponse, error)
+	HandleMessage(ctx context.Context, request MessageRequest, sink DeferredReplySink) (MessageResponse, error)
 }

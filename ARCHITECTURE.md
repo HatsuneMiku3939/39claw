@@ -114,6 +114,7 @@ Discord Runtime
   -> Message Application Service
     -> Thread Policy
     -> Thread Store
+    -> Queue Coordinator
     -> Codex Gateway
   -> Response Presenter
 ```
@@ -140,10 +141,11 @@ Responsibilities:
 
 1. accept a normalized message request
 2. ask the thread policy for a logical thread key
-3. load any existing binding from the thread store
-4. call the Codex gateway with or without an existing thread ID
-5. persist the returned thread ID when a new binding is created or updated
-6. return a normalized response for presentation
+3. coordinate same-key execution and bounded queue admission
+4. load any existing binding from the thread store
+5. call the Codex gateway with or without an existing thread ID
+6. persist the returned thread ID when a new binding is created or updated
+7. return an immediate response and, when needed, deliver a deferred follow-up reply
 
 ### 6.3 Thread Policy
 
@@ -165,7 +167,21 @@ The thread store persists the mapping between:
 
 In `task` mode, a separate state store is also needed to track the currently selected task for a user within the current bot instance.
 
-### 6.5 Codex Gateway
+### 6.5 Queue Coordinator
+
+The queue coordinator serializes work per logical thread key.
+
+Responsibilities:
+
+- allow the first turn for an idle key to execute immediately
+- accept up to five additional waiting turns for the same key
+- reject further turns once that waiting queue is full
+- release the next queued turn in FIFO order when the current turn completes
+
+The queue is intentionally in memory only.
+It is not part of the durable SQLite state.
+
+### 6.6 Codex Gateway
 
 The Codex gateway wraps the Codex SDK or Codex integration layer.
 
@@ -178,7 +194,7 @@ Responsibilities:
 
 All Codex-specific details should stay behind this boundary.
 
-### 6.6 Response Presenter
+### 6.7 Response Presenter
 
 The presenter adapts normalized application output to Discord-safe responses.
 
@@ -267,13 +283,22 @@ Tradeoffs:
 1. Discord receives a user message
 2. Runtime normalizes the request
 3. Application service resolves the logical thread key
-4. Thread store looks up an existing Codex thread ID
-5. If missing, Codex gateway creates a new thread
-6. The new binding is persisted
-7. Application service sends the user turn to Codex
-8. Response presenter formats the result
-9. Discord runtime posts the reply
+4. Queue coordinator either starts the turn immediately, queues it, or rejects it when the waiting queue is full
+5. If the turn starts immediately, the thread store looks up any existing Codex thread ID
+6. If missing, Codex creates a new thread
+7. The binding is persisted
+8. Discord runtime posts either the final response immediately or a queued acknowledgment
+9. If the turn was queued, the application service later executes it and the runtime posts the deferred reply
 ```
+
+## 8.1 Concurrency Model
+
+Concurrency is bounded per logical thread key.
+
+- Different logical thread keys may execute Codex turns in parallel.
+- A single logical thread key may have only one active Codex turn at a time.
+- Each key may hold up to five additional waiting messages in an in-memory FIFO queue.
+- Queued work is intentionally not durable across process restart.
 
 ## 9. Persistence Model
 
@@ -283,6 +308,9 @@ The minimum persistent state for v1 is:
 
 - thread bindings
 - active task selection for `task` mode
+
+The bounded queued-message backlog is not persisted.
+It exists only in memory while the process is running.
 
 ### 9.2 Binding concept
 

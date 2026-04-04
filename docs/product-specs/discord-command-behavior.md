@@ -83,6 +83,8 @@ Examples:
 v1 should use mention-only triggering for normal-message interaction.
 When the bot is mentioned, a normal message may contain typed text, one or more image attachments, or both.
 If the mention is present but the message contains neither text nor a usable image attachment, the bot should stay silent.
+If another turn for the same logical conversation is already running, the bot should acknowledge queued acceptance immediately and post the real answer later as a reply to the original triggering message.
+If five waiting messages are already queued for that logical conversation, the bot should return a clear retry-later response instead of queueing more work.
 
 ### 3. Command interactions should always be explicit
 
@@ -203,6 +205,9 @@ Error responses should be:
 - short enough to scan
 - specific enough to act on
 - written in user-facing language
+
+Queued acknowledgments should also stay short and explicit.
+They should make it clear that the message was accepted and that the final answer will arrive later.
 
 ## Help and Discoverability
 
