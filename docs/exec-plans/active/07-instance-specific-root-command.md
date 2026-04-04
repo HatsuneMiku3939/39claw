@@ -13,7 +13,7 @@ The user-visible proof is simple. If a bot instance starts with `CLAW_DISCORD_CO
 ## Progress
 
 - [x] (2026-04-04 22:29Z) Captured the UX problem, chose the one-root-command-per-instance direction, and wrote this ExecPlan.
-- [ ] Add configuration support for a required instance command name and an optional human-readable instance label.
+- [ ] Add configuration support for a required instance command name.
 - [ ] Replace the shared `/help` and `/task ...` Discord registration schema with one configurable root command per bot instance.
 - [ ] Rewrite interaction mapping and runtime routing to dispatch by explicit action choice instead of slash-command name plus task subcommand.
 - [ ] Update help text and task guidance so every response refers to the configured root command and identifies the current bot instance clearly.
@@ -42,8 +42,8 @@ The user-visible proof is simple. If a bot instance starts with `CLAW_DISCORD_CO
   Rationale: Discord search is cluttered by leaf command entries. A single root command with a choice option preserves explicit UX without multiplying search results.
   Date/Author: 2026-04-04 / Codex
 
-- Decision: Introduce `CLAW_DISCORD_COMMAND_NAME` as a required environment variable and `CLAW_DISCORD_INSTANCE_LABEL` as an optional environment variable that defaults to the command name.
-  Rationale: The command name must be unique per deployment to solve the core UX problem. The optional label gives help and task responses a human-friendly identity without requiring a second naming scheme.
+- Decision: Introduce `CLAW_DISCORD_COMMAND_NAME` as the only new command-surface environment variable.
+  Rationale: The command name itself is the user-visible identity in Discord slash-command search, so a second label value would add configuration complexity without solving the core UX problem.
   Date/Author: 2026-04-04 / Codex
 
 - Decision: Keep mention-based parsing of literal text like `/help` or `/task ...` out of scope for this change.
@@ -58,7 +58,7 @@ Implementation has not started yet beyond plan authoring. The expected outcome i
 
 39claw is a thin Discord runtime that routes qualifying user input into Codex threads. The current normal-message path is mention-only and should remain unchanged by this plan. The only behavior being redesigned here is the explicit slash-command surface.
 
-The current command registration lives in `internal/runtime/discord/commands.go`. That file currently registers two top-level command names, `help` and `task`, and the `task` command contains five subcommands. The parser in `internal/runtime/discord/interaction_mapper.go` assumes those fixed names and converts Discord interactions into a `commandRequest` with an embedded `taskCommandRequest`. The router in `internal/runtime/discord/runtime.go` switches on the fixed command name and then switches again on the task action. The configuration loader in `internal/config/config.go` does not yet know anything about slash-command naming or instance labels, so every deployment exposes the same user-facing command names.
+The current command registration lives in `internal/runtime/discord/commands.go`. That file currently registers two top-level command names, `help` and `task`, and the `task` command contains five subcommands. The parser in `internal/runtime/discord/interaction_mapper.go` assumes those fixed names and converts Discord interactions into a `commandRequest` with an embedded `taskCommandRequest`. The router in `internal/runtime/discord/runtime.go` switches on the fixed command name and then switches again on the task action. The configuration loader in `internal/config/config.go` does not yet know anything about slash-command naming, so every deployment exposes the same user-facing command names.
 
 The relevant user-facing documentation is split across `README.md`, `docs/product-specs/discord-command-behavior.md`, and `docs/product-specs/task-mode-user-flow.md`. The implementation defaults live in `docs/design-docs/implementation-spec.md`. All four documents currently describe `/help` and `/task ...` as the stable command surface, so they must change together with the code.
 
@@ -84,9 +84,9 @@ If these checks fail before any code changes, fix the unrelated regression first
 
 ### Milestone 1: Add explicit command identity to configuration and registration
 
-At the end of this milestone, a bot instance can describe its own slash-command identity. The configuration layer should require a unique `CLAW_DISCORD_COMMAND_NAME` and accept an optional `CLAW_DISCORD_INSTANCE_LABEL`. The Discord command registration code should then use those values to register exactly one root command for the current instance.
+At the end of this milestone, a bot instance can describe its own slash-command identity. The configuration layer should require a unique `CLAW_DISCORD_COMMAND_NAME`. The Discord command registration code should then use that value to register exactly one root command for the current instance.
 
-The important proof for this milestone is local and testable without Discord itself. Configuration tests should prove the new environment variable is required, that invalid command names are rejected with actionable errors, and that the instance label defaults to the command name when omitted. Runtime registration tests should prove the command count drops from two to one and that the registered command name matches the configured value.
+The important proof for this milestone is local and testable without Discord itself. Configuration tests should prove the new environment variable is required and that invalid command names are rejected with actionable errors. Runtime registration tests should prove the command count drops from two to one and that the registered command name matches the configured value.
 
 ### Milestone 2: Route one root command through explicit action choices
 
@@ -96,23 +96,23 @@ The key proof for this milestone is end-to-end runtime behavior in tests. A fake
 
 ### Milestone 3: Make the new surface understandable in Discord and in docs
 
-At the end of this milestone, user-facing copy and documentation should explain the instance-specific command model clearly. Help output should identify the current bot instance, mention the configured root command by name, and show examples using the action option format. Repository docs should stop telling users to run `/help` or `/task ...` and should instead describe the root command plus actions.
+At the end of this milestone, user-facing copy and documentation should explain the instance-specific command model clearly. Help output should mention the configured root command by name and show examples using the action option format. Repository docs should stop telling users to run `/help` or `/task ...` and should instead describe the root command plus actions.
 
 The important proof for this milestone is behavioral and manual. With a live bot started in one guild, Discord search should show one root command entry for the instance. Selecting that command should reveal action choices rather than separate searchable leaf commands. The help response should tell the user what bot they are talking to and which actions are available in the current mode.
 
 ## Plan of Work
 
-Extend `internal/config/config.go` and `internal/config/config_test.go` first. Add `DiscordCommandName` and `DiscordInstanceLabel` fields to `config.Config`. Load `CLAW_DISCORD_COMMAND_NAME` as a required environment variable. Normalize it to lowercase trimmed text and validate it conservatively so deployments cannot register an invalid Discord command name. Accept `CLAW_DISCORD_INSTANCE_LABEL` as optional; if it is omitted or blank, set it to the command name so every deployment has a usable label. Update all config-loading tests and startup examples to include the new required variable.
+Extend `internal/config/config.go` and `internal/config/config_test.go` first. Add `DiscordCommandName` to `config.Config`. Load `CLAW_DISCORD_COMMAND_NAME` as a required environment variable. Normalize it to lowercase trimmed text and validate it conservatively so deployments cannot register an invalid Discord command name. Update all config-loading tests and startup examples to include the new required variable.
 
-Rework the Discord command schema in `internal/runtime/discord/commands.go`. Replace the fixed registration of `/help` and `/task` with a function that accepts the full config or the specific values it needs. Register exactly one `discordgo.ApplicationCommand` whose `Name` is `config.DiscordCommandName`. In `daily` mode, attach one required string option named `action` with one choice: `help`. In `task` mode, attach the same `action` option with the additional task choices and add optional string options for `task_name` and `task_id`. Keep the descriptions user-facing and concise. Update help response generation so it prints examples like `/<command> action:help` and `/<command> action:task-new task_name:<name>`. Prefix the help text with the instance label and the current mode, for example `Release bot (task mode)`.
+Rework the Discord command schema in `internal/runtime/discord/commands.go`. Replace the fixed registration of `/help` and `/task` with a function that accepts the full config or the specific values it needs. Register exactly one `discordgo.ApplicationCommand` whose `Name` is `config.DiscordCommandName`. In `daily` mode, attach one required string option named `action` with one choice: `help`. In `task` mode, attach the same `action` option with the additional task choices and add optional string options for `task_name` and `task_id`. Keep the descriptions user-facing and concise. Update help response generation so it prints examples like `/<command> action:help` and `/<command> action:task-new task_name:<name>`. The help output should explicitly show the command name and current mode, for example `Command: /release` and `Mode: task`.
 
 Simplify interaction parsing in `internal/runtime/discord/interaction_mapper.go`. Remove the assumption that the command name itself determines behavior. Keep the root command name on the request only for logging and sanity checks, but parse the action value from the `action` option into a generic action field on `commandRequest`. Parse `task_name` and `task_id` from sibling options instead of from subcommand-specific option lists. The new request shape should be simple enough that `runtime.go` needs only one switch on the action string.
 
 Refactor `internal/runtime/discord/runtime.go` to route actions instead of command names. The router should handle `help` locally and dispatch the task actions to the existing `TaskCommandService`. Preserve the current behavior where task commands are unavailable in `daily` mode, but move the message wording to mention the configured root command rather than `/task ...`. Preserve ephemeral responses for command interactions. Remove or rewrite any “unsupported command” text so it references the new action vocabulary.
 
-Update tests next. In `internal/runtime/discord/runtime_test.go`, change command-registration assertions from “two commands” to “one command whose name matches the config”. Add interaction tests for `action=help`, `action=task-current`, and one mutating task action such as `task-new`. Add or update parser coverage in a new or existing test file so malformed interactions, missing action values, and task-name or task-id extraction are exercised directly. In `internal/config/config_test.go`, add validation coverage for missing command names, normalized valid names, rejected invalid names, and defaulted labels.
+Update tests next. In `internal/runtime/discord/runtime_test.go`, change command-registration assertions from “two commands” to “one command whose name matches the config”. Add interaction tests for `action=help`, `action=task-current`, and one mutating task action such as `task-new`. Add or update parser coverage in a new or existing test file so malformed interactions, missing action values, and task-name or task-id extraction are exercised directly. In `internal/config/config_test.go`, add validation coverage for missing command names, normalized valid names, and rejected invalid names.
 
-Update documentation after the code is stable. Rewrite `README.md` so quick start and command examples use the configured root command. Update `docs/product-specs/discord-command-behavior.md` to define one instance-specific root command with action choices as the new v1 command surface. Update `docs/product-specs/task-mode-user-flow.md` so task flows refer to `/<instance-command> action:task-*` examples instead of `/task ...`. Update `docs/design-docs/implementation-spec.md` so its Discord behavior and configuration defaults mention `CLAW_DISCORD_COMMAND_NAME`, `CLAW_DISCORD_INSTANCE_LABEL`, and the one-root-command structure.
+Update documentation after the code is stable. Rewrite `README.md` so quick start and command examples use the configured root command. Update `docs/product-specs/discord-command-behavior.md` to define one instance-specific root command with action choices as the new v1 command surface. Update `docs/product-specs/task-mode-user-flow.md` so task flows refer to `/<instance-command> action:task-*` examples instead of `/task ...`. Update `docs/design-docs/implementation-spec.md` so its Discord behavior and configuration defaults mention `CLAW_DISCORD_COMMAND_NAME` and the one-root-command structure.
 
 ## Concrete Steps
 
@@ -168,7 +168,6 @@ Run all commands from `/home/filepang/playground/39claw`.
     CLAW_DISCORD_TOKEN=...
     CLAW_DISCORD_GUILD_ID=...
     CLAW_DISCORD_COMMAND_NAME=release
-    CLAW_DISCORD_INSTANCE_LABEL=Release bot
     CLAW_CODEX_WORKDIR=/absolute/path/to/workdir
     CLAW_SQLITE_PATH=/tmp/39claw.sqlite
     CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex
@@ -178,7 +177,7 @@ Run all commands from `/home/filepang/playground/39claw`.
 
         Discord search shows one `/release` command entry for this bot instance
         selecting `/release` exposes action choices instead of separate leaf command search entries
-        `action=help` identifies "Release bot (task mode)"
+        `action=help` identifies the configured command as `/release` and the mode as `task`
         `action=task-new` creates a task and keeps ordinary mention-based conversation unchanged
 
 ## Validation and Acceptance
@@ -188,10 +187,9 @@ This plan is complete when all of the following are true:
 - every 39claw instance registers exactly one top-level slash command in Discord
 - the top-level command name comes from `CLAW_DISCORD_COMMAND_NAME`
 - `CLAW_DISCORD_COMMAND_NAME` is required at startup and rejects invalid values with actionable errors
-- `CLAW_DISCORD_INSTANCE_LABEL` is optional and defaults to the command name
 - `daily` mode exposes only the `help` action through the root command
 - `task` mode exposes `help`, `task-current`, `task-list`, `task-new`, `task-switch`, and `task-close`
-- the help response names the current instance and shows the root command syntax instead of `/help` and `/task ...`
+- the help response shows the configured root command and current mode instead of `/help` and `/task ...`
 - the task workflow still uses the existing app-layer `TaskCommandService`
 - normal mention-based conversation behavior is unchanged
 - legacy `/help` and `/task ...` are no longer registered for this bot instance
@@ -205,7 +203,7 @@ The acceptance bar is user-facing, not only internal. A human should be able to 
 
 The config and runtime edits are safe to rerun because Discord command registration already uses bulk overwrite semantics. Reapplying the final code should replace the prior command schema cleanly for the configured guild or globally, depending on `CLAW_DISCORD_GUILD_ID`.
 
-The riskiest part of this migration is the new required environment variable. If startup fails after deployment, the recovery path is simple: set `CLAW_DISCORD_COMMAND_NAME` to a unique lowercase command name, then restart the process. If the optional label causes confusing copy, omit it and the system should fall back to the command name automatically.
+The riskiest part of this migration is the new required environment variable. If startup fails after deployment, the recovery path is simple: set `CLAW_DISCORD_COMMAND_NAME` to a unique lowercase command name, then restart the process.
 
 If a partial implementation leaves docs and code out of sync, prefer restoring consistency by finishing the command-surface change rather than reintroducing the old `/help` and `/task ...` registrations. This plan is intentionally opinionated so the repository does not drift into a dual-surface UX.
 
@@ -234,7 +232,8 @@ Desired Discord search behavior after the plan:
 
 Desired task-mode help text shape:
 
-    Release bot (task mode)
+    Command: /release
+    Mode: task
     Available actions:
     - `/release action:help` shows this help message.
     - `/release action:task-current` shows the active task.
@@ -261,7 +260,6 @@ At the end of this plan, the configuration and Discord runtime should expose int
         DiscordToken         string
         DiscordGuildID       string
         DiscordCommandName   string
-        DiscordInstanceLabel string
         ...
     }
 
@@ -292,3 +290,4 @@ The runtime must continue to depend on the existing `app.TaskCommandService` met
 No change in this plan should bypass that app-layer contract or route task control into Codex.
 
 Revision Note: 2026-04-04 / Codex - Created this ExecPlan after deciding to replace the shared `/help` and `/task ...` command family with one instance-specific root command in order to avoid Discord command-search explosion in multi-instance deployments.
+Revision Note: 2026-04-05 / Codex - Simplified the plan to use only `CLAW_DISCORD_COMMAND_NAME` after deciding a second display-label setting added complexity without meaningful UX value.
