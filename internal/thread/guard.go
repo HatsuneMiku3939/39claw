@@ -1,13 +1,10 @@
 package thread
 
 import (
-	"errors"
 	"sync"
+
+	"github.com/HatsuneMiku3939/39claw/internal/app"
 )
-
-var ErrExecutionInProgress = errors.New("execution already in progress for thread key")
-
-type ReleaseFunc func()
 
 type Guard struct {
 	mu      sync.Mutex
@@ -20,12 +17,12 @@ func NewGuard() *Guard {
 	}
 }
 
-func (g *Guard) Acquire(key string) (ReleaseFunc, error) {
+func (g *Guard) Acquire(key string) (app.ReleaseFunc, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	if g.running[key] > 0 {
-		return nil, ErrExecutionInProgress
+		return nil, app.ErrExecutionInProgress
 	}
 
 	g.running[key]++

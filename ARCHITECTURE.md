@@ -141,8 +141,8 @@ Responsibilities:
 1. accept a normalized message request
 2. ask the thread policy for a logical thread key
 3. load any existing binding from the thread store
-4. create a Codex thread if no binding exists
-5. send the user turn through the Codex gateway
+4. call the Codex gateway with or without an existing thread ID
+5. persist the returned thread ID when a new binding is created or updated
 6. return a normalized response for presentation
 
 ### 6.3 Thread Policy
@@ -171,9 +171,9 @@ The Codex gateway wraps the Codex SDK or Codex integration layer.
 
 Responsibilities:
 
-- create remote threads
 - resume remote threads by ID
 - send a turn to Codex
+- return the resulting remote thread ID for persistence when the first turn creates it
 - normalize Codex output for the application layer
 
 All Codex-specific details should stay behind this boundary.
@@ -206,8 +206,8 @@ thread_key = local_date
 Behavior:
 
 - incoming messages automatically resolve to today's bucket
-- if a thread exists for that key, resume it
-- otherwise create a new Codex thread
+- if a thread exists for that key, resume it by passing the saved thread ID into the next turn
+- otherwise run the first turn without a saved thread ID and persist the returned thread ID
 - when the date changes, the logical bucket changes automatically
 - Codex answers by following repository guidance and consulting the documentation in that repository
 

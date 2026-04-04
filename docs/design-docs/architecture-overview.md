@@ -72,9 +72,9 @@ Adapts normalized application output into Discord-safe responses.
 2. Runtime normalizes the request
 3. Application service asks the thread policy for a thread key
 4. Thread store checks whether a Codex thread already exists
-5. If not found, Codex gateway creates a new thread
-6. Application service persists the new binding
-7. Codex gateway sends the user turn
+5. Application service sends the turn through the Codex gateway with the saved thread ID when one exists
+6. If no saved thread exists yet, the first turn creates one and returns its thread ID
+7. Application service persists the returned binding
 8. Response presenter formats the result
 9. Discord runtime posts the reply
 ```

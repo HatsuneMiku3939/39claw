@@ -11,17 +11,23 @@ After this plan, a user should be able to mention the bot in `daily` mode and ge
 ## Progress
 
 - [x] (2026-04-04 15:27Z) Defined the `daily` mode plan and its acceptance targets.
-- [ ] Confirm that the repository provides the foundation capabilities listed in `Starting State`.
-- [ ] Implement the `daily` logical thread key policy based on the configured timezone.
-- [ ] Implement thread-binding load and upsert behavior for `daily` mode.
-- [ ] Implement the message orchestration path that creates or resumes Codex threads in `daily` mode.
-- [ ] Add the per-logical-thread busy guard so overlapping turns are rejected instead of queued.
-- [ ] Add tests for same-day reuse, next-day rollover, and busy-thread rejection.
+- [x] (2026-04-05 16:00Z) Confirmed the repository provides the foundation capabilities listed in `Starting State` by rerunning `make test` and `make lint`.
+- [x] (2026-04-05 16:17Z) Implemented the `daily` logical thread key policy based on the configured timezone, including a local-midnight rollover test.
+- [x] (2026-04-05 16:17Z) Implemented thread-binding load and upsert behavior for `daily` mode, including a SQLite reopen persistence test.
+- [x] (2026-04-05 16:17Z) Implemented the message orchestration path that creates or resumes Codex threads in `daily` mode.
+- [x] (2026-04-05 16:17Z) Added the per-logical-thread busy guard so overlapping turns are rejected instead of queued.
+- [x] (2026-04-05 16:17Z) Added tests for ignored chatter, same-day reuse, next-day rollover, busy-thread rejection, and missing-task guidance.
 
 ## Surprises & Discoveries
 
 - Observation: `daily` mode is the smallest complete user-facing slice because it does not require task commands or explicit task selection.
   Evidence: `docs/design-docs/implementation-spec.md`
+
+- Observation: The first persisted Codex thread ID is created by the first successful turn, not by a separate empty-thread API call.
+  Evidence: `internal/codex/gateway.go`, `internal/app/message_service_impl.go`
+
+- Observation: Keeping busy-thread rejection and missing-task guidance inside the application layer makes the daily workflow fully testable without a Discord runtime.
+  Evidence: `go test ./internal/thread ./internal/app ./internal/store/sqlite -run 'TestMessageService|TestPolicy|TestGuard|TestStoreThreadBinding' -v`
 
 ## Decision Log
 
@@ -33,9 +39,17 @@ After this plan, a user should be able to mention the bot in `daily` mode and ge
   Rationale: The product specs describe date boundaries in terms of the bot instance's configured local timezone.
   Date/Author: 2026-04-04 / Codex
 
+- Decision: Use application-layer sentinel errors for `no active task` and `execution already in progress`.
+  Rationale: The message service needs to translate these states into user-facing responses without importing the thread package and creating a package cycle.
+  Date/Author: 2026-04-05 / Codex
+
+- Decision: Persist the returned thread ID after every successful turn instead of only on first creation.
+  Rationale: The current gateway contract returns the authoritative thread ID for both new and resumed turns, so persisting the latest value keeps the binding path simple and idempotent.
+  Date/Author: 2026-04-05 / Codex
+
 ## Outcomes & Retrospective
 
-This plan should produce the first real user-facing feature in the repository. Success means the app can route one kind of normal conversation correctly and persist its continuity over restart.
+This plan now produces the first real user-facing feature in the repository at the application layer. The app can route mention-triggered `daily` conversation correctly, persist same-day continuity over restart, reject overlapping turns for the same logical key, and ignore unsupported chatter. The remaining work for later plans is to connect this behavior to the real Discord runtime and presenter.
 
 ## Context and Orientation
 
@@ -108,6 +122,10 @@ Run all commands from `/home/filepang/playground/39claw`.
 
     go test ./internal/thread ./internal/app ./internal/store/sqlite -run 'TestDaily|TestThreadBinding|TestBusy' -v
 
+Completed proof artifact:
+
+    go test ./internal/thread ./internal/app ./internal/store/sqlite -run 'TestMessageService|TestPolicy|TestGuard|TestStoreThreadBinding' -v
+
 ## Validation and Acceptance
 
 This plan is complete when:
@@ -158,3 +176,4 @@ Keep the Discord runtime out of scope here. The app tests should speak in reques
 
 Revision Note: 2026-04-04 / Codex - Created this smaller child ExecPlan during the split of the original all-in-one runtime plan.
 Revision Note: 2026-04-04 / Codex - Removed the parent-plan dependency and added explicit starting-state and recovery guidance so the document can stand alone.
+Revision Note: 2026-04-05 / Codex - Recorded the completed application-layer daily routing implementation, updated proof commands, and captured the thread-ID persistence nuance.
