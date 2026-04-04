@@ -169,7 +169,7 @@ Run all commands from `/home/filepang/playground/39claw`.
     CLAW_DISCORD_GUILD_ID=...
     CLAW_DISCORD_COMMAND_NAME=release
     CLAW_CODEX_WORKDIR=/absolute/path/to/workdir
-    CLAW_SQLITE_PATH=/tmp/39claw.sqlite
+    CLAW_DATADIR=/tmp/39claw
     CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex
     go run ./cmd/39claw
 

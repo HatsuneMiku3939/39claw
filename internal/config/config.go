@@ -22,6 +22,7 @@ type Config struct {
 	TimezoneName               string
 	DiscordToken               string
 	DiscordGuildID             string
+	DataDir                    string
 	SQLitePath                 string
 	CodexExecutable            string
 	CodexBaseURL               string
@@ -48,7 +49,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		"CLAW_TIMEZONE",
 		"CLAW_DISCORD_TOKEN",
 		"CLAW_CODEX_WORKDIR",
-		"CLAW_SQLITE_PATH",
+		"CLAW_DATADIR",
 		"CLAW_CODEX_EXECUTABLE",
 	}
 
@@ -115,7 +116,8 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		TimezoneName:               values["CLAW_TIMEZONE"],
 		DiscordToken:               values["CLAW_DISCORD_TOKEN"],
 		DiscordGuildID:             values["CLAW_DISCORD_GUILD_ID"],
-		SQLitePath:                 values["CLAW_SQLITE_PATH"],
+		DataDir:                    values["CLAW_DATADIR"],
+		SQLitePath:                 sqlitePath(values["CLAW_DATADIR"]),
 		CodexExecutable:            values["CLAW_CODEX_EXECUTABLE"],
 		CodexBaseURL:               values["CLAW_CODEX_BASE_URL"],
 		CodexAPIKey:                values["CLAW_CODEX_API_KEY"],
@@ -130,6 +132,10 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		CodexNetworkAccess:         networkAccess,
 		LogLevel:                   logLevel,
 	}, nil
+}
+
+func sqlitePath(dataDir string) string {
+	return filepath.Join(dataDir, "39claw.sqlite")
 }
 
 func parseMode(raw string) (Mode, error) {
