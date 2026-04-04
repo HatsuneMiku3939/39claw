@@ -25,7 +25,7 @@ Plans in this directory should be written and maintained in line with `.agents/P
 
 These plans are intended to be executed in numeric order. Each plan is self-contained, but later plans name the repository state they expect to find and explain how to recover if that state is missing.
 
-- [Implement Discord image attachment intake for Codex turns](./active/06-discord-image-input.md)
+- None right now.
 
 ## Recently Completed Plans
 
@@ -34,3 +34,4 @@ These plans are intended to be executed in numeric order. Each plan is self-cont
 - [Implement `task` mode task workflow and command orchestration](./completed/03-task-mode-workflow.md)
 - [Implement the Discord runtime, commands, and response presentation](./completed/04-discord-runtime-and-presentation.md)
 - [Implement capped per-thread message queueing for busy Codex turns](./completed/05-queued-message-handling.md)
+- [Implement Discord image attachment intake for Codex turns](./completed/06-discord-image-input.md)
