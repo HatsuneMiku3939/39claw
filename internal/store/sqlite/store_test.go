@@ -133,6 +133,85 @@ func TestStoreThreadBindingPersistsAcrossReopen(t *testing.T) {
 	}
 }
 
+func TestStoreTaskStatePersistsAcrossReopen(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "39claw.db")
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+
+	store.clock = func() time.Time {
+		return time.Date(2026, time.April, 5, 15, 4, 0, 0, time.UTC)
+	}
+
+	ctx := context.Background()
+	if err := store.InitSchema(ctx); err != nil {
+		t.Fatalf("InitSchema() error = %v", err)
+	}
+
+	if err := store.CreateTask(ctx, app.Task{
+		TaskID:        "task-1",
+		DiscordUserID: "user-1",
+		TaskName:      "Release work",
+	}); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	if err := store.SetActiveTask(ctx, app.ActiveTask{
+		DiscordUserID: "user-1",
+		TaskID:        "task-1",
+	}); err != nil {
+		t.Fatalf("SetActiveTask() error = %v", err)
+	}
+
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() reopen error = %v", err)
+	}
+	defer func() {
+		if closeErr := reopened.Close(); closeErr != nil {
+			t.Fatalf("Close() reopen error = %v", closeErr)
+		}
+	}()
+
+	if err := reopened.InitSchema(ctx); err != nil {
+		t.Fatalf("InitSchema() reopen error = %v", err)
+	}
+
+	task, ok, err := reopened.GetTask(ctx, "user-1", "task-1")
+	if err != nil {
+		t.Fatalf("GetTask() reopen error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("GetTask() reopen ok = false, want true")
+	}
+
+	if task.TaskName != "Release work" {
+		t.Fatalf("TaskName = %q, want %q", task.TaskName, "Release work")
+	}
+
+	activeTask, ok, err := reopened.GetActiveTask(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("GetActiveTask() reopen error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("GetActiveTask() reopen ok = false, want true")
+	}
+
+	if activeTask.TaskID != "task-1" {
+		t.Fatalf("TaskID = %q, want %q", activeTask.TaskID, "task-1")
+	}
+}
+
 func TestStoreTaskLifecycle(t *testing.T) {
 	t.Parallel()
 
@@ -228,6 +307,54 @@ func TestStoreCloseTaskRejectsUnknownTask(t *testing.T) {
 	err := store.CloseTask(context.Background(), "user-1", "missing")
 	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("CloseTask() error = %v, want %v", err, sql.ErrNoRows)
+	}
+}
+
+func TestStoreCloseTaskKeepsDifferentActiveTask(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for _, task := range []app.Task{
+		{
+			TaskID:        "task-1",
+			DiscordUserID: "user-1",
+			TaskName:      "Release work",
+		},
+		{
+			TaskID:        "task-2",
+			DiscordUserID: "user-1",
+			TaskName:      "Docs update",
+		},
+	} {
+		if err := store.CreateTask(ctx, task); err != nil {
+			t.Fatalf("CreateTask(%s) error = %v", task.TaskID, err)
+		}
+	}
+
+	if err := store.SetActiveTask(ctx, app.ActiveTask{
+		DiscordUserID: "user-1",
+		TaskID:        "task-2",
+	}); err != nil {
+		t.Fatalf("SetActiveTask() error = %v", err)
+	}
+
+	if err := store.CloseTask(ctx, "user-1", "task-1"); err != nil {
+		t.Fatalf("CloseTask() error = %v", err)
+	}
+
+	activeTask, ok, err := store.GetActiveTask(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("GetActiveTask() error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("GetActiveTask() ok = false, want true")
+	}
+
+	if activeTask.TaskID != "task-2" {
+		t.Fatalf("TaskID = %q, want %q", activeTask.TaskID, "task-2")
 	}
 }
 
