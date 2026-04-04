@@ -23,6 +23,8 @@ For the intended system shape, thread model, and user-facing behavior, start wit
   - user-facing journeys, command behavior, and workflow expectations
 - `docs/design-docs`
   - supporting architecture and design notes
+- `docs/exec-plans`
+  - living execution plans for active and completed implementation work
 - `docs/references`
   - external reference material
 

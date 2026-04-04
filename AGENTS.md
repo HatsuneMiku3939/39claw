@@ -70,6 +70,8 @@ The repository includes a `Makefile` for common development checks.
 
 - `docs/index.md`
   - Entry point for the repository documentation set
+- `docs/exec-plans/index.md`
+  - Entry point for living execution plans and deferred follow-up notes
 
 ### Design notes
 
@@ -117,6 +119,7 @@ Use `docs/design-docs/architecture-overview.md` when a quick orientation is enou
 ## ExecPlans
 
 When writing complex features or significant refactors, use an ExecPlan (as described in .agents/PLANS.md) from design to implementation.
+Store active plans under `docs/exec-plans/active` and move them to `docs/exec-plans/completed` when they are finished.
 
 ## Maintenance Rule
 
