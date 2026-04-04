@@ -20,7 +20,7 @@ The user-visible proof is simple. If a bot instance starts with `CLAW_DISCORD_CO
 - [x] (2026-04-04 23:07Z) Added and updated Go tests for config loading, command registration, interaction parsing, runtime routing, and root-command response wording.
 - [x] (2026-04-04 23:07Z) Updated `README.md`, `docs/product-specs/discord-command-behavior.md`, `docs/product-specs/task-mode-user-flow.md`, and `docs/design-docs/implementation-spec.md` to describe the new command surface.
 - [x] (2026-04-04 23:07Z) Ran `make test` and `make lint` successfully after the implementation landed.
-- [ ] Manually confirm in Discord that one bot instance contributes only one command-search entry.
+- [x] (2026-04-04 23:28Z) Manually confirmed in Discord that a guild-scoped bot instance contributes one `/claw` root command entry and that the task-mode smoke flow succeeds end to end.
 
 ## Surprises & Discoveries
 
@@ -35,6 +35,9 @@ The user-visible proof is simple. If a bot instance starts with `CLAW_DISCORD_CO
 
 - Observation: Task guidance text is not isolated to the Discord runtime. The app-layer message and task services also embed command examples, so the configured root command has to flow into those services to keep user-facing copy consistent.
   Evidence: `internal/app/message_service_impl.go` and `internal/app/task_service.go`.
+
+- Observation: Global slash-command propagation is slow enough to obscure local validation, while guild-scoped registration reflects the new root command almost immediately.
+  Evidence: Manual verification on 2026-04-04 showed `/claw` was not yet visible during global registration, then appeared immediately after setting `CLAW_DISCORD_GUILD_ID` for the same instance.
 
 ## Decision Log
 
@@ -60,7 +63,7 @@ The user-visible proof is simple. If a bot instance starts with `CLAW_DISCORD_CO
 
 ## Outcomes & Retrospective
 
-Implementation is complete in code, tests, and repository docs. The resulting command surface now scales with the number of installed bot instances instead of scaling with instances multiplied by slash-command variants, and help/task guidance consistently identifies the configured root command for the current deployment. The remaining gap is manual Discord verification in a live guild to confirm the slash-command picker now shows exactly one searchable root command per instance.
+Implementation is complete in code, tests, repository docs, and manual Discord smoke validation. The resulting command surface now scales with the number of installed bot instances instead of scaling with instances multiplied by slash-command variants, and help/task guidance consistently identifies the configured root command for the current deployment. Manual validation in a guild confirmed that one instance contributes one `/claw` root command entry and that the task-mode smoke flow works end to end when guild-scoped registration is used for immediate propagation.
 
 ## Context and Orientation
 
