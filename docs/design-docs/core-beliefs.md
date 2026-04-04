@@ -1,16 +1,16 @@
 # Core Beliefs
 
-This document records the design beliefs that currently shape 39bot.
+This document records the design beliefs that currently shape 39claw.
 
-## 1. 39bot should be Codex-native
+## 1. 39claw should be Codex-native
 
-39bot should not re-implement an agent loop if Codex already provides one.
+39claw should not re-implement an agent loop if Codex already provides one.
 
 This means:
 
 - Codex owns the conversational thread lifecycle on the remote side.
 - Codex handles tool calling and internal loop progression.
-- 39bot focuses on user experience, thread routing, and platform integration.
+- 39claw focuses on user experience, thread routing, and platform integration.
 
 ## 2. User experience should drive thread policy
 
@@ -23,9 +23,9 @@ This means thread design must be based on UX expectations such as:
 - when context should reset
 - how predictable the behavior feels inside Discord
 
-## 3. 39bot should be a thin orchestrator
+## 3. 39claw should be a thin orchestrator
 
-39bot should remain a small application that coordinates a few responsibilities well:
+39claw should remain a small application that coordinates a few responsibilities well:
 
 - receive Discord messages
 - resolve the target Codex thread

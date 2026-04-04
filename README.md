@@ -1,10 +1,10 @@
-# 39bot
+# 39claw
 
-39bot is a Go-based, Codex-native Discord bot.
+39claw is a Go-based, Codex-native Discord bot.
 
 ## Current Status
 
-The repository currently includes a minimal bootstrap executable at `cmd/39bot/main.go`.
+The repository currently includes a minimal bootstrap executable at `cmd/39claw/main.go`.
 It prints a dummy `hello world` message and exists only to validate the initial Go module, test, and lint workflow.
 
 The repository also includes an experimental Go Codex adapter under `internal/codex`.

@@ -1,6 +1,6 @@
 # Thread Modes
 
-This document defines the two planned v1 thread modes for 39bot.
+This document defines the two planned v1 thread modes for 39claw.
 
 The selected mode is a global configuration value for each bot instance.
 
@@ -26,9 +26,9 @@ thread_key = user + local_date
 
 ### Behavior
 
-- when a message arrives, 39bot computes the key automatically
-- if a Codex thread is already bound to that key, 39bot resumes it
-- if no binding exists, 39bot creates a new Codex thread
+- when a message arrives, 39claw computes the key automatically
+- if a Codex thread is already bound to that key, 39claw resumes it
+- if no binding exists, 39claw creates a new Codex thread
 - when the date changes, a new logical thread is used automatically
 
 ### UX Properties
@@ -119,4 +119,4 @@ As a result, the modes support different user experiences:
 - `daily` is conversation-oriented
 - `task` is work-oriented
 
-Supporting both allows 39bot to serve different operating styles without changing the Codex-native backend model.
+Supporting both allows 39claw to serve different operating styles without changing the Codex-native backend model.

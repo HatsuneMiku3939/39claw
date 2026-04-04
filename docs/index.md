@@ -1,6 +1,6 @@
-# 39bot Docs
+# 39claw Docs
 
-This directory is the documentation home for 39bot.
+This directory is the documentation home for 39claw.
 
 It is organized into a small set of document layers so contributors can quickly find the right level of detail.
 

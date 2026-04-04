@@ -1,12 +1,12 @@
 # State and Storage
 
-This document describes the concept-level local state required by 39bot.
+This document describes the concept-level local state required by 39claw.
 
 ## Why Local State Exists
 
-Codex manages remote conversation threads, but 39bot still needs local state to know which remote thread should receive a new user message.
+Codex manages remote conversation threads, but 39claw still needs local state to know which remote thread should receive a new user message.
 
-That means 39bot must persist thread bindings.
+That means 39claw must persist thread bindings.
 
 ## Primary Persistence Need
 

@@ -1,8 +1,8 @@
 # References
 
-This directory contains external reference materials used to shape the design and implementation of 39bot.
+This directory contains external reference materials used to shape the design and implementation of 39claw.
 
-These references are not part of the 39bot application itself.
+These references are not part of the 39claw application itself.
 They exist to support architecture exploration, implementation decisions, and API integration work.
 
 ## Available References

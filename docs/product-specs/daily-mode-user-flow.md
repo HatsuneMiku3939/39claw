@@ -4,7 +4,7 @@ Status: Draft
 
 ## Purpose
 
-This document defines the intended user-facing behavior of 39bot when the bot instance is configured to use `daily` mode.
+This document defines the intended user-facing behavior of 39claw when the bot instance is configured to use `daily` mode.
 
 The goal of `daily` mode is to make the bot feel natural and low-friction for ongoing daily conversation and lightweight work.
 
@@ -47,9 +47,9 @@ The user does not need internal detail about logical keys or Codex thread IDs du
 Expected flow:
 
 1. The user sends a normal message in a supported channel.
-2. 39bot determines that the message should be handled.
-3. 39bot resolves the current daily thread bucket for that user.
-4. If no thread exists for that bucket, 39bot creates a new one automatically.
+2. 39claw determines that the message should be handled.
+3. 39claw resolves the current daily thread bucket for that user.
+4. If no thread exists for that bucket, 39claw creates a new one automatically.
 5. The user receives a normal response.
 
 Expected user perception:
@@ -62,7 +62,7 @@ Expected user perception:
 Expected flow:
 
 1. The user sends another message on the same local date.
-2. 39bot routes the message to the already bound daily thread.
+2. 39claw routes the message to the already bound daily thread.
 3. The response reflects same-day continuity.
 
 Expected user perception:
@@ -75,8 +75,8 @@ Expected user perception:
 Expected flow:
 
 1. The user sends a message after the local date has changed.
-2. 39bot resolves a new daily bucket automatically.
-3. If no thread exists for the new bucket, 39bot creates a new one.
+2. 39claw resolves a new daily bucket automatically.
+3. If no thread exists for the new bucket, 39claw creates a new one.
 4. The response begins from a fresh context unless the user supplies previous context again.
 
 Expected user perception:
