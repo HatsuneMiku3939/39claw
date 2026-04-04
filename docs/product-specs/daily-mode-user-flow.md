@@ -70,6 +70,21 @@ Expected user perception:
 - “The bot remembers today’s shared context.”
 - “I do not need to restate everything.”
 
+### Scenario: A same-day message arrives while another turn is still running
+
+Expected flow:
+
+1. The user sends a message for the current daily conversation while an earlier same-day turn is still executing.
+2. 39claw accepts the later message into the per-day waiting queue if capacity remains.
+3. The bot immediately posts a short queued acknowledgment as a reply to the later message.
+4. After the earlier turn completes, 39claw executes the queued message in the same daily thread.
+5. The user receives the real answer later as a reply to the queued message.
+
+Expected user perception:
+
+- “The bot accepted my message instead of making me retry manually.”
+- “The later answer still belongs to the message I actually sent.”
+
 ### Scenario: First message on a new day
 
 Expected flow:
@@ -130,6 +145,7 @@ If that creates confusion for a specific deployment, the preferred solution is t
 
 If multiple unrelated discussions happen on the same day, `daily` mode may expose some shared context across those turns.
 That tradeoff is acceptable when the product is intentionally operating as a shared assistant for a bounded group.
+If multiple same-day requests stack up while one turn is already running, up to five waiting messages may queue before the bot falls back to a retry-later response.
 
 ## Non-Goals
 

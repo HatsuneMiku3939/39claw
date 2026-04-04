@@ -14,7 +14,7 @@ The repository now includes a real startup spine for `cmd/39claw`:
 - `slog` logger construction in `internal/observe`
 - SQLite-backed state initialization in `internal/store/sqlite`
 - application-layer contracts in `internal/app`
-- thread-policy and execution-guard seams in `internal/thread`
+- thread-policy and queue-coordination seams in `internal/thread`
 - a higher-level Codex gateway in `internal/codex`
 - a real Discord runtime adapter in `internal/runtime/discord`
 
@@ -25,6 +25,7 @@ The runtime now handles:
 - `/help`
 - `/task current`, `/task list`, `/task new <name>`, `/task switch <id>`, and `/task close <id>`
 - same-channel reply targeting for normal conversation
+- capped per-thread queued acknowledgements with deferred follow-up replies
 - ephemeral task-control responses
 - Discord-safe response chunking with fenced-code preservation
 
@@ -40,7 +41,7 @@ The current test-backed behavior includes:
 - task thread reuse across days and task switches
 - SQLite-backed thread-binding persistence across reopen
 - SQLite-backed task and active-task persistence across reopen
-- busy-thread rejection
+- capped per-thread message queueing with deferred follow-up delivery
 
 The current direction is documented in the root architecture and product documents rather than in the executable surface alone.
 For the intended system shape, thread model, and user-facing behavior, start with the documents linked below.
@@ -103,11 +104,20 @@ Optional Codex thread-option overrides:
 - `CLAW_CODEX_NETWORK_ACCESS`
   - accepts `true` or `false`
 
+Normal-message concurrency behavior:
+
+- only one Codex turn runs at a time for a given logical thread key
+- up to five additional messages may wait in an in-memory FIFO queue for that key
+- queued messages receive an immediate acknowledgment and a later reply to the original message when their turn completes
+- if five waiting messages already exist, the next message receives a retry-later response
+- queued messages are lost if the bot process exits before they run
+
 Smoke-test checklist:
 
 - mention the bot in `daily` mode and confirm the reply targets the original message
 - mention the bot with text plus an image attachment and confirm the reply reflects both inputs
 - mention the bot with only an image attachment and confirm the bot still answers
+- send overlapping mentions for the same logical conversation and confirm the second message is queued, then answered later as a reply to that message
 - send unrelated chatter without a mention and confirm the bot stays silent
 - run `/help` and confirm it matches the configured mode
 - run `/task current` in `daily` mode and confirm the bot returns a clear not-available response

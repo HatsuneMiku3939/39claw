@@ -172,10 +172,11 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 	}
 
 	imagePaths, cleanup, err := prepareImageAttachments(context.Background(), r.httpClient, event.Attachments)
-	if cleanup != nil {
-		defer cleanup()
-	}
 	if err != nil {
+		if cleanup != nil {
+			cleanup()
+		}
+
 		r.logger.Error("prepare image attachments", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
 		if err := presentMessage(discordSession, request.ChannelID, app.MessageResponse{
 			Text:      imageDownloadErrorMessage,
@@ -187,11 +188,35 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 	}
 
 	request.ImagePaths = imagePaths
+	request.Cleanup = cleanup
 	if strings.TrimSpace(request.Content) == "" && len(request.ImagePaths) == 0 {
+		if cleanup != nil {
+			cleanup()
+		}
+
 		return
 	}
 
-	response, err := r.message.HandleMessage(context.Background(), request)
+	deferredSink := app.DeferredReplySinkFunc(func(_ context.Context, response app.MessageResponse) error {
+		r.mu.Lock()
+		currentSession := r.session
+		r.mu.Unlock()
+
+		if currentSession == nil {
+			err := errors.New("discord runtime is not running")
+			r.logger.Error("present deferred message response", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
+			return err
+		}
+
+		if err := presentMessage(currentSession, request.ChannelID, response); err != nil {
+			r.logger.Error("present deferred message response", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
+			return err
+		}
+
+		return nil
+	})
+
+	response, err := r.message.HandleMessage(context.Background(), request, deferredSink)
 	if err != nil {
 		r.logger.Error("handle message", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
 		response = app.MessageResponse{

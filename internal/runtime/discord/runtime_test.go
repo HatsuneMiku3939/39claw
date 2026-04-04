@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/HatsuneMiku3939/39claw/internal/app"
 	"github.com/HatsuneMiku3939/39claw/internal/config"
@@ -95,6 +96,82 @@ func TestRuntimeMentionHandlingRepliesToTriggerMessage(t *testing.T) {
 
 	if fakeSession.sentMessages[0].Reference == nil || fakeSession.sentMessages[0].Reference.MessageID != "message-1" {
 		t.Fatal("first sent message missing reply reference")
+	}
+}
+
+func TestRuntimeMentionHandlingPresentsQueuedAcknowledgementAndDeferredReply(t *testing.T) {
+	t.Parallel()
+
+	deliverQueuedResponse := make(chan struct{})
+	delivered := make(chan struct{})
+	messageService := &fakeMessageService{
+		handle: func(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error) {
+			go func() {
+				<-deliverQueuedResponse
+				_ = sink.Deliver(context.Background(), app.MessageResponse{
+					Text:      "Final queued response",
+					ReplyToID: request.MessageID,
+				})
+				if request.Cleanup != nil {
+					request.Cleanup()
+				}
+				close(delivered)
+			}()
+
+			return app.MessageResponse{
+				Text:      "A response is already running for this conversation. Your message has been queued at position 1.",
+				ReplyToID: request.MessageID,
+			}, nil
+		},
+	}
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "channel-1",
+			Content:   "<@bot-user> queue me",
+			Author:    &discordgo.User{ID: "user-1"},
+			Mentions: []*discordgo.User{
+				{ID: "bot-user"},
+			},
+		},
+	})
+
+	if len(fakeSession.sentMessages) != 1 {
+		t.Fatalf("sent message count after ack = %d, want %d", len(fakeSession.sentMessages), 1)
+	}
+
+	if fakeSession.sentMessages[0].Content != "A response is already running for this conversation. Your message has been queued at position 1." {
+		t.Fatalf("queued ack content = %q", fakeSession.sentMessages[0].Content)
+	}
+
+	close(deliverQueuedResponse)
+
+	select {
+	case <-delivered:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for deferred runtime delivery")
+	}
+
+	if len(fakeSession.sentMessages) != 2 {
+		t.Fatalf("sent message count after deferred delivery = %d, want %d", len(fakeSession.sentMessages), 2)
+	}
+
+	if fakeSession.sentMessages[1].Content != "Final queued response" {
+		t.Fatalf("deferred content = %q, want %q", fakeSession.sentMessages[1].Content, "Final queued response")
+	}
+
+	if fakeSession.sentMessages[1].Reference == nil || fakeSession.sentMessages[1].Reference.MessageID != "message-1" {
+		t.Fatal("deferred sent message missing reply reference")
 	}
 }
 
@@ -666,10 +743,20 @@ type fakeMessageService struct {
 	requests []app.MessageRequest
 	response app.MessageResponse
 	err      error
+	handle   func(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error)
 }
 
-func (s *fakeMessageService) HandleMessage(ctx context.Context, request app.MessageRequest) (app.MessageResponse, error) {
+func (s *fakeMessageService) HandleMessage(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error) {
 	s.requests = append(s.requests, request)
+
+	if s.handle != nil {
+		return s.handle(ctx, request, sink)
+	}
+
+	if request.Cleanup != nil {
+		request.Cleanup()
+	}
+
 	if s.err != nil {
 		return app.MessageResponse{}, s.err
 	}

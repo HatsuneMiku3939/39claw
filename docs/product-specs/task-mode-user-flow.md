@@ -97,6 +97,21 @@ Expected user perception:
 - “I intentionally switched work contexts.”
 - “The bot should now respond in terms of the new task.”
 
+### Scenario: A message is queued for the active task and the user switches tasks before it runs
+
+Expected flow:
+
+1. The user sends a normal message while the current task already has a running turn.
+2. 39claw accepts the message into the waiting queue for that `user + task_id` context and immediately acknowledges that it was queued.
+3. Before the queued turn runs, the user switches the active task to a different task.
+4. The queued turn still executes against the task that was active when the message was accepted.
+5. The real answer arrives later as a reply to the queued message.
+
+Expected user perception:
+
+- “My queued message stayed attached to the task I meant.”
+- “Switching tasks later did not silently reroute earlier work.”
+
 ## Minimum UX Requirements
 
 For `task` mode to feel usable, v1 should support at least:
@@ -160,6 +175,7 @@ If a task exists but its thread binding cannot be resumed, the bot should explai
 ### Incorrect task risk
 
 If the product is not certain which task should receive a message, it should prefer asking for explicit user action rather than guessing and contaminating the wrong context.
+That same safety rule applies to queued work: the task context must be frozen at queue-admission time rather than re-read later.
 
 ## Non-Goals
 

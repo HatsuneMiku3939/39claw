@@ -8,6 +8,7 @@ type MessageRequest struct {
 	MessageID   string
 	Content     string
 	ImagePaths  []string
+	Cleanup     func()
 	Mentioned   bool
 	CommandName string
 	CommandArgs []string
@@ -68,4 +69,10 @@ type RunTurnResult struct {
 type CodexTurnInput struct {
 	Prompt     string
 	ImagePaths []string
+}
+
+type QueueAdmission struct {
+	ExecuteNow bool
+	Queued     bool
+	Position   int
 }

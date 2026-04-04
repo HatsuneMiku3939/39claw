@@ -89,11 +89,11 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	}
 
 	messageService, err := app.NewMessageService(app.MessageServiceDependencies{
-		Mode:    cfg.Mode,
-		Policy:  policy,
-		Store:   store,
-		Gateway: gateway,
-		Guard:   thread.NewGuard(),
+		Mode:        cfg.Mode,
+		Policy:      policy,
+		Store:       store,
+		Gateway:     gateway,
+		Coordinator: thread.NewQueueCoordinator(),
 	})
 	if err != nil {
 		return fmt.Errorf("build message service: %w", err)

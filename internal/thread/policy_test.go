@@ -125,37 +125,65 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 	}
 }
 
-func TestGuardAcquire(t *testing.T) {
+func TestQueueCoordinatorAdmitAndComplete(t *testing.T) {
 	t.Parallel()
 
-	guard := NewGuard()
+	coordinator := NewQueueCoordinator()
+	key := "daily:2026-04-05"
+	order := make([]int, 0, 5)
 
-	release, err := guard.Acquire("daily:2026-04-05")
+	admission, err := coordinator.Admit(key, func() {
+		order = append(order, 0)
+	})
 	if err != nil {
-		t.Fatalf("Acquire() error = %v", err)
+		t.Fatalf("Admit() error = %v", err)
 	}
 
-	secondRelease, err := guard.Acquire("daily:2026-04-05")
-	if err == nil {
-		t.Fatal("Acquire() error = nil, want non-nil")
+	if !admission.ExecuteNow || admission.Queued {
+		t.Fatalf("first admission = %+v, want immediate execution", admission)
 	}
 
-	if err != app.ErrExecutionInProgress {
-		t.Fatalf("Acquire() error = %v, want %v", err, app.ErrExecutionInProgress)
+	for i := 1; i <= 5; i++ {
+		index := i
+		admission, err := coordinator.Admit(key, func() {
+			order = append(order, index)
+		})
+		if err != nil {
+			t.Fatalf("Admit() queued error = %v", err)
+		}
+
+		if !admission.Queued || admission.Position != i {
+			t.Fatalf("queued admission = %+v, want queued position %d", admission, i)
+		}
 	}
 
-	if secondRelease != nil {
-		t.Fatal("second release = non-nil, want nil")
+	if _, err := coordinator.Admit(key, func() {}); err != app.ErrExecutionQueueFull {
+		t.Fatalf("Admit() overflow error = %v, want %v", err, app.ErrExecutionQueueFull)
 	}
 
-	release()
+	for expected := 1; expected <= 5; expected++ {
+		work, ok := coordinator.Complete(key)
+		if !ok {
+			t.Fatalf("Complete() ok = false at position %d, want true", expected)
+		}
 
-	release, err = guard.Acquire("daily:2026-04-05")
-	if err != nil {
-		t.Fatalf("Acquire() after release error = %v", err)
+		work()
 	}
 
-	release()
+	if len(order) != 5 {
+		t.Fatalf("work count = %d, want %d", len(order), 5)
+	}
+
+	for index, got := range order {
+		want := index + 1
+		if got != want {
+			t.Fatalf("order[%d] = %d, want %d", index, got, want)
+		}
+	}
+
+	if work, ok := coordinator.Complete(key); ok || work != nil {
+		t.Fatalf("Complete() final state = ok:%v nil-work:%v, want ok:false nil-work:true", ok, work == nil)
+	}
 }
 
 type stubThreadStore struct {

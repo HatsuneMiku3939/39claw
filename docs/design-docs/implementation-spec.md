@@ -115,7 +115,9 @@ Unsupported non-mention chatter is ignored.
 Mention-only posts that contain no text and no usable image attachments are also ignored.
 Long responses are chunked into Discord-safe messages while preserving code fences when practical.
 Only one Codex turn may run at a time for a given logical thread key.
-If another message arrives for the same logical thread while a turn is running, the bot should return a busy or retry response rather than queueing implicitly.
+If another message arrives for the same logical thread while a turn is running, the bot should accept up to five waiting messages in an in-memory FIFO queue.
+Queued messages should receive an immediate acknowledgment and later receive their final answer as a follow-up reply to the original message.
+If five waiting messages already exist for that logical thread key, the bot should return a retry-later response instead of accepting more queued work.
 
 ## Configuration Defaults
 
@@ -167,3 +169,4 @@ The initial implementation should demonstrate the following observable behavior:
 - Existing `daily` and `task` bindings survive process restart through SQLite-backed state.
 - Non-mention chatter is ignored, unsupported non-image-only mention posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.
 - Simultaneous requests for the same logical thread do not execute overlapping Codex turns.
+- Simultaneous requests for the same logical thread receive queued acknowledgments and later deferred replies until the waiting queue reaches five items.

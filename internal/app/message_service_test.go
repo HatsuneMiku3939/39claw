@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,14 +16,14 @@ import (
 func TestMessageServiceHandleMessageIgnoresNonMentionChatter(t *testing.T) {
 	t.Parallel()
 
-	service := newDailyMessageService(t, &memoryThreadStore{}, &fakeCodexGateway{}, &stubExecutionGuard{})
+	service := newDailyMessageService(t, &memoryThreadStore{}, &fakeCodexGateway{}, nil)
 
 	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
 		MessageID:  "message-1",
 		Content:    "just chatting",
 		Mentioned:  false,
 		ReceivedAt: time.Date(2026, time.April, 5, 9, 0, 0, 0, time.UTC),
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("HandleMessage() error = %v", err)
 	}
@@ -42,14 +43,14 @@ func TestMessageServiceHandleMessageDailyReusesSameDayBinding(t *testing.T) {
 			{ThreadID: "thread-1", ResponseText: "Second response"},
 		},
 	}
-	service := newDailyMessageService(t, store, gateway, &stubExecutionGuard{})
+	service := newDailyMessageService(t, store, gateway, nil)
 
 	firstResponse, err := service.HandleMessage(context.Background(), app.MessageRequest{
 		MessageID:  "message-1",
 		Content:    "hello there",
 		Mentioned:  true,
 		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("HandleMessage() first error = %v", err)
 	}
@@ -59,7 +60,7 @@ func TestMessageServiceHandleMessageDailyReusesSameDayBinding(t *testing.T) {
 		Content:    "follow up",
 		Mentioned:  true,
 		ReceivedAt: time.Date(2026, time.April, 5, 7, 0, 0, 0, time.UTC),
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("HandleMessage() second error = %v", err)
 	}
@@ -76,16 +77,17 @@ func TestMessageServiceHandleMessageDailyReusesSameDayBinding(t *testing.T) {
 		t.Fatalf("second reply id = %q, want %q", secondResponse.ReplyToID, "message-2")
 	}
 
-	if len(gateway.calls) != 2 {
-		t.Fatalf("RunTurn() call count = %d, want %d", len(gateway.calls), 2)
+	calls := gateway.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 2)
 	}
 
-	if gateway.calls[0].threadID != "" {
-		t.Fatalf("first thread id = %q, want empty", gateway.calls[0].threadID)
+	if calls[0].threadID != "" {
+		t.Fatalf("first thread id = %q, want empty", calls[0].threadID)
 	}
 
-	if gateway.calls[1].threadID != "thread-1" {
-		t.Fatalf("second thread id = %q, want %q", gateway.calls[1].threadID, "thread-1")
+	if calls[1].threadID != "thread-1" {
+		t.Fatalf("second thread id = %q, want %q", calls[1].threadID, "thread-1")
 	}
 
 	binding, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05")
@@ -101,12 +103,12 @@ func TestMessageServiceHandleMessageDailyReusesSameDayBinding(t *testing.T) {
 		t.Fatalf("CodexThreadID = %q, want %q", binding.CodexThreadID, "thread-1")
 	}
 
-	if gateway.calls[0].input.Prompt != "hello there" {
-		t.Fatalf("first prompt = %q, want %q", gateway.calls[0].input.Prompt, "hello there")
+	if calls[0].input.Prompt != "hello there" {
+		t.Fatalf("first prompt = %q, want %q", calls[0].input.Prompt, "hello there")
 	}
 
-	if len(gateway.calls[0].input.ImagePaths) != 0 {
-		t.Fatalf("first image path count = %d, want %d", len(gateway.calls[0].input.ImagePaths), 0)
+	if len(calls[0].input.ImagePaths) != 0 {
+		t.Fatalf("first image path count = %d, want %d", len(calls[0].input.ImagePaths), 0)
 	}
 }
 
@@ -120,14 +122,14 @@ func TestMessageServiceHandleMessageDailyRollsOverOnNextDay(t *testing.T) {
 			{ThreadID: "thread-2", ResponseText: "Tomorrow"},
 		},
 	}
-	service := newDailyMessageService(t, store, gateway, &stubExecutionGuard{})
+	service := newDailyMessageService(t, store, gateway, nil)
 
 	_, err := service.HandleMessage(context.Background(), app.MessageRequest{
 		MessageID:  "message-1",
 		Content:    "today",
 		Mentioned:  true,
 		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("HandleMessage() first error = %v", err)
 	}
@@ -137,21 +139,22 @@ func TestMessageServiceHandleMessageDailyRollsOverOnNextDay(t *testing.T) {
 		Content:    "tomorrow",
 		Mentioned:  true,
 		ReceivedAt: time.Date(2026, time.April, 5, 15, 1, 0, 0, time.UTC),
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("HandleMessage() second error = %v", err)
 	}
 
-	if len(gateway.calls) != 2 {
-		t.Fatalf("RunTurn() call count = %d, want %d", len(gateway.calls), 2)
+	calls := gateway.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 2)
 	}
 
-	if gateway.calls[0].threadID != "" {
-		t.Fatalf("first thread id = %q, want empty", gateway.calls[0].threadID)
+	if calls[0].threadID != "" {
+		t.Fatalf("first thread id = %q, want empty", calls[0].threadID)
 	}
 
-	if gateway.calls[1].threadID != "" {
-		t.Fatalf("second thread id = %q, want empty", gateway.calls[1].threadID)
+	if calls[1].threadID != "" {
+		t.Fatalf("second thread id = %q, want empty", calls[1].threadID)
 	}
 
 	if _, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05"); err != nil || !ok {
@@ -172,32 +175,6 @@ func TestMessageServiceHandleMessageDailyRollsOverOnNextDay(t *testing.T) {
 	}
 }
 
-func TestMessageServiceHandleMessageReturnsBusyResponse(t *testing.T) {
-	t.Parallel()
-
-	service := newDailyMessageService(t, &memoryThreadStore{}, &fakeCodexGateway{}, &stubExecutionGuard{
-		err: app.ErrExecutionInProgress,
-	})
-
-	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
-		MessageID:  "message-1",
-		Content:    "hello",
-		Mentioned:  true,
-		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
-	})
-	if err != nil {
-		t.Fatalf("HandleMessage() error = %v", err)
-	}
-
-	if response.Text != "A response is already running for this conversation. Please retry in a moment." {
-		t.Fatalf("busy response text = %q", response.Text)
-	}
-
-	if response.ReplyToID != "message-1" {
-		t.Fatalf("ReplyToID = %q, want %q", response.ReplyToID, "message-1")
-	}
-}
-
 func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 	t.Parallel()
 
@@ -206,9 +183,9 @@ func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 		Policy: stubThreadPolicy{
 			err: app.ErrNoActiveTask,
 		},
-		Store:   &memoryThreadStore{},
-		Gateway: &fakeCodexGateway{},
-		Guard:   &stubExecutionGuard{},
+		Store:       &memoryThreadStore{},
+		Gateway:     &fakeCodexGateway{},
+		Coordinator: thread.NewQueueCoordinator(),
 	})
 	if err != nil {
 		t.Fatalf("NewMessageService() error = %v", err)
@@ -218,7 +195,7 @@ func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 		MessageID: "message-1",
 		Content:   "do the work",
 		Mentioned: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("HandleMessage() error = %v", err)
 	}
@@ -254,7 +231,7 @@ func TestMessageServiceHandleMessageTaskReusesTaskBindingAcrossDays(t *testing.T
 			{ThreadID: "thread-task-1", ResponseText: "Second response"},
 		},
 	}
-	service := newTaskMessageService(t, store, gateway, &stubExecutionGuard{})
+	service := newTaskMessageService(t, store, gateway, nil)
 
 	for _, request := range []app.MessageRequest{
 		{
@@ -272,21 +249,22 @@ func TestMessageServiceHandleMessageTaskReusesTaskBindingAcrossDays(t *testing.T
 			ReceivedAt: time.Date(2026, time.April, 7, 0, 0, 0, 0, time.UTC),
 		},
 	} {
-		if _, err := service.HandleMessage(context.Background(), request); err != nil {
+		if _, err := service.HandleMessage(context.Background(), request, nil); err != nil {
 			t.Fatalf("HandleMessage(%s) error = %v", request.MessageID, err)
 		}
 	}
 
-	if len(gateway.calls) != 2 {
-		t.Fatalf("RunTurn() call count = %d, want %d", len(gateway.calls), 2)
+	calls := gateway.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 2)
 	}
 
-	if gateway.calls[0].threadID != "" {
-		t.Fatalf("first thread id = %q, want empty", gateway.calls[0].threadID)
+	if calls[0].threadID != "" {
+		t.Fatalf("first thread id = %q, want empty", calls[0].threadID)
 	}
 
-	if gateway.calls[1].threadID != "thread-task-1" {
-		t.Fatalf("second thread id = %q, want %q", gateway.calls[1].threadID, "thread-task-1")
+	if calls[1].threadID != "thread-task-1" {
+		t.Fatalf("second thread id = %q, want %q", calls[1].threadID, "thread-task-1")
 	}
 
 	binding, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1")
@@ -336,7 +314,7 @@ func TestMessageServiceHandleMessageTaskSwitchesThreadsByActiveTask(t *testing.T
 			{ThreadID: "thread-task-2", ResponseText: "Docs response"},
 		},
 	}
-	service := newTaskMessageService(t, store, gateway, &stubExecutionGuard{})
+	service := newTaskMessageService(t, store, gateway, nil)
 
 	if _, err := service.HandleMessage(context.Background(), app.MessageRequest{
 		UserID:     "user-1",
@@ -344,7 +322,7 @@ func TestMessageServiceHandleMessageTaskSwitchesThreadsByActiveTask(t *testing.T
 		Content:    "release task",
 		Mentioned:  true,
 		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("HandleMessage() first error = %v", err)
 	}
 
@@ -361,16 +339,17 @@ func TestMessageServiceHandleMessageTaskSwitchesThreadsByActiveTask(t *testing.T
 		Content:    "docs task",
 		Mentioned:  true,
 		ReceivedAt: time.Date(2026, time.April, 8, 0, 0, 0, 0, time.UTC),
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("HandleMessage() second error = %v", err)
 	}
 
-	if len(gateway.calls) != 2 {
-		t.Fatalf("RunTurn() call count = %d, want %d", len(gateway.calls), 2)
+	calls := gateway.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 2)
 	}
 
-	if gateway.calls[1].threadID != "" {
-		t.Fatalf("second thread id = %q, want empty", gateway.calls[1].threadID)
+	if calls[1].threadID != "" {
+		t.Fatalf("second thread id = %q, want empty", calls[1].threadID)
 	}
 
 	for _, key := range []string{"user-1:task-1", "user-1:task-2"} {
@@ -388,7 +367,7 @@ func TestMessageServiceHandleMessageForwardsImagePathsToGateway(t *testing.T) {
 			{ThreadID: "thread-1", ResponseText: "Image response"},
 		},
 	}
-	service := newDailyMessageService(t, &memoryThreadStore{}, gateway, &stubExecutionGuard{})
+	service := newDailyMessageService(t, &memoryThreadStore{}, gateway, nil)
 
 	_, err := service.HandleMessage(context.Background(), app.MessageRequest{
 		MessageID:  "message-1",
@@ -396,21 +375,253 @@ func TestMessageServiceHandleMessageForwardsImagePathsToGateway(t *testing.T) {
 		ImagePaths: []string{"/tmp/one.png", "/tmp/two.png"},
 		Mentioned:  true,
 		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("HandleMessage() error = %v", err)
 	}
 
-	if len(gateway.calls) != 1 {
-		t.Fatalf("RunTurn() call count = %d, want %d", len(gateway.calls), 1)
+	calls := gateway.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 1)
 	}
 
-	if gateway.calls[0].input.Prompt != "describe this screenshot" {
-		t.Fatalf("prompt = %q, want %q", gateway.calls[0].input.Prompt, "describe this screenshot")
+	if calls[0].input.Prompt != "describe this screenshot" {
+		t.Fatalf("prompt = %q, want %q", calls[0].input.Prompt, "describe this screenshot")
 	}
 
-	if got := gateway.calls[0].input.ImagePaths; len(got) != 2 || got[0] != "/tmp/one.png" || got[1] != "/tmp/two.png" {
+	if got := calls[0].input.ImagePaths; len(got) != 2 || got[0] != "/tmp/one.png" || got[1] != "/tmp/two.png" {
 		t.Fatalf("image paths = %v, want [/tmp/one.png /tmp/two.png]", got)
+	}
+}
+
+func TestMessageServiceHandleMessageQueuesBusyTurnAndDeliversDeferredReply(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{}
+	gateway := newBlockingCodexGateway(
+		app.RunTurnResult{ThreadID: "thread-1", ResponseText: "First response"},
+		app.RunTurnResult{ThreadID: "thread-1", ResponseText: "Second response"},
+	)
+	service := newDailyMessageService(t, store, gateway, thread.NewQueueCoordinator())
+
+	firstDone := make(chan app.MessageResponse, 1)
+	firstErr := make(chan error, 1)
+	go func() {
+		response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+			MessageID:  "message-1",
+			Content:    "start long turn",
+			Mentioned:  true,
+			ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		}, nil)
+		firstDone <- response
+		firstErr <- err
+	}()
+
+	waitForSignal(t, gateway.started, "first codex turn start")
+
+	delivered := make(chan app.MessageResponse, 1)
+	secondResponse, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		MessageID:  "message-2",
+		Content:    "follow up later",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 1, 0, 0, time.UTC),
+	}, app.DeferredReplySinkFunc(func(ctx context.Context, response app.MessageResponse) error {
+		delivered <- response
+		return nil
+	}))
+	if err != nil {
+		t.Fatalf("HandleMessage() second error = %v", err)
+	}
+
+	if secondResponse.Text != "A response is already running for this conversation. Your message has been queued at position 1." {
+		t.Fatalf("queued response text = %q", secondResponse.Text)
+	}
+
+	if secondResponse.ReplyToID != "message-2" {
+		t.Fatalf("queued ReplyToID = %q, want %q", secondResponse.ReplyToID, "message-2")
+	}
+
+	close(gateway.release)
+
+	select {
+	case err := <-firstErr:
+		if err != nil {
+			t.Fatalf("first HandleMessage() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first response")
+	}
+
+	select {
+	case response := <-firstDone:
+		if response.Text != "First response" {
+			t.Fatalf("first response text = %q, want %q", response.Text, "First response")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first response payload")
+	}
+
+	select {
+	case response := <-delivered:
+		if response.Text != "Second response" {
+			t.Fatalf("deferred response text = %q, want %q", response.Text, "Second response")
+		}
+		if response.ReplyToID != "message-2" {
+			t.Fatalf("deferred ReplyToID = %q, want %q", response.ReplyToID, "message-2")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for deferred response")
+	}
+
+	calls := gateway.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 2)
+	}
+
+	if calls[1].threadID != "thread-1" {
+		t.Fatalf("queued thread id = %q, want %q", calls[1].threadID, "thread-1")
+	}
+}
+
+func TestMessageServiceHandleMessageReturnsQueueFullResponse(t *testing.T) {
+	t.Parallel()
+
+	service := newDailyMessageService(t, &memoryThreadStore{}, &fakeCodexGateway{}, &stubQueueCoordinator{
+		err: app.ErrExecutionQueueFull,
+	})
+
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		MessageID:  "message-6",
+		Content:    "hello",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	if response.Text != "This conversation already has five queued messages. Please retry in a moment." {
+		t.Fatalf("queue-full response text = %q", response.Text)
+	}
+
+	if response.ReplyToID != "message-6" {
+		t.Fatalf("ReplyToID = %q, want %q", response.ReplyToID, "message-6")
+	}
+}
+
+func TestMessageServiceHandleMessageFreezesTaskContextForQueuedWork(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+			"user-1:task-2": {
+				TaskID:        "task-2",
+				DiscordUserID: "user-1",
+				TaskName:      "Docs update",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 1, 0, 0, 0, time.UTC),
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+	}
+	gateway := newBlockingCodexGateway(
+		app.RunTurnResult{ThreadID: "thread-task-1", ResponseText: "First response"},
+		app.RunTurnResult{ThreadID: "thread-task-1", ResponseText: "Queued response"},
+	)
+	service := newTaskMessageService(t, store, gateway, thread.NewQueueCoordinator())
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := service.HandleMessage(context.Background(), app.MessageRequest{
+			UserID:     "user-1",
+			MessageID:  "message-1",
+			Content:    "start release",
+			Mentioned:  true,
+			ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		}, nil)
+		firstDone <- err
+	}()
+
+	waitForSignal(t, gateway.started, "first task turn start")
+
+	delivered := make(chan app.MessageResponse, 1)
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-2",
+		Content:    "continue release",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 1, 0, 0, time.UTC),
+	}, app.DeferredReplySinkFunc(func(ctx context.Context, response app.MessageResponse) error {
+		delivered <- response
+		return nil
+	}))
+	if err != nil {
+		t.Fatalf("HandleMessage() queued error = %v", err)
+	}
+
+	if response.ReplyToID != "message-2" {
+		t.Fatalf("queued ReplyToID = %q, want %q", response.ReplyToID, "message-2")
+	}
+
+	if err := store.SetActiveTask(context.Background(), app.ActiveTask{
+		DiscordUserID: "user-1",
+		TaskID:        "task-2",
+	}); err != nil {
+		t.Fatalf("SetActiveTask() error = %v", err)
+	}
+
+	close(gateway.release)
+
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatalf("first HandleMessage() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first task turn")
+	}
+
+	select {
+	case deliveredResponse := <-delivered:
+		if deliveredResponse.Text != "Queued response" {
+			t.Fatalf("queued response text = %q, want %q", deliveredResponse.Text, "Queued response")
+		}
+		if deliveredResponse.ReplyToID != "message-2" {
+			t.Fatalf("queued response ReplyToID = %q, want %q", deliveredResponse.ReplyToID, "message-2")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for queued task response")
+	}
+
+	calls := gateway.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 2)
+	}
+
+	if calls[1].threadID != "thread-task-1" {
+		t.Fatalf("queued task thread id = %q, want %q", calls[1].threadID, "thread-task-1")
+	}
+
+	if _, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1"); err != nil || !ok {
+		t.Fatalf("GetThreadBinding(task-1) = ok:%v err:%v, want ok:true err:nil", ok, err)
+	}
+
+	if _, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-2"); err != nil {
+		t.Fatalf("GetThreadBinding(task-2) error = %v", err)
+	} else if ok {
+		t.Fatal("GetThreadBinding(task-2) ok = true, want false")
 	}
 }
 
@@ -418,7 +629,7 @@ func newDailyMessageService(
 	t *testing.T,
 	store app.ThreadStore,
 	gateway app.CodexGateway,
-	guard app.ExecutionGuard,
+	coordinator app.QueueCoordinator,
 ) *app.DefaultMessageService {
 	t.Helper()
 
@@ -432,12 +643,16 @@ func newDailyMessageService(
 		t.Fatalf("thread.NewPolicy() error = %v", err)
 	}
 
+	if coordinator == nil {
+		coordinator = thread.NewQueueCoordinator()
+	}
+
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
-		Mode:    config.ModeDaily,
-		Policy:  policy,
-		Store:   store,
-		Gateway: gateway,
-		Guard:   guard,
+		Mode:        config.ModeDaily,
+		Policy:      policy,
+		Store:       store,
+		Gateway:     gateway,
+		Coordinator: coordinator,
 	})
 	if err != nil {
 		t.Fatalf("NewMessageService() error = %v", err)
@@ -450,7 +665,7 @@ func newTaskMessageService(
 	t *testing.T,
 	store app.ThreadStore,
 	gateway app.CodexGateway,
-	guard app.ExecutionGuard,
+	coordinator app.QueueCoordinator,
 ) *app.DefaultMessageService {
 	t.Helper()
 
@@ -464,18 +679,32 @@ func newTaskMessageService(
 		t.Fatalf("thread.NewPolicy() error = %v", err)
 	}
 
+	if coordinator == nil {
+		coordinator = thread.NewQueueCoordinator()
+	}
+
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
-		Mode:    config.ModeTask,
-		Policy:  policy,
-		Store:   store,
-		Gateway: gateway,
-		Guard:   guard,
+		Mode:        config.ModeTask,
+		Policy:      policy,
+		Store:       store,
+		Gateway:     gateway,
+		Coordinator: coordinator,
 	})
 	if err != nil {
 		t.Fatalf("NewMessageService() error = %v", err)
 	}
 
 	return service
+}
+
+func waitForSignal(t *testing.T, ch <-chan struct{}, name string) {
+	t.Helper()
+
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for %s", name)
+	}
 }
 
 type stubThreadPolicy struct {
@@ -487,19 +716,29 @@ func (s stubThreadPolicy) ResolveMessageKey(context.Context, app.MessageRequest)
 	return s.key, s.err
 }
 
-type stubExecutionGuard struct {
-	err error
+type stubQueueCoordinator struct {
+	admission app.QueueAdmission
+	err       error
 }
 
-func (g *stubExecutionGuard) Acquire(string) (app.ReleaseFunc, error) {
-	if g.err != nil {
-		return nil, g.err
+func (c *stubQueueCoordinator) Admit(string, func()) (app.QueueAdmission, error) {
+	if c.err != nil {
+		return app.QueueAdmission{}, c.err
 	}
 
-	return func() {}, nil
+	if c.admission == (app.QueueAdmission{}) {
+		return app.QueueAdmission{ExecuteNow: true}, nil
+	}
+
+	return c.admission, nil
+}
+
+func (c *stubQueueCoordinator) Complete(string) (func(), bool) {
+	return nil, false
 }
 
 type fakeCodexGateway struct {
+	mu      sync.Mutex
 	calls   []runTurnCall
 	results []app.RunTurnResult
 	err     error
@@ -511,6 +750,9 @@ type runTurnCall struct {
 }
 
 func (g *fakeCodexGateway) RunTurn(_ context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
 	g.calls = append(g.calls, runTurnCall{
 		threadID: threadID,
 		input: app.CodexTurnInput{
@@ -532,13 +774,85 @@ func (g *fakeCodexGateway) RunTurn(_ context.Context, threadID string, input app
 	return result, nil
 }
 
+func (g *fakeCodexGateway) Calls() []runTurnCall {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	calls := make([]runTurnCall, len(g.calls))
+	copy(calls, g.calls)
+	return calls
+}
+
+type blockingCodexGateway struct {
+	mu        sync.Mutex
+	calls     []runTurnCall
+	results   []app.RunTurnResult
+	err       error
+	started   chan struct{}
+	release   chan struct{}
+	startOnce sync.Once
+}
+
+func newBlockingCodexGateway(results ...app.RunTurnResult) *blockingCodexGateway {
+	return &blockingCodexGateway{
+		results: append([]app.RunTurnResult(nil), results...),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (g *blockingCodexGateway) RunTurn(_ context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
+	g.mu.Lock()
+	g.calls = append(g.calls, runTurnCall{
+		threadID: threadID,
+		input: app.CodexTurnInput{
+			Prompt:     input.Prompt,
+			ImagePaths: append([]string(nil), input.ImagePaths...),
+		},
+	})
+
+	var result app.RunTurnResult
+	if len(g.results) > 0 {
+		result = g.results[0]
+		g.results = g.results[1:]
+	}
+	err := g.err
+	release := g.release
+	g.mu.Unlock()
+
+	g.startOnce.Do(func() {
+		close(g.started)
+	})
+
+	<-release
+
+	if err != nil {
+		return app.RunTurnResult{}, err
+	}
+
+	return result, nil
+}
+
+func (g *blockingCodexGateway) Calls() []runTurnCall {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	calls := make([]runTurnCall, len(g.calls))
+	copy(calls, g.calls)
+	return calls
+}
+
 type memoryThreadStore struct {
+	mu          sync.Mutex
 	bindings    map[string]app.ThreadBinding
 	tasks       map[string]app.Task
 	activeTasks map[string]app.ActiveTask
 }
 
 func (s *memoryThreadStore) GetThreadBinding(_ context.Context, mode string, logicalThreadKey string) (app.ThreadBinding, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.bindings == nil {
 		return app.ThreadBinding{}, false, nil
 	}
@@ -548,6 +862,9 @@ func (s *memoryThreadStore) GetThreadBinding(_ context.Context, mode string, log
 }
 
 func (s *memoryThreadStore) UpsertThreadBinding(_ context.Context, binding app.ThreadBinding) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.bindings == nil {
 		s.bindings = make(map[string]app.ThreadBinding)
 	}
@@ -557,6 +874,9 @@ func (s *memoryThreadStore) UpsertThreadBinding(_ context.Context, binding app.T
 }
 
 func (s *memoryThreadStore) CreateTask(_ context.Context, task app.Task) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.tasks == nil {
 		s.tasks = make(map[string]app.Task)
 	}
@@ -575,6 +895,9 @@ func (s *memoryThreadStore) CreateTask(_ context.Context, task app.Task) error {
 }
 
 func (s *memoryThreadStore) GetTask(_ context.Context, userID string, taskID string) (app.Task, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.tasks == nil {
 		return app.Task{}, false, nil
 	}
@@ -584,6 +907,9 @@ func (s *memoryThreadStore) GetTask(_ context.Context, userID string, taskID str
 }
 
 func (s *memoryThreadStore) ListOpenTasks(_ context.Context, userID string) ([]app.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.tasks == nil {
 		return nil, nil
 	}
@@ -606,6 +932,9 @@ func (s *memoryThreadStore) ListOpenTasks(_ context.Context, userID string) ([]a
 }
 
 func (s *memoryThreadStore) SetActiveTask(_ context.Context, activeTask app.ActiveTask) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.activeTasks == nil {
 		s.activeTasks = make(map[string]app.ActiveTask)
 	}
@@ -615,6 +944,9 @@ func (s *memoryThreadStore) SetActiveTask(_ context.Context, activeTask app.Acti
 }
 
 func (s *memoryThreadStore) GetActiveTask(_ context.Context, userID string) (app.ActiveTask, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.activeTasks == nil {
 		return app.ActiveTask{}, false, nil
 	}
@@ -624,6 +956,9 @@ func (s *memoryThreadStore) GetActiveTask(_ context.Context, userID string) (app
 }
 
 func (s *memoryThreadStore) ClearActiveTask(_ context.Context, userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.activeTasks != nil {
 		delete(s.activeTasks, userID)
 	}
@@ -631,6 +966,9 @@ func (s *memoryThreadStore) ClearActiveTask(_ context.Context, userID string) er
 }
 
 func (s *memoryThreadStore) CloseTask(_ context.Context, userID string, taskID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.tasks == nil {
 		return sql.ErrNoRows
 	}
