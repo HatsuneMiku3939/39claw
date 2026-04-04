@@ -16,6 +16,7 @@ The project direction is intentionally small and opinionated:
 
 - [Core Beliefs](./core-beliefs.md) - explains the project principles behind the design
 - [Architecture Overview](./architecture-overview.md) - provides a short onboarding-oriented map of the system shape
+- [Implementation Spec](./implementation-spec.md) - fixes the concrete v1 implementation defaults that sit between the architecture and product specs
 - [Thread Modes](./thread-modes.md) - explains the mode model, behavior, and tradeoffs
 - [State and Storage](./state-and-storage.md) - explains persistence requirements and storage boundaries
 
