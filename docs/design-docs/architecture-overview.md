@@ -128,3 +128,6 @@ internal/observe
 
 The repository currently contains a minimal executable entrypoint at `cmd/39bot/main.go`.
 This file is only a bootstrap placeholder and does not yet implement Discord runtime wiring or Codex integration.
+
+The repository also includes an initial `internal/codex` package that experiments with direct Codex CLI integration in Go.
+Its current scope is intentionally narrow and focused on thread start or resume behavior, streamed event handling, and local image input support.
