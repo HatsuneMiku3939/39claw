@@ -17,6 +17,17 @@ Examples:
 - `go run ./cmd/codexplay --stream --image ./ui.png "Describe this screenshot"`
 - `go run ./cmd/codexplay --resume <thread-id> --stream "Continue the task"`
 
+## Documentation Layers
+
+- `docs/index.md`
+  - entry point for the repository documentation set
+- `docs/product-specs`
+  - product-facing user journeys and behavior expectations
+- `docs/design-docs`
+  - architecture and internal design direction
+- `docs/references`
+  - external reference material
+
 ## Development Checks
 
 Run local checks with the provided Make targets:

@@ -43,6 +43,7 @@ When code changes affect architecture, runtime flow, thread behavior, persistenc
 
 - update `ARCHITECTURE.md`
 - update the relevant files under `docs/design-docs`
+- update the relevant files under `docs/product-specs` when user-facing behavior or workflow expectations change
 - update this file if contributor guidance changes
 
 Document roles should remain clear:
@@ -65,6 +66,11 @@ The repository includes a `Makefile` for common development checks.
   - The root architecture reference for the project
   - Defines system role, component boundaries, thread modes, persistence direction, and intended v1 scope
 
+### Documentation index
+
+- `docs/index.md`
+  - Entry point for the repository documentation set
+
 ### Design notes
 
 - `docs/design-docs/index.md`
@@ -77,6 +83,17 @@ The repository includes a `Makefile` for common development checks.
   - `daily` and `task` mode definitions, expected behavior, and tradeoffs
 - `docs/design-docs/state-and-storage.md`
   - Local persistence requirements and state model
+
+### Product specs
+
+- `docs/product-specs/index.md`
+  - Entry point for product-facing behavior and workflow expectations
+- `docs/product-specs/daily-mode-user-flow.md`
+  - Defines the intended user flow and expectations for `daily` mode
+- `docs/product-specs/task-mode-user-flow.md`
+  - Defines the intended user flow and expectations for `task` mode
+- `docs/product-specs/discord-command-behavior.md`
+  - Defines the intended Discord interaction rules and command UX expectations
 
 ### External references
 
