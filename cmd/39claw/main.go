@@ -14,9 +14,19 @@ import (
 	"github.com/HatsuneMiku3939/39claw/internal/observe"
 	runtimediscord "github.com/HatsuneMiku3939/39claw/internal/runtime/discord"
 	sqlitestore "github.com/HatsuneMiku3939/39claw/internal/store/sqlite"
+	"github.com/HatsuneMiku3939/39claw/internal/thread"
 )
 
 const exitCodeFailure = 1
+
+type discordRuntime interface {
+	Start(ctx context.Context) error
+	Close() error
+}
+
+var newDiscordRuntime = func(deps runtimediscord.Dependencies) (discordRuntime, error) {
+	return runtimediscord.NewRuntime(deps)
+}
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -69,18 +79,47 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		},
 	})
 
-	shell, err := runtimediscord.NewShell(runtimediscord.Dependencies{
-		Config:  cfg,
-		Logger:  logger,
+	policy, err := thread.NewPolicy(cfg.Mode, cfg.Timezone, store)
+	if err != nil {
+		return fmt.Errorf("build thread policy: %w", err)
+	}
+
+	messageService, err := app.NewMessageService(app.MessageServiceDependencies{
+		Mode:    cfg.Mode,
+		Policy:  policy,
 		Store:   store,
 		Gateway: gateway,
+		Guard:   thread.NewGuard(),
+	})
+	if err != nil {
+		return fmt.Errorf("build message service: %w", err)
+	}
+
+	taskService, err := app.NewTaskCommandService(app.TaskCommandServiceDependencies{
+		Store: store,
+	})
+	if err != nil {
+		return fmt.Errorf("build task service: %w", err)
+	}
+
+	runtime, err := newDiscordRuntime(runtimediscord.Dependencies{
+		Config:      cfg,
+		Logger:      logger,
+		Message:     messageService,
+		TaskCommand: taskService,
 	})
 	if err != nil {
 		return fmt.Errorf("build discord runtime: %w", err)
 	}
 
-	if err := shell.Run(ctx); err != nil {
-		return fmt.Errorf("run discord runtime: %w", err)
+	if err := runtime.Start(ctx); err != nil {
+		return fmt.Errorf("start discord runtime: %w", err)
+	}
+
+	<-ctx.Done()
+
+	if err := runtime.Close(); err != nil && !errors.Is(err, context.Canceled) {
+		return fmt.Errorf("close discord runtime: %w", err)
 	}
 
 	return nil

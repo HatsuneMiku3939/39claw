@@ -16,11 +16,16 @@ The repository now includes a real startup spine for `cmd/39claw`:
 - application-layer contracts in `internal/app`
 - thread-policy and execution-guard seams in `internal/thread`
 - a higher-level Codex gateway in `internal/codex`
-- a minimal Discord runtime shell in `internal/runtime/discord`
+- a real Discord runtime adapter in `internal/runtime/discord`
 
-The Discord runtime is still intentionally thin in this stage.
-It proves wiring, dependency boundaries, and graceful shutdown, but it does not yet implement the full Discord adapter.
-The application layer now covers both the `daily` routing flow and the `task` workflow.
+The runtime now handles:
+
+- mention-only normal conversation
+- `/help`
+- `/task current`, `/task list`, `/task new <name>`, `/task switch <id>`, and `/task close <id>`
+- same-channel reply targeting for normal conversation
+- ephemeral task-control responses
+- Discord-safe response chunking with fenced-code preservation
 
 The current test-backed behavior includes:
 
@@ -57,6 +62,30 @@ For the intended system shape, thread model, and user-facing behavior, start wit
 
 For manual integration checks, use `cmd/codexplay` to exercise the adapter against the real `codex` CLI.
 For the main bot bootstrap, configure the required environment variables from `docs/design-docs/implementation-spec.md` before running `go run ./cmd/39claw`.
+
+For faster slash-command iteration in a disposable Discord server, set the optional `CLAW_DISCORD_GUILD_ID` environment variable.
+When it is set, 39claw overwrites commands in that guild on startup.
+When it is omitted, commands are registered globally.
+
+A minimal smoke-test launch looks like this:
+
+    CLAW_MODE=task \
+    CLAW_TIMEZONE=Asia/Tokyo \
+    CLAW_DISCORD_TOKEN=... \
+    CLAW_DISCORD_GUILD_ID=... \
+    CLAW_CODEX_WORKDIR=/absolute/path/to/repo \
+    CLAW_SQLITE_PATH=/tmp/39claw-dev.sqlite \
+    CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex \
+    go run ./cmd/39claw
+
+Smoke-test checklist:
+
+- mention the bot in `daily` mode and confirm the reply targets the original message
+- send unrelated chatter without a mention and confirm the bot stays silent
+- run `/help` and confirm it matches the configured mode
+- run `/task current` in `daily` mode and confirm the bot returns a clear not-available response
+- run `/task new <name>` in `task` mode and confirm the success response is ephemeral
+- send a long response through Codex and confirm the runtime splits it into Discord-safe chunks
 
 Contributors can also run the standard local checks with the provided Make targets:
 

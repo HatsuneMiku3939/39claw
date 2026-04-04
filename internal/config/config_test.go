@@ -20,6 +20,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_MODE":             "task",
 				"CLAW_TIMEZONE":         "Asia/Tokyo",
 				"CLAW_DISCORD_TOKEN":    "discord-token",
+				"CLAW_DISCORD_GUILD_ID": "guild-1",
 				"CLAW_CODEX_WORKDIR":    "/workspace/project",
 				"CLAW_SQLITE_PATH":      "/tmp/39claw.db",
 				"CLAW_CODEX_EXECUTABLE": "/usr/local/bin/codex",
@@ -31,6 +32,7 @@ func TestLoadFromLookup(t *testing.T) {
 				Mode:            ModeTask,
 				TimezoneName:    "Asia/Tokyo",
 				DiscordToken:    "discord-token",
+				DiscordGuildID:  "guild-1",
 				CodexWorkdir:    "/workspace/project",
 				SQLitePath:      "/tmp/39claw.db",
 				CodexExecutable: "/usr/local/bin/codex",
@@ -132,6 +134,10 @@ func TestLoadFromLookup(t *testing.T) {
 
 			if got.DiscordToken != tt.want.DiscordToken {
 				t.Fatalf("DiscordToken = %q, want %q", got.DiscordToken, tt.want.DiscordToken)
+			}
+
+			if got.DiscordGuildID != tt.want.DiscordGuildID {
+				t.Fatalf("DiscordGuildID = %q, want %q", got.DiscordGuildID, tt.want.DiscordGuildID)
 			}
 
 			if got.CodexWorkdir != tt.want.CodexWorkdir {

@@ -61,7 +61,7 @@ Expected user perception:
 
 Expected flow:
 
-1. The user uses `/task new <name>`, `/task switch <id>`, or `/task`-related controls to establish the desired task context.
+1. The user uses `/task new <name>`, `/task switch <id>`, or `/task current` plus other `/task ...` controls to establish the desired task context.
 2. 39claw records that task as the active context for the user within the current bot instance.
 3. The next normal message routes to the thread associated with that task.
 4. If the task has no bound thread yet, 39claw creates one.
@@ -101,7 +101,7 @@ Expected user perception:
 
 For `task` mode to feel usable, v1 should support at least:
 
-- `/task`
+- `/task current`
   - show the current task name and ID
 - `/task list`
   - show task names and IDs
@@ -132,7 +132,7 @@ The active task should remain active until the user explicitly closes it or swit
 ### Task identity clarity
 
 If task names, IDs, or labels are exposed, the product should make it obvious which task is currently active.
-That is especially important for `/task`, `/task list`, and `/task switch <id>`.
+That is especially important for `/task current`, `/task list`, and `/task switch <id>`.
 
 ### Task scope
 

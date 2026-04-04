@@ -11,18 +11,22 @@ After this plan, `39claw` should expose the implemented application behavior thr
 ## Progress
 
 - [x] (2026-04-04 15:27Z) Defined the Discord runtime plan and its acceptance targets.
-- [ ] Confirm that the repository provides the capabilities listed in `Starting State`.
-- [ ] Add the real Discord session runtime using a thin adapter.
-- [ ] Add mention filtering for normal-message handling.
-- [ ] Add `/help` and `/task ...` slash-command registration and routing.
-- [ ] Add reply targeting for normal messages and ephemeral responses for task-control commands.
-- [ ] Add Discord-safe response chunking that preserves fenced code blocks when practical.
-- [ ] Add runtime-level tests and a short manual smoke-test checklist.
+- [x] (2026-04-05 02:12Z) Confirmed the repository provides the capabilities listed in `Starting State` by running `make test` and `make lint`.
+- [x] (2026-04-05 03:42Z) Added the real Discord session runtime using a thin adapter and replaced the fake runtime shell in `cmd/39claw`.
+- [x] (2026-04-05 03:42Z) Added mention filtering for normal-message handling and same-channel reply targeting.
+- [x] (2026-04-05 03:42Z) Added `/help` and `/task ...` slash-command registration and routing, using `/task current` for the current-task action.
+- [x] (2026-04-05 03:42Z) Added ephemeral task-command responses and Discord-safe response chunking that preserves fenced code blocks when practical.
+- [x] (2026-04-05 03:42Z) Added runtime-level tests and a README smoke-test checklist.
+- [ ] Run the manual smoke test against a disposable Discord server and record the result here.
 
 ## Surprises & Discoveries
 
 - Observation: Discord-specific behavior should stay in a thin adapter because the core design explicitly keeps application logic independent from the Discord SDK.
   Evidence: `ARCHITECTURE.md`
+- Observation: Discord slash commands are easier to keep explicit and stable when the “show current task” action is exposed as `/task current` alongside the other task subcommands.
+  Evidence: `internal/runtime/discord/commands.go`
+- Observation: Guild-scoped command overwrites are worth keeping as an optional configuration path because they make smoke-test retries immediate while preserving global registration as the default.
+  Evidence: `internal/config/config.go`, `README.md`
 
 ## Decision Log
 
@@ -34,9 +38,19 @@ After this plan, `39claw` should expose the implemented application behavior thr
   Rationale: Discord message-length limits are transport concerns, not core orchestration concerns.
   Date/Author: 2026-04-04 / Codex
 
+- Decision: Expose the current-task action as `/task current`.
+  Rationale: Discord slash-command structure is cleaner and more predictable when all task actions share the same explicit subcommand model.
+  Date/Author: 2026-04-05 / Codex
+
+- Decision: Add optional `CLAW_DISCORD_GUILD_ID` support for guild-scoped command registration during smoke tests.
+  Rationale: Global command propagation is slower, while guild-scoped overwrites are immediate and safe to repeat.
+  Date/Author: 2026-04-05 / Codex
+
 ## Outcomes & Retrospective
 
 The outcome of this plan should be a bot that is observable from Discord, not just from unit tests. Success means the end-user workflow now matches the product docs closely enough for a real smoke test.
+
+The runtime implementation is now in place and covered by focused tests. `cmd/39claw` boots a real Discord adapter, message mentions route through the app layer, slash commands are registered and presented correctly, task-control responses are ephemeral, and long output is chunked for Discord readability. The remaining gap is only the final real-server smoke test, which still requires disposable Discord credentials.
 
 ## Context and Orientation
 
@@ -79,7 +93,7 @@ Create the real runtime under `internal/runtime/discord`. Add a small `Runtime` 
 
 Implement mention filtering for message-create events. The mapper should produce `internal/app.MessageRequest` values only for qualifying mention-triggered messages. Unsupported chatter should be ignored without noise.
 
-Implement slash-command registration and routing for `/help` and `/task`. Map the command payloads into calls to the application services. When the configured mode is `daily`, `/task ...` should return a clear not-available response. When the configured mode is `task`, `/help` should describe the task workflow and task command success responses should be ephemeral.
+Implement slash-command registration and routing for `/help` and `/task`. Map the command payloads into calls to the application services. In the implemented runtime, the task command family is exposed as `/task current`, `/task list`, `/task new`, `/task switch`, and `/task close` so the slash-command UI stays explicit and stable. When the configured mode is `daily`, `/task ...` should return a clear not-available response. When the configured mode is `task`, `/help` should describe the task workflow and task command success responses should be ephemeral.
 
 Implement the presenter in files such as `presenter.go` and `chunker.go`. Normal conversation responses should reply to the triggering message in the same channel. Command responses should use interaction responses and set ephemeral flags where appropriate. Long content should be chunked under Discord limits while trying to preserve code fences and a readable message sequence.
 
@@ -110,6 +124,7 @@ Run all commands from `/home/filepang/playground/39claw`.
     CLAW_MODE=daily \
     CLAW_TIMEZONE=Asia/Tokyo \
     CLAW_DISCORD_TOKEN=... \
+    CLAW_DISCORD_GUILD_ID=... \
     CLAW_CODEX_WORKDIR=/absolute/path/to/repo \
     CLAW_SQLITE_PATH=/tmp/39claw-dev.sqlite \
     CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex \
@@ -127,7 +142,7 @@ This plan is complete when:
 - unsupported non-mention chatter is ignored
 - normal conversation replies in the same channel and targets the triggering message as the reply root
 - `/help` responds with commands appropriate to the configured mode
-- `/task ...` is available in `task` mode and clearly not available in `daily` mode
+- `/task current`, `/task list`, `/task new`, `/task switch`, and `/task close` are available in `task` mode and clearly not available in `daily` mode
 - task-control command responses are ephemeral by default
 - long replies are chunked into Discord-safe messages while preserving code fences when practical
 - `make test` passes
@@ -149,8 +164,18 @@ Useful smoke-test checklist:
     mention bot in daily mode -> receives same-channel reply
     send unrelated chatter without mention -> bot stays silent
     run /help in daily mode -> no task workflow advertised
-    run /task list in daily mode -> clear not-available message
+    run /task current in daily mode -> clear not-available message
     switch to task mode and run /task new demo -> ephemeral success response
+
+Proof artifact recorded during implementation:
+
+    go test ./internal/runtime/discord -v
+    --- PASS: TestRuntimeStartRegistersCommands
+    --- PASS: TestRuntimeMentionHandlingRepliesToTriggerMessage
+    --- PASS: TestRuntimeTaskCommandInDailyModeIsEphemeral
+    --- PASS: TestRuntimeTaskCommandRoutesTaskModeSubcommands
+    --- PASS: TestPresentInteractionChunksLongResponses
+    --- PASS: TestChunkTextPreservesCodeFences
 
 ## Interfaces and Dependencies
 
@@ -172,3 +197,4 @@ Keep `discordgo` imports inside `internal/runtime/discord` and `cmd/39claw` only
 
 Revision Note: 2026-04-04 / Codex - Created this smaller child ExecPlan during the split of the original all-in-one runtime plan.
 Revision Note: 2026-04-04 / Codex - Removed the parent-plan dependency and added explicit starting-state and recovery guidance so the document can stand alone.
+Revision Note: 2026-04-05 / Codex - Recorded the implemented runtime progress, the `/task current` command-shape decision, and the optional guild-scoped command-registration path for faster smoke tests.
