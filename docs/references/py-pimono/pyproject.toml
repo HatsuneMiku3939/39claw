@@ -1,0 +1,70 @@
+[build-system]
+requires = ["flit_core >=3.11,<5"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "py-pimono"
+dynamic = ["version"]
+description = "A local coding agent inspired by pi-mono, implemented in Python."
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["agent", "cli", "coding", "llm", "codex"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development",
+]
+
+dependencies = [
+    "dependency-injector>=4.41.0",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "textual>=8.0.1",
+    "typing-extensions>=4.15.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/solvit-team/py-pimono"
+Repository = "https://github.com/solvit-team/py-pimono"
+Issues = "https://github.com/solvit-team/py-pimono/issues"
+
+[project.optional-dependencies]
+rich = [
+    "rich>=13.9.4",
+]
+textual = [
+    "textual>=1.0.0",
+]
+discord = [
+    "discord.py>=2.4.0",
+]
+ui = [
+    "rich>=13.9.4",
+    "textual>=1.0.0",
+]
+
+[project.scripts]
+pyai = "pypimono.cli:main"
+py = "pypimono.cli:main"
+
+[tool.flit.module]
+name = "pypimono"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.2",
+    "ty>=0.0.18",
+    "rich>=13.9.4",
+    "textual>=8.0.1",
+    "discord.py>=2.4.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
