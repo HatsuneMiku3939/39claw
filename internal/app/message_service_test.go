@@ -2,6 +2,8 @@ package app_test
 
 import (
 	"context"
+	"database/sql"
+	"sort"
 	"testing"
 	"time"
 
@@ -218,6 +220,158 @@ func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 	}
 }
 
+func TestMessageServiceHandleMessageTaskReusesTaskBindingAcrossDays(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+	}
+	gateway := &fakeCodexGateway{
+		results: []app.RunTurnResult{
+			{ThreadID: "thread-task-1", ResponseText: "First response"},
+			{ThreadID: "thread-task-1", ResponseText: "Second response"},
+		},
+	}
+	service := newTaskMessageService(t, store, gateway, &stubExecutionGuard{})
+
+	for _, request := range []app.MessageRequest{
+		{
+			UserID:     "user-1",
+			MessageID:  "message-1",
+			Content:    "start release",
+			Mentioned:  true,
+			ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			UserID:     "user-1",
+			MessageID:  "message-2",
+			Content:    "continue release",
+			Mentioned:  true,
+			ReceivedAt: time.Date(2026, time.April, 7, 0, 0, 0, 0, time.UTC),
+		},
+	} {
+		if _, err := service.HandleMessage(context.Background(), request); err != nil {
+			t.Fatalf("HandleMessage(%s) error = %v", request.MessageID, err)
+		}
+	}
+
+	if len(gateway.calls) != 2 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(gateway.calls), 2)
+	}
+
+	if gateway.calls[0].threadID != "" {
+		t.Fatalf("first thread id = %q, want empty", gateway.calls[0].threadID)
+	}
+
+	if gateway.calls[1].threadID != "thread-task-1" {
+		t.Fatalf("second thread id = %q, want %q", gateway.calls[1].threadID, "thread-task-1")
+	}
+
+	binding, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1")
+	if err != nil {
+		t.Fatalf("GetThreadBinding() error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("GetThreadBinding() ok = false, want true")
+	}
+
+	if binding.TaskID != "task-1" {
+		t.Fatalf("TaskID = %q, want %q", binding.TaskID, "task-1")
+	}
+}
+
+func TestMessageServiceHandleMessageTaskSwitchesThreadsByActiveTask(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+			"user-1:task-2": {
+				TaskID:        "task-2",
+				DiscordUserID: "user-1",
+				TaskName:      "Docs update",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 1, 0, 0, 0, time.UTC),
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+	}
+	gateway := &fakeCodexGateway{
+		results: []app.RunTurnResult{
+			{ThreadID: "thread-task-1", ResponseText: "Release response"},
+			{ThreadID: "thread-task-2", ResponseText: "Docs response"},
+		},
+	}
+	service := newTaskMessageService(t, store, gateway, &stubExecutionGuard{})
+
+	if _, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-1",
+		Content:    "release task",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("HandleMessage() first error = %v", err)
+	}
+
+	if err := store.SetActiveTask(context.Background(), app.ActiveTask{
+		DiscordUserID: "user-1",
+		TaskID:        "task-2",
+	}); err != nil {
+		t.Fatalf("SetActiveTask() error = %v", err)
+	}
+
+	if _, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-2",
+		Content:    "docs task",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 8, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("HandleMessage() second error = %v", err)
+	}
+
+	if len(gateway.calls) != 2 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(gateway.calls), 2)
+	}
+
+	if gateway.calls[1].threadID != "" {
+		t.Fatalf("second thread id = %q, want empty", gateway.calls[1].threadID)
+	}
+
+	for _, key := range []string{"user-1:task-1", "user-1:task-2"} {
+		if _, ok, err := store.GetThreadBinding(context.Background(), "task", key); err != nil || !ok {
+			t.Fatalf("GetThreadBinding(%s) = ok:%v err:%v, want ok:true err:nil", key, ok, err)
+		}
+	}
+}
+
 func newDailyMessageService(
 	t *testing.T,
 	store app.ThreadStore,
@@ -238,6 +392,38 @@ func newDailyMessageService(
 
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
 		Mode:    config.ModeDaily,
+		Policy:  policy,
+		Store:   store,
+		Gateway: gateway,
+		Guard:   guard,
+	})
+	if err != nil {
+		t.Fatalf("NewMessageService() error = %v", err)
+	}
+
+	return service
+}
+
+func newTaskMessageService(
+	t *testing.T,
+	store app.ThreadStore,
+	gateway app.CodexGateway,
+	guard app.ExecutionGuard,
+) *app.DefaultMessageService {
+	t.Helper()
+
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("time.LoadLocation() error = %v", err)
+	}
+
+	policy, err := thread.NewPolicy(config.ModeTask, tokyo, store)
+	if err != nil {
+		t.Fatalf("thread.NewPolicy() error = %v", err)
+	}
+
+	service, err := app.NewMessageService(app.MessageServiceDependencies{
+		Mode:    config.ModeTask,
 		Policy:  policy,
 		Store:   store,
 		Gateway: gateway,
@@ -302,7 +488,9 @@ func (g *fakeCodexGateway) RunTurn(_ context.Context, threadID string, prompt st
 }
 
 type memoryThreadStore struct {
-	bindings map[string]app.ThreadBinding
+	bindings    map[string]app.ThreadBinding
+	tasks       map[string]app.Task
+	activeTasks map[string]app.ActiveTask
 }
 
 func (s *memoryThreadStore) GetThreadBinding(_ context.Context, mode string, logicalThreadKey string) (app.ThreadBinding, bool, error) {
@@ -323,30 +511,101 @@ func (s *memoryThreadStore) UpsertThreadBinding(_ context.Context, binding app.T
 	return nil
 }
 
-func (s *memoryThreadStore) CreateTask(context.Context, app.Task) error {
+func (s *memoryThreadStore) CreateTask(_ context.Context, task app.Task) error {
+	if s.tasks == nil {
+		s.tasks = make(map[string]app.Task)
+	}
+
+	if task.Status == "" {
+		task.Status = app.TaskStatusOpen
+	}
+
+	if task.CreatedAt.IsZero() {
+		task.CreatedAt = time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC)
+	}
+
+	task.UpdatedAt = task.CreatedAt
+	s.tasks[task.DiscordUserID+":"+task.TaskID] = task
 	return nil
 }
 
-func (s *memoryThreadStore) GetTask(context.Context, string, string) (app.Task, bool, error) {
-	return app.Task{}, false, nil
+func (s *memoryThreadStore) GetTask(_ context.Context, userID string, taskID string) (app.Task, bool, error) {
+	if s.tasks == nil {
+		return app.Task{}, false, nil
+	}
+
+	task, ok := s.tasks[userID+":"+taskID]
+	return task, ok, nil
 }
 
-func (s *memoryThreadStore) ListOpenTasks(context.Context, string) ([]app.Task, error) {
-	return nil, nil
+func (s *memoryThreadStore) ListOpenTasks(_ context.Context, userID string) ([]app.Task, error) {
+	if s.tasks == nil {
+		return nil, nil
+	}
+
+	tasks := make([]app.Task, 0)
+	for _, task := range s.tasks {
+		if task.DiscordUserID == userID && task.Status == app.TaskStatusOpen {
+			tasks = append(tasks, task)
+		}
+	}
+
+	sort.Slice(tasks, func(i, j int) bool {
+		if tasks[i].CreatedAt.Equal(tasks[j].CreatedAt) {
+			return tasks[i].TaskID < tasks[j].TaskID
+		}
+		return tasks[i].CreatedAt.Before(tasks[j].CreatedAt)
+	})
+
+	return tasks, nil
 }
 
-func (s *memoryThreadStore) SetActiveTask(context.Context, app.ActiveTask) error {
+func (s *memoryThreadStore) SetActiveTask(_ context.Context, activeTask app.ActiveTask) error {
+	if s.activeTasks == nil {
+		s.activeTasks = make(map[string]app.ActiveTask)
+	}
+
+	s.activeTasks[activeTask.DiscordUserID] = activeTask
 	return nil
 }
 
-func (s *memoryThreadStore) GetActiveTask(context.Context, string) (app.ActiveTask, bool, error) {
-	return app.ActiveTask{}, false, nil
+func (s *memoryThreadStore) GetActiveTask(_ context.Context, userID string) (app.ActiveTask, bool, error) {
+	if s.activeTasks == nil {
+		return app.ActiveTask{}, false, nil
+	}
+
+	activeTask, ok := s.activeTasks[userID]
+	return activeTask, ok, nil
 }
 
-func (s *memoryThreadStore) ClearActiveTask(context.Context, string) error {
+func (s *memoryThreadStore) ClearActiveTask(_ context.Context, userID string) error {
+	if s.activeTasks != nil {
+		delete(s.activeTasks, userID)
+	}
 	return nil
 }
 
-func (s *memoryThreadStore) CloseTask(context.Context, string, string) error {
+func (s *memoryThreadStore) CloseTask(_ context.Context, userID string, taskID string) error {
+	if s.tasks == nil {
+		return sql.ErrNoRows
+	}
+
+	key := userID + ":" + taskID
+	task, ok := s.tasks[key]
+	if !ok {
+		return sql.ErrNoRows
+	}
+
+	closedAt := time.Date(2026, time.April, 5, 12, 0, 0, 0, time.UTC)
+	task.Status = app.TaskStatusClosed
+	task.ClosedAt = &closedAt
+	s.tasks[key] = task
+
+	if s.activeTasks != nil {
+		if activeTask, ok := s.activeTasks[userID]; ok && activeTask.TaskID == taskID {
+			delete(s.activeTasks, userID)
+		}
+	}
+
 	return nil
 }

@@ -11,17 +11,23 @@ After this plan, `task` mode should support explicit, durable work streams. A us
 ## Progress
 
 - [x] (2026-04-04 15:27Z) Defined the `task` mode plan and its acceptance targets.
-- [ ] Confirm that the repository provides the capabilities listed in `Starting State`.
-- [ ] Implement persistent task records and active-task state in SQLite.
-- [ ] Implement `/task`, `/task list`, `/task new <name>`, `/task switch <id>`, and `/task close <id>` in the app layer.
-- [ ] Implement missing-active-task guidance for normal mentions in `task` mode.
-- [ ] Ensure task-based logical thread keys are stable across days and process restart.
-- [ ] Add tests for task lifecycle transitions, user-scoped active task behavior, and missing-context guidance.
+- [x] (2026-04-04 17:12Z) Confirmed the required starting state with `make test` and `make lint`.
+- [x] (2026-04-04 17:12Z) Verified SQLite already provided persistent task records and active-task state, then extended tests to prove reopen and close behavior.
+- [x] (2026-04-04 17:12Z) Implemented `TaskCommandService` for `/task`, `/task list`, `/task new <name>`, `/task switch <id>`, and `/task close <id>` in the app layer.
+- [x] (2026-04-04 17:12Z) Kept missing-active-task guidance on the normal mention path and ensured task-mode bindings persist the active `task_id`.
+- [x] (2026-04-04 17:12Z) Added task-mode routing tests that prove logical keys stay stable across days and task switches.
+- [x] (2026-04-04 17:12Z) Added task lifecycle, active-task, reopen, and guidance coverage, then reran `make test` and `make lint`.
 
 ## Surprises & Discoveries
 
 - Observation: `task` mode shares the same Codex gateway and thread-binding machinery as `daily` mode, but it introduces extra user-scoped state that must remain correct under closure and switching.
   Evidence: `docs/design-docs/implementation-spec.md`
+
+- Observation: Most of the required SQLite behavior already existed before this plan started, so the main missing slice was application orchestration plus stronger proof around restart and inactive-close cases.
+  Evidence: `internal/store/sqlite/store.go`, `internal/store/sqlite/store_test.go`
+
+- Observation: The normal-message service needed one extra task-mode read after logical-key resolution so persisted task bindings also record `task_id` rather than only the derived `logical_thread_key`.
+  Evidence: `internal/app/message_service_impl.go`
 
 ## Decision Log
 
@@ -33,9 +39,17 @@ After this plan, `task` mode should support explicit, durable work streams. A us
   Rationale: The implementation spec fixes ULID as the v1 identifier format and it keeps task IDs sortable and copyable.
   Date/Author: 2026-04-04 / Codex
 
+- Decision: Make the app-layer task command responses ephemeral by default.
+  Rationale: The implementation spec fixes task-control command responses as ephemeral, and returning that hint from the service keeps the runtime thin later.
+  Date/Author: 2026-04-04 / Codex
+
+- Decision: Keep user-facing task command failures inside `MessageResponse` for expected cases such as missing IDs, unknown tasks, and closed tasks.
+  Rationale: These cases are product-level workflow guidance, not infrastructure failures, so the app layer should return actionable command text instead of surfacing internal errors.
+  Date/Author: 2026-04-04 / Codex
+
 ## Outcomes & Retrospective
 
-The outcome of this plan should be a repository that can support durable work context intentionally instead of guessing. Success means the user can see and control which work stream the bot is continuing.
+This plan now lands the durable `task` workflow in the application and persistence layers. The repository can create, inspect, list, switch, and close user-scoped tasks; task-mode normal mentions refuse to route without an active task; and task thread bindings stay stable across day boundaries and process restart. The remaining Discord slash-command wiring still belongs to the next runtime plan, but that runtime work can now call into finished app-layer services instead of inventing task behavior itself.
 
 ## Context and Orientation
 
@@ -74,15 +88,7 @@ This document is self-contained. The facts you need are repeated here:
 
 ## Plan of Work
 
-Extend `internal/store/sqlite/store.go` with the concrete task operations required here. Add methods for creating a task, listing open tasks for a user, reading the current active task, setting the active task, and closing a task. Closing a task should mark its status as `closed`, set `closed_at`, and remove the `active_tasks` mapping if that task was active.
-
-Implement `TaskCommandService` in `internal/app/task_service.go`. The service should provide separate methods for showing the current task, listing open tasks, creating a task, switching tasks, and closing a task. The response text should clearly describe what changed and what the active task is now when relevant.
-
-Update the normal-message service so that in `task` mode it checks for an active task before routing to Codex. When no active task exists, it must return actionable guidance that points the user toward `/task new <name>`, `/task list`, or `/task switch <id>`. It must not create tasks implicitly and must not route the message anyway.
-
-Reuse the same thread-binding table for task threads. The binding should include the logical key built from user ID and task ID. Add tests that show the same task routes to the same Codex thread across multiple days because task mode is not date-bound.
-
-If you discover that the current normal-message service is too narrow to support both `daily` and `task` behavior cleanly, refactor it here as part of the plan. Do not create a separate parallel orchestration path just for tasks.
+Use the existing SQLite task and active-task operations in `internal/store/sqlite/store.go` as the persistence base for this plan, then strengthen their proof with reopen and inactive-close tests. Implement the missing app-layer orchestration in `internal/app/task_service.go` so task commands can return normalized `MessageResponse` values without Discord SDK types. Update `internal/app/message_service_impl.go` so `task` mode still shares the same orchestration path as `daily`, while also persisting the active `task_id` onto thread bindings. Add message-service and store tests that prove the same task keeps its Codex thread across multiple days, that task switches create distinct logical bindings, and that close behavior preserves or clears the active mapping correctly.
 
 ## Concrete Steps
 
@@ -93,20 +99,42 @@ Run all commands from `/home/filepang/playground/39claw`.
     make test
     make lint
 
-2. Implement task storage operations and command orchestration.
+    Observed result:
+
+        all Go tests passed
+        lint passed with 0 issues
+
+2. Implement task storage proof and command orchestration in:
+
+    - `internal/app/task_service.go`
+    - `internal/app/message_service_impl.go`
+    - `internal/app/task_service_test.go`
+    - `internal/app/message_service_test.go`
+    - `internal/store/sqlite/store_test.go`
+    - `README.md`
 
 3. Run focused tests while iterating.
 
-    go test ./internal/app ./internal/store/sqlite -run 'TestTask|TestActiveTask|TestCloseTask|TestMissingActiveTask'
+    go test ./internal/app ./internal/store/sqlite -run 'Test(TaskCommandService|MessageServiceHandleMessageTask|StoreTask|StoreCloseTask)'
+
+    Observed result:
+
+        ok   github.com/HatsuneMiku3939/39claw/internal/app
+        ok   github.com/HatsuneMiku3939/39claw/internal/store/sqlite
 
 4. Run the full repository checks after the plan lands.
 
     make test
     make lint
 
+    Observed result:
+
+        all Go tests passed
+        lint passed with 0 issues
+
 5. Record a short proof artifact for the next contributor:
 
-    go test ./internal/app ./internal/store/sqlite -run 'TestTask|TestActiveTask|TestCloseTask|TestMissingActiveTask' -v
+    go test ./internal/app ./internal/store/sqlite -run 'Test(TaskCommandService|MessageServiceHandleMessageTask|StoreTask|StoreCloseTask)' -v
 
 ## Validation and Acceptance
 
@@ -143,9 +171,16 @@ Keep this user-flow reminder visible:
     next normal mention -> routes to release task thread
     /task close <id> -> task closed, active mapping cleared if applicable
 
+Key proof points captured during implementation:
+
+    task command responses are normalized in the app layer and marked ephemeral
+    task bindings persist both logical_thread_key and task_id
+    the same task binding survives later-day messages and SQLite reopen
+    closing a non-active task does not clear a different active task
+
 ## Interfaces and Dependencies
 
-This plan should rely on store methods shaped like these examples:
+This plan now relies on store and service methods shaped like these repository interfaces:
 
     type Task struct {
         TaskID        string
@@ -158,14 +193,17 @@ This plan should rely on store methods shaped like these examples:
     }
 
     type ThreadStore interface {
-        CreateTask(ctx context.Context, params CreateTaskParams) (Task, error)
+        CreateTask(ctx context.Context, task Task) error
+        GetTask(ctx context.Context, discordUserID string, taskID string) (Task, bool, error)
         ListOpenTasks(ctx context.Context, userID string) ([]Task, error)
-        GetActiveTask(ctx context.Context, userID string) (Task, bool, error)
-        SetActiveTask(ctx context.Context, userID string, taskID string) error
-        CloseTask(ctx context.Context, userID string, taskID string, closedAt time.Time) error
+        SetActiveTask(ctx context.Context, activeTask ActiveTask) error
+        GetActiveTask(ctx context.Context, userID string) (ActiveTask, bool, error)
+        ClearActiveTask(ctx context.Context, userID string) error
+        CloseTask(ctx context.Context, userID string, taskID string) error
     }
 
 Any later Discord runtime work should call into this service rather than rebuilding task logic itself.
 
 Revision Note: 2026-04-04 / Codex - Created this smaller child ExecPlan during the split of the original all-in-one runtime plan.
 Revision Note: 2026-04-04 / Codex - Removed the parent-plan dependency and added explicit starting-state and recovery guidance so the document can stand alone.
+Revision Note: 2026-04-04 / Codex - Updated progress, decisions, proof commands, and outcomes after completing the task-mode workflow implementation and validation.

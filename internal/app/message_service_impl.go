@@ -111,6 +111,22 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 		}
 	}
 
+	if s.mode == config.ModeTask {
+		activeTask, activeTaskOK, err := s.store.GetActiveTask(ctx, request.UserID)
+		if err != nil {
+			return MessageResponse{}, fmt.Errorf("load active task for binding: %w", err)
+		}
+
+		if !activeTaskOK {
+			return MessageResponse{
+				Text:      noActiveTaskMessage,
+				ReplyToID: request.MessageID,
+			}, nil
+		}
+
+		binding.TaskID = activeTask.TaskID
+	}
+
 	result, err := s.gateway.RunTurn(ctx, threadID, strings.TrimSpace(request.Content))
 	if err != nil {
 		return MessageResponse{}, fmt.Errorf("run codex turn: %w", err)

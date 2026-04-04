@@ -20,12 +20,19 @@ The repository now includes a real startup spine for `cmd/39claw`:
 
 The Discord runtime is still intentionally thin in this stage.
 It proves wiring, dependency boundaries, and graceful shutdown, but it does not yet implement the full Discord adapter.
-The core `daily` message-routing path now exists in the application layer with tests for:
+The application layer now covers both the `daily` routing flow and the `task` workflow.
+
+The current test-backed behavior includes:
 
 - mention-only handling versus ignored chatter
 - same-day thread reuse
 - next-day rollover
+- task command orchestration for showing, listing, creating, switching, and closing tasks
+- durable active-task state and open-task records in SQLite
+- task-mode guidance when a normal mention arrives without an active task
+- task thread reuse across days and task switches
 - SQLite-backed thread-binding persistence across reopen
+- SQLite-backed task and active-task persistence across reopen
 - busy-thread rejection
 
 The current direction is documented in the root architecture and product documents rather than in the executable surface alone.
