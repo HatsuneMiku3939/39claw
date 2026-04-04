@@ -7,6 +7,16 @@
 The repository currently includes a minimal bootstrap executable at `cmd/39bot/main.go`.
 It prints a dummy `hello world` message and exists only to validate the initial Go module, test, and lint workflow.
 
+The repository also includes an experimental Go Codex adapter under `internal/codex`.
+It currently supports starting or resuming threads, collecting completed turns, streaming JSONL events, and sending local image inputs to the Codex CLI.
+
+For manual integration checks, use `cmd/codexplay` to exercise the adapter against the real `codex` CLI.
+Examples:
+
+- `go run ./cmd/codexplay --prompt "Summarize this repository"`
+- `go run ./cmd/codexplay --stream --image ./ui.png "Describe this screenshot"`
+- `go run ./cmd/codexplay --resume <thread-id> --stream "Continue the task"`
+
 ## Development Checks
 
 Run local checks with the provided Make targets:

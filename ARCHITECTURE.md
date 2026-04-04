@@ -290,6 +290,7 @@ The exact package structure may evolve, but the intended shape is:
 
 ```text
 cmd/39bot
+cmd/codexplay
 internal/app
 internal/runtime/discord
 internal/thread
@@ -303,6 +304,8 @@ Suggested responsibilities:
 
 - `cmd/39bot`
   - application entrypoint
+- `cmd/codexplay`
+  - experimental CLI for manually exercising the Codex integration layer
 - `internal/app`
   - top-level use cases and orchestration
 - `internal/runtime/discord`
