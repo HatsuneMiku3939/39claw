@@ -2,6 +2,9 @@
 
 This directory captures the current concept-level design of 39bot.
 
+These documents are companions to the root `ARCHITECTURE.md`, not replacements for it.
+Use `ARCHITECTURE.md` as the authoritative architecture reference and use the files in this directory as focused supporting notes.
+
 The project direction is intentionally small and opinionated:
 
 - 39bot is a Codex-native Discord bot.
@@ -11,10 +14,10 @@ The project direction is intentionally small and opinionated:
 
 ## Documents
 
-- [Core Beliefs](./core-beliefs.md)
-- [Architecture Overview](./architecture-overview.md)
-- [Thread Modes](./thread-modes.md)
-- [State and Storage](./state-and-storage.md)
+- [Core Beliefs](./core-beliefs.md) - explains the project principles behind the design
+- [Architecture Overview](./architecture-overview.md) - provides a short onboarding-oriented map of the system shape
+- [Thread Modes](./thread-modes.md) - explains the mode model, behavior, and tradeoffs
+- [State and Storage](./state-and-storage.md) - explains persistence requirements and storage boundaries
 
 ## Current v1 Direction
 
@@ -28,4 +31,4 @@ The project direction is intentionally small and opinionated:
 
 ## Notes
 
-These documents describe the current design direction, not a final implementation contract.
+These documents describe the current design direction and should stay aligned with `ARCHITECTURE.md`.

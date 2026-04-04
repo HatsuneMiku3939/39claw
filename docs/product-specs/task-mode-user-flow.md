@@ -11,6 +11,7 @@ The goal of `task` mode is to support durable, explicit work streams that can co
 ## Product Goal
 
 A user should be able to attach conversation continuity to an explicit task identity and switch work contexts intentionally rather than implicitly.
+At a product level, this mode should feel like driving real repository work through Discord rather than using a general chat thread.
 
 ## User Promise
 

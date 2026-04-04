@@ -78,7 +78,7 @@ The repository includes a `Makefile` for common development checks.
 - `docs/design-docs/core-beliefs.md`
   - Project principles and architectural beliefs
 - `docs/design-docs/architecture-overview.md`
-  - High-level component model and request flow
+  - Short onboarding summary of the system shape and request flow
 - `docs/design-docs/thread-modes.md`
   - `daily` and `task` mode definitions, expected behavior, and tradeoffs
 - `docs/design-docs/state-and-storage.md`
@@ -110,6 +110,7 @@ The repository includes a `Makefile` for common development checks.
 
 `AGENTS.md` is intentionally short.
 For thread modes, package boundaries, persistence direction, v1 scope, and non-goals, refer to `ARCHITECTURE.md`.
+Use `docs/design-docs/architecture-overview.md` when a quick orientation is enough, but use `ARCHITECTURE.md` for implementation decisions.
 
 ## Maintenance Rule
 

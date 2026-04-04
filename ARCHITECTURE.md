@@ -5,6 +5,16 @@ It should be treated as the implementation guide for future development.
 
 If code and this document diverge, either the code should be corrected or this document should be updated deliberately.
 
+## How to Use This Document
+
+`ARCHITECTURE.md` is the authoritative architecture document for this repository.
+It defines the intended system role, core boundaries, thread-mode model, persistence direction, and v1 scope.
+
+If another design note summarizes the architecture differently, this document takes precedence.
+
+The companion document at `docs/design-docs/architecture-overview.md` is intentionally shorter.
+It exists as an onboarding-oriented map for quickly understanding the system shape before reading this reference in full.
+
 ## 1. Project Identity
 
 - Project: `39bot`
@@ -27,6 +37,29 @@ Instead:
 - 39bot owns local persistence for Codex thread bindings
 
 The application should stay intentionally thin.
+
+### 2.1 Codex Working Model
+
+39bot adopts Codex's repository-scoped operating model and exposes it through Discord.
+
+Codex works against a specific working directory, typically a Git repository, where it can:
+
+- read files
+- edit files
+- execute shell commands
+- follow repository-level instructions
+
+39bot does not redefine that model locally.
+Instead, it routes Discord interactions into Codex threads that operate against the repository configured for the current bot instance.
+
+The distinction between `daily` mode and `task` mode is therefore not a different execution engine.
+It is a difference in the role of the repository that Codex is operating against.
+
+- In `task` mode, the repository is an execution-oriented work repository where Codex can help perform operational tasks such as code changes, pull request handling, and release workflows.
+- In `daily` mode, the repository is a knowledge-oriented repository that primarily contains instructions and documentation, allowing Codex to answer questions by following local guidance and searching the knowledge base.
+
+Both modes share the same Codex-native foundation.
+They differ in repository purpose, continuity policy, and resulting user experience.
 
 ## 3. Design Principles
 
@@ -162,6 +195,7 @@ Responsibilities:
 Purpose:
 
 - support lightweight daily continuity without explicit task management
+- support knowledge-oriented conversation against a repository that primarily contains instructions and documentation
 
 Logical key concept:
 
@@ -175,6 +209,7 @@ Behavior:
 - if a thread exists for that key, resume it
 - otherwise create a new Codex thread
 - when the date changes, the logical bucket changes automatically
+- Codex answers by following repository guidance and consulting the documentation in that repository
 
 Properties:
 
@@ -192,6 +227,7 @@ Tradeoffs:
 Purpose:
 
 - support longer-running work streams with explicit task identity
+- support execution-oriented repository work through Discord
 
 Logical key concept:
 
@@ -204,6 +240,7 @@ Behavior:
 - normal messages require an active task context
 - messages route to the thread bound to the active task
 - changing the active task changes the target thread
+- each task maps to a distinct Codex conversation thread, so switching tasks also switches execution context
 
 Minimum v1 UX requirements:
 
@@ -216,6 +253,7 @@ Properties:
 
 - better for project-oriented or issue-oriented work
 - keeps context stable across days
+- makes parallel long-running work practical without mixing task context
 
 Tradeoffs:
 

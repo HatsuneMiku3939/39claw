@@ -106,7 +106,15 @@ Costs:
 
 ## Why Both Modes Exist
 
-The modes support different user experiences:
+Both modes are built on the same Codex operating model.
+Codex works against a repository-scoped working directory and follows the instructions defined there.
+
+The difference is the role of the repository:
+
+- `daily` uses a knowledge-oriented repository that primarily contains instructions and documentation
+- `task` uses an execution-oriented repository where Codex can help perform real operational work
+
+As a result, the modes support different user experiences:
 
 - `daily` is conversation-oriented
 - `task` is work-oriented
