@@ -7,7 +7,7 @@ help: Makefile
 ## test: Run unittest
 .PHONY: test
 test:
-	@go test -v $(TESTARGS) ./...
+	@go test $(TESTARGS) ./...
 
 ## lint: Run lint
 .PHONY: lint
