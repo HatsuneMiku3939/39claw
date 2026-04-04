@@ -234,3 +234,4 @@ At the end of this plan, the repository should contain interfaces shaped like th
 
 Revision Note: 2026-04-04 / Codex - Created this smaller child ExecPlan during the split of the original all-in-one runtime plan.
 Revision Note: 2026-04-04 / Codex - Removed the master-plan dependency and expanded this document with explicit starting-state and recovery guidance so it can stand alone.
+Revision Note: 2026-04-05 / Codex - Moved this fully completed ExecPlan from `active/` to `completed/` during ExecPlan index cleanup.

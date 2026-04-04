@@ -25,10 +25,12 @@ Plans in this directory should be written and maintained in line with `.agents/P
 
 These plans are intended to be executed in numeric order. Each plan is self-contained, but later plans name the repository state they expect to find and explain how to recover if that state is missing.
 
-- [Build the foundation, contracts, and bootstrap path](./active/01-foundation-and-contracts.md)
-- [Implement `daily` mode routing and persistence](./active/02-daily-mode-routing.md)
+- [Implement capped per-thread message queueing for busy Codex turns](./active/05-queued-message-handling.md)
+- [Implement Discord image attachment intake for Codex turns](./active/06-discord-image-input.md)
 
 ## Recently Completed Plans
 
+- [Build the foundation, contracts, and bootstrap path](./completed/01-foundation-and-contracts.md)
+- [Implement `daily` mode routing and persistence](./completed/02-daily-mode-routing.md)
 - [Implement `task` mode task workflow and command orchestration](./completed/03-task-mode-workflow.md)
 - [Implement the Discord runtime, commands, and response presentation](./completed/04-discord-runtime-and-presentation.md)
