@@ -112,6 +112,10 @@ The repository includes a `Makefile` for common development checks.
 For thread modes, package boundaries, persistence direction, v1 scope, and non-goals, refer to `ARCHITECTURE.md`.
 Use `docs/design-docs/architecture-overview.md` when a quick orientation is enough, but use `ARCHITECTURE.md` for implementation decisions.
 
+## ExecPlans
+
+When writing complex features or significant refactors, use an ExecPlan (as described in .agents/PLANS.md) from design to implementation.
+
 ## Maintenance Rule
 
 If a future contributor needs to violate this guide to move the project forward, they should update the relevant architecture documents in the same change so the repository remains self-consistent.
