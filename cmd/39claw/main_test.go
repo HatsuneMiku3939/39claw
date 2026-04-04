@@ -5,10 +5,20 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	runtimediscord "github.com/HatsuneMiku3939/39claw/internal/runtime/discord"
 )
 
 func TestRun(t *testing.T) {
 	t.Parallel()
+
+	originalNewDiscordRuntime := newDiscordRuntime
+	newDiscordRuntime = func(deps runtimediscord.Dependencies) (discordRuntime, error) {
+		return &stubDiscordRuntime{}, nil
+	}
+	t.Cleanup(func() {
+		newDiscordRuntime = originalNewDiscordRuntime
+	})
 
 	tests := []struct {
 		name    string
@@ -81,4 +91,15 @@ func TestRun(t *testing.T) {
 			}
 		})
 	}
+}
+
+type stubDiscordRuntime struct{}
+
+func (r *stubDiscordRuntime) Start(ctx context.Context) error {
+	<-ctx.Done()
+	return nil
+}
+
+func (r *stubDiscordRuntime) Close() error {
+	return nil
 }

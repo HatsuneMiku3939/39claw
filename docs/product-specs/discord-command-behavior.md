@@ -109,7 +109,7 @@ This means:
 
 The `/task ...` command family should support user-facing actions for:
 
-- `/task`
+- `/task current`
   - show the current task name and ID
 - `/task list`
   - show task names and IDs
@@ -215,6 +215,7 @@ Possible mechanisms include:
 `/help` does not need deep mode-specific customization in v1.
 It should still reflect the commands that are actually available in the current bot instance.
 `daily` mode bot instances should avoid advertising unsupported `/task ...` workflow.
+In the Discord slash-command UI, the “show current task” action is exposed as `/task current` so it can live alongside the other explicit task subcommands.
 
 ## Non-Goals
 

@@ -59,7 +59,7 @@ The following internal contracts should be treated as stable v1 design targets e
   - creates the first remote thread implicitly when the first turn runs without a saved thread ID
   - returns a normalized final response plus the thread ID that should be persisted
 - `TaskCommandService`
-  - implements `/task`, `/task list`, `/task new <name>`, `/task switch <id>`, and `/task close <id>`
+  - implements `/task current`, `/task list`, `/task new <name>`, `/task switch <id>`, and `/task close <id>`
 
 The application layer should depend on these responsibilities rather than on Discord SDK details or raw SQL.
 
@@ -123,6 +123,7 @@ The expected variables are:
 - `CLAW_MODE`
 - `CLAW_TIMEZONE`
 - `CLAW_DISCORD_TOKEN`
+- `CLAW_DISCORD_GUILD_ID`
 - `CLAW_CODEX_WORKDIR`
 - `CLAW_SQLITE_PATH`
 - `CLAW_CODEX_EXECUTABLE`
@@ -131,10 +132,11 @@ The expected variables are:
 - `CLAW_LOG_LEVEL`
 
 `CLAW_MODE`, `CLAW_TIMEZONE`, `CLAW_DISCORD_TOKEN`, `CLAW_CODEX_WORKDIR`, `CLAW_SQLITE_PATH`, and `CLAW_CODEX_EXECUTABLE` are required.
-`CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, and `CLAW_LOG_LEVEL` are optional.
+`CLAW_DISCORD_GUILD_ID`, `CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, and `CLAW_LOG_LEVEL` are optional.
 `CLAW_MODE` accepts `daily` or `task`.
 `CLAW_TIMEZONE` must be set explicitly for each deployment.
 `CLAW_LOG_LEVEL` defaults to `info` when omitted.
+When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guild for faster development feedback.
 
 ## Validation Targets
 
@@ -142,6 +144,7 @@ The initial implementation should demonstrate the following observable behavior:
 
 - In `daily` mode, the first qualifying mention creates a thread binding, a second same-day mention reuses it, and the first mention on the next local date creates a new binding.
 - In `task` mode, a normal mention without an active task returns guidance instead of routing to Codex.
+- `/task current` shows the active task for the requesting user.
 - `/task new <name>` creates a task and sets it active for the requesting user.
 - `/task switch <id>` changes the routing target for subsequent normal messages.
 - `/task close <id>` closes the task and clears active state when the closed task was active.

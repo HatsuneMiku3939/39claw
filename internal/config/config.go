@@ -13,7 +13,7 @@ const (
 	ModeDaily Mode = "daily"
 	ModeTask  Mode = "task"
 
-	optionalEnvironmentVariableCount = 3
+	optionalEnvironmentVariableCount = 4
 )
 
 type Config struct {
@@ -21,6 +21,7 @@ type Config struct {
 	Timezone        *time.Location
 	TimezoneName    string
 	DiscordToken    string
+	DiscordGuildID  string
 	CodexWorkdir    string
 	SQLitePath      string
 	CodexExecutable string
@@ -55,6 +56,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	optionalKeys := []string{
 		"CLAW_CODEX_BASE_URL",
 		"CLAW_CODEX_API_KEY",
+		"CLAW_DISCORD_GUILD_ID",
 		"CLAW_LOG_LEVEL",
 	}
 	for _, key := range optionalKeys {
@@ -85,6 +87,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		Timezone:        location,
 		TimezoneName:    values["CLAW_TIMEZONE"],
 		DiscordToken:    values["CLAW_DISCORD_TOKEN"],
+		DiscordGuildID:  values["CLAW_DISCORD_GUILD_ID"],
 		CodexWorkdir:    values["CLAW_CODEX_WORKDIR"],
 		SQLitePath:      values["CLAW_SQLITE_PATH"],
 		CodexExecutable: values["CLAW_CODEX_EXECUTABLE"],
