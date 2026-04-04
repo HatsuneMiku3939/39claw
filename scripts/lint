@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+TOOLS_DIR="$REPO_ROOT/.tools"
+mkdir -p "$TOOLS_DIR"
+export PATH="$TOOLS_DIR:$PATH"
+
+GOLANGCI_LINT_VERSION="v2.11.4"
+
+function ensure_golangci_lint() {
+	local need_install="true"
+	if command -v golangci-lint >/dev/null 2>&1; then
+		local current_version
+		current_version="$(golangci-lint version --short 2>/dev/null || true)"
+		if [ "v$current_version" = "$GOLANGCI_LINT_VERSION" ]; then
+			need_install="false"
+		fi
+	fi
+
+	if [ "$need_install" = "true" ]; then
+		echo "Installing golangci-lint $GOLANGCI_LINT_VERSION into $TOOLS_DIR ..."
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$TOOLS_DIR" "$GOLANGCI_LINT_VERSION"
+	fi
+}
+
+ensure_golangci_lint
+GOLANGCI_LINT_OPTIONS="--timeout 10m"
+
+while getopts "c:" opt; do
+	case ${opt} in
+	c)
+		GOLANGCI_LINT_OPTIONS="$GOLANGCI_LINT_OPTIONS -c $OPTARG"
+		;;
+	esac
+done
+
+golangci-lint run $GOLANGCI_LINT_OPTIONS
+LINT_RESULT=$?
+
+if [ $LINT_RESULT -ne 0 ]; then
+	echo "Linting failed"
+	exit 1
+fi
+
+echo "Linting passed"

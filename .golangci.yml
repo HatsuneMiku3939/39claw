@@ -1,0 +1,62 @@
+version: "2"
+run:
+  tests: false
+linters:
+  enable:
+    - bodyclose
+    - containedctx
+    - contextcheck
+    - dupl
+    - exhaustive
+    - goconst
+    - gocritic
+    - gocyclo
+    - gosec
+    - maintidx
+    - misspell
+    - mnd
+    - nestif
+    - noctx
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - staticcheck
+    - errcheck
+    - govet
+    - ineffassign
+    - unused
+  settings:
+    errcheck:
+      check-blank: true
+    gocyclo:
+      min-complexity: 30
+    mnd:
+      checks:
+        - argument
+        - case
+        - condition
+        - return
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - mocks
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - mocks
+      - third_party$
+      - builtin$
+      - examples$

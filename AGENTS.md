@@ -50,6 +50,13 @@ Document roles should remain clear:
 - `AGENTS.md` should focus on implementation guidance and document navigation for contributors and coding agents
 - `README.md` should focus on end-user-facing project information
 
+### 4. Use the Makefile for basic checks
+
+The repository includes a `Makefile` for common development checks.
+
+- run unit tests with `make test`
+- run lint checks with `make lint`
+
 ## Reference Documents
 
 ### Primary implementation reference
