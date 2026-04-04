@@ -10,14 +10,14 @@ The goal of `daily` mode is to make the bot feel natural and low-friction for on
 
 ## Product Goal
 
-A user should be able to send a normal message and continue the conversation naturally throughout the day without needing to manage thread state explicitly.
+A user should be able to send a normal message and continue the shared conversation naturally throughout the day without needing to manage thread state explicitly.
 At a product level, this mode should feel like talking to a living knowledge base backed by repository instructions and documentation.
 
 ## User Promise
 
 In `daily` mode, the bot should feel like:
 
-- a conversation that continues during the current day
+- a shared conversation that continues during the current day
 - a fresh start on a new day
 - a tool that does not require explicit setup for normal use
 
@@ -29,7 +29,7 @@ The user should be able to send a message without first creating a task, selecti
 
 ### 2. Daily continuity should be automatic
 
-Messages from the same user on the same local date should feel like they continue the same line of work unless the product explicitly says otherwise.
+Messages handled on the same local date should feel like they continue the same line of work unless the product explicitly says otherwise.
 
 ### 3. Day boundaries should reset context cleanly
 
@@ -48,7 +48,7 @@ Expected flow:
 
 1. The user sends a normal message in a supported channel.
 2. 39claw determines that the message should be handled.
-3. 39claw resolves the current daily thread bucket for that user.
+3. 39claw resolves the current daily thread bucket.
 4. If no thread exists for that bucket, 39claw creates a new one automatically.
 5. The user receives a normal response.
 
@@ -67,7 +67,7 @@ Expected flow:
 
 Expected user perception:
 
-- “The bot remembers today’s context.”
+- “The bot remembers today’s shared context.”
 - “I do not need to restate everything.”
 
 ### Scenario: First message on a new day
@@ -94,7 +94,6 @@ The user should not have to manually select a thread for normal use in `daily` m
 
 Continuity should be preserved:
 
-- for the same user
 - on the same configured local date
 
 Continuity should not be assumed across different days unless the product later adds an explicit bridging workflow.
@@ -124,8 +123,13 @@ If the product exposes date-boundary behavior to users, it should do so in terms
 
 ### Channel changes
 
-If the same user speaks in a different channel within the same bot instance, the product should preserve daily continuity rather than silently resetting it.
+If conversation continues in a different channel within the same bot instance, the product should preserve daily continuity rather than silently resetting it.
 If that creates confusion for a specific deployment, the preferred solution is to separate bot instances by purpose rather than keying continuity by channel.
+
+### Concurrent unrelated topics
+
+If multiple unrelated discussions happen on the same day, `daily` mode may expose some shared context across those turns.
+That tradeoff is acceptable when the product is intentionally operating as a shared assistant for a bounded group.
 
 ## Non-Goals
 
