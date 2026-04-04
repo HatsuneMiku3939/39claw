@@ -27,8 +27,8 @@ These plans are intended to be executed in numeric order. Each plan is self-cont
 
 - [Build the foundation, contracts, and bootstrap path](./active/01-foundation-and-contracts.md)
 - [Implement `daily` mode routing and persistence](./active/02-daily-mode-routing.md)
-- [Implement the Discord runtime, commands, and response presentation](./active/04-discord-runtime-and-presentation.md)
 
 ## Recently Completed Plans
 
 - [Implement `task` mode task workflow and command orchestration](./completed/03-task-mode-workflow.md)
+- [Implement the Discord runtime, commands, and response presentation](./completed/04-discord-runtime-and-presentation.md)
