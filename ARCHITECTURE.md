@@ -1,6 +1,6 @@
-# 39bot Architecture Reference
+# 39claw Architecture Reference
 
-This document is the architecture reference for 39bot.
+This document is the architecture reference for 39claw.
 It should be treated as the implementation guide for future development.
 
 If code and this document diverge, either the code should be corrected or this document should be updated deliberately.
@@ -17,7 +17,7 @@ It exists as an onboarding-oriented map for quickly understanding the system sha
 
 ## 1. Project Identity
 
-- Project: `39bot`
+- Project: `39claw`
 - Primary runtime: Discord bot
 - Primary language: Go
 - LLM backend: Codex only
@@ -25,22 +25,22 @@ It exists as an onboarding-oriented map for quickly understanding the system sha
 
 ## 2. Core Direction
 
-39bot is not intended to be a fully local coding agent runtime.
+39claw is not intended to be a fully local coding agent runtime.
 It does not own the agent loop, tool execution loop, or conversation reasoning loop.
 
 Instead:
 
 - Codex owns remote thread execution
 - Codex owns tool orchestration
-- 39bot owns Discord integration
-- 39bot owns thread routing policy
-- 39bot owns local persistence for Codex thread bindings
+- 39claw owns Discord integration
+- 39claw owns thread routing policy
+- 39claw owns local persistence for Codex thread bindings
 
 The application should stay intentionally thin.
 
 ### 2.1 Codex Working Model
 
-39bot adopts Codex's repository-scoped operating model and exposes it through Discord.
+39claw adopts Codex's repository-scoped operating model and exposes it through Discord.
 
 Codex works against a specific working directory, typically a Git repository, where it can:
 
@@ -49,7 +49,7 @@ Codex works against a specific working directory, typically a Git repository, wh
 - execute shell commands
 - follow repository-level instructions
 
-39bot does not redefine that model locally.
+39claw does not redefine that model locally.
 Instead, it routes Discord interactions into Codex threads that operate against the repository configured for the current bot instance.
 
 The distinction between `daily` mode and `task` mode is therefore not a different execution engine.
@@ -86,7 +86,7 @@ Losing the mapping between a logical thread key and a Codex thread ID breaks con
 
 ### 3.5 Keep the local application small
 
-39bot should focus on:
+39claw should focus on:
 
 - message intake
 - thread resolution
@@ -97,7 +97,7 @@ It should avoid unnecessary local orchestration layers in v1.
 
 ## 4. System Role
 
-39bot is a stateful gateway between Discord conversations and Codex threads.
+39claw is a stateful gateway between Discord conversations and Codex threads.
 
 Its job is to:
 
@@ -327,7 +327,7 @@ v1 should not include:
 The exact package structure may evolve, but the intended shape is:
 
 ```text
-cmd/39bot
+cmd/39claw
 cmd/codexplay
 internal/app
 internal/runtime/discord
@@ -340,7 +340,7 @@ internal/observe
 
 Suggested responsibilities:
 
-- `cmd/39bot`
+- `cmd/39claw`
   - application entrypoint
 - `cmd/codexplay`
   - experimental CLI for manually exercising the Codex integration layer

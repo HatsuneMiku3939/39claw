@@ -4,7 +4,7 @@ Status: Draft
 
 ## Purpose
 
-This document defines the intended user-facing behavior of 39bot when the bot instance is configured to use `task` mode.
+This document defines the intended user-facing behavior of 39claw when the bot instance is configured to use `task` mode.
 
 The goal of `task` mode is to support durable, explicit work streams that can continue across multiple days without relying on date-based buckets.
 
@@ -47,9 +47,9 @@ If the user tries to work without an active task, the response should tell them 
 Expected flow:
 
 1. The user sends a normal message in a supported channel.
-2. 39bot determines that `task` mode requires an active task context.
-3. 39bot detects that no active task exists for the user in the current bot instance.
-4. 39bot does not route the message into an arbitrary thread.
+2. 39claw determines that `task` mode requires an active task context.
+3. 39claw detects that no active task exists for the user in the current bot instance.
+4. 39claw does not route the message into an arbitrary thread.
 5. The bot responds with a clear explanation and a next step.
 
 Expected user perception:
@@ -62,9 +62,9 @@ Expected user perception:
 Expected flow:
 
 1. The user uses `/task new <name>`, `/task switch <id>`, or `/task`-related controls to establish the desired task context.
-2. 39bot records that task as the active context for the user within the current bot instance.
+2. 39claw records that task as the active context for the user within the current bot instance.
 3. The next normal message routes to the thread associated with that task.
-4. If the task has no bound thread yet, 39bot creates one.
+4. If the task has no bound thread yet, 39claw creates one.
 
 Expected user perception:
 
@@ -76,7 +76,7 @@ Expected user perception:
 Expected flow:
 
 1. The user returns later and continues talking while the same task is active.
-2. 39bot routes the message to the thread associated with that task.
+2. 39claw routes the message to the thread associated with that task.
 3. The response reflects ongoing continuity for that work stream.
 
 Expected user perception:
@@ -89,7 +89,7 @@ Expected user perception:
 Expected flow:
 
 1. The user explicitly changes the active task.
-2. 39bot updates the current task selection for the user within the current bot instance.
+2. 39claw updates the current task selection for the user within the current bot instance.
 3. The next normal message routes to the newly selected task thread.
 
 Expected user perception:

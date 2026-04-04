@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HatsuneMiku3939/39bot/internal/codex"
+	"github.com/HatsuneMiku3939/39claw/internal/codex"
 )
 
 func TestParseCLIConfig(t *testing.T) {

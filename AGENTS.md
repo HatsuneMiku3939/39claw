@@ -7,15 +7,15 @@ If implementation direction changes, update this file together with the relevant
 
 ## Project Summary
 
-39bot is a Go-based, Codex-native Discord bot.
+39claw is a Go-based, Codex-native Discord bot.
 
 The application is intentionally thin:
 
 - Codex owns remote thread execution
 - Codex owns tool orchestration
-- 39bot owns Discord integration
-- 39bot owns thread routing policy
-- 39bot owns local persistence for thread bindings
+- 39claw owns Discord integration
+- 39claw owns thread routing policy
+- 39claw owns local persistence for thread bindings
 
 ## Development Rules
 

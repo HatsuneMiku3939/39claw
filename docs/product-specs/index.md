@@ -1,6 +1,6 @@
-# 39bot Product Specs
+# 39claw Product Specs
 
-This directory captures product-facing behavior and user experience expectations for 39bot.
+This directory captures product-facing behavior and user experience expectations for 39claw.
 
 These documents should answer questions such as:
 

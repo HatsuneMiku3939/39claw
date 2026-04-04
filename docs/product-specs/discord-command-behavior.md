@@ -4,7 +4,7 @@ Status: Draft
 
 ## Purpose
 
-This document defines the intended Discord-facing interaction rules for 39bot.
+This document defines the intended Discord-facing interaction rules for 39claw.
 
 Its job is to answer questions such as:
 
@@ -18,7 +18,7 @@ It describes expected behavior, not implementation details.
 
 ## Product Goal
 
-Users should be able to understand when 39bot will respond, how to control task-oriented behavior when needed, and what kind of reply shape to expect inside Discord.
+Users should be able to understand when 39claw will respond, how to control task-oriented behavior when needed, and what kind of reply shape to expect inside Discord.
 
 ## Scope
 

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-This document is a short onboarding-oriented summary of the 39bot architecture.
+This document is a short onboarding-oriented summary of the 39claw architecture.
 
 It is not the authoritative implementation reference.
 For architectural decisions, scope boundaries, and source-of-truth behavior, see the root `ARCHITECTURE.md`.
@@ -9,14 +9,14 @@ Use this document when you want a quick mental model of the system before readin
 
 ## System Role
 
-39bot is a stateful gateway between Discord conversations and Codex threads.
+39claw is a stateful gateway between Discord conversations and Codex threads.
 
 It does not act as a full local coding agent runtime.
 Instead, it delegates agent execution to Codex and manages the local application-side policy.
 
 ## Codex Working Model
 
-39bot adopts Codex's repository-scoped operating model.
+39claw adopts Codex's repository-scoped operating model.
 Each bot instance is configured against a repository-shaped working directory, and Discord interactions are routed into Codex threads that operate against that repository.
 
 This leads to two distinct mode families on the same foundation:
@@ -55,7 +55,7 @@ Converts Discord context into a logical thread key according to the globally con
 
 ### Thread Store
 
-Persists the local continuity data that lets 39bot resume the correct Codex thread.
+Persists the local continuity data that lets 39claw resume the correct Codex thread.
 
 ### Codex Gateway
 
