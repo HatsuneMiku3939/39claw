@@ -28,7 +28,7 @@ The user should be able to send a message without first creating a task, selecti
 
 ### 2. Daily continuity should be automatic
 
-Messages from the same user in the same channel on the same local date should feel like they continue the same line of work unless the product explicitly says otherwise.
+Messages from the same user on the same local date should feel like they continue the same line of work unless the product explicitly says otherwise.
 
 ### 3. Day boundaries should reset context cleanly
 
@@ -47,7 +47,7 @@ Expected flow:
 
 1. The user sends a normal message in a supported channel.
 2. 39bot determines that the message should be handled.
-3. 39bot resolves the current daily thread bucket for that user and channel.
+3. 39bot resolves the current daily thread bucket for that user.
 4. If no thread exists for that bucket, 39bot creates a new one automatically.
 5. The user receives a normal response.
 
@@ -60,7 +60,7 @@ Expected user perception:
 
 Expected flow:
 
-1. The user sends another message in the same channel on the same local date.
+1. The user sends another message on the same local date.
 2. 39bot routes the message to the already bound daily thread.
 3. The response reflects same-day continuity.
 
@@ -94,10 +94,10 @@ The user should not have to manually select a thread for normal use in `daily` m
 Continuity should be preserved:
 
 - for the same user
-- in the same channel
 - on the same configured local date
 
 Continuity should not be assumed across different days unless the product later adds an explicit bridging workflow.
+Changing channels within the same bot instance should not reset the daily context by itself.
 
 ### Response tone
 
@@ -121,9 +121,10 @@ If the bot cannot resolve or create the required thread, it should:
 
 If the product exposes date-boundary behavior to users, it should do so in terms that map to the configured local timezone for the bot instance.
 
-### Channel differences
+### Channel changes
 
-If the same user speaks in a different channel, the product should not imply continuity unless that behavior is intentionally designed.
+If the same user speaks in a different channel within the same bot instance, the product should preserve daily continuity rather than silently resetting it.
+If that creates confusion for a specific deployment, the preferred solution is to separate bot instances by purpose rather than keying continuity by channel.
 
 ## Non-Goals
 
@@ -133,8 +134,9 @@ If the same user speaks in a different channel, the product should not imply con
 - explicit task switching
 - multi-day durable work context without re-grounding
 
-## Open Questions
+## Decisions
 
-- Should the bot ever mention that a new day created a fresh context?
-- Should there be an explicit command to inspect the current daily context?
-- How visible should the configured timezone be to end users?
+- The bot should not proactively mention that a new day created a fresh context.
+- There should not be an explicit command for inspecting the current daily context in v1.
+- The configured timezone should not be surfaced proactively to end users in normal daily-mode flow.
+- The bot should not provide lightweight guidance when channel changes preserve continuity.

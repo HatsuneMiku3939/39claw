@@ -53,8 +53,8 @@ Command interaction refers to explicit control operations used to manage bot sta
 Examples may include:
 
 - slash commands
-- task management commands
-- status or help commands
+- `/task ...` task management commands for `task` mode bot instances
+- `/help`
 
 ### 3. Non-supported or ignored interaction
 
@@ -79,10 +79,8 @@ If the bot responds to normal conversation, the conditions should be easy for us
 Examples:
 
 - explicit mention required
-- dedicated bot channel behavior
-- reply-to-bot behavior
 
-The exact trigger set can evolve, but it should stay explainable.
+v1 should use mention-only triggering for normal-message interaction.
 
 ### 3. Command interactions should always be explicit
 
@@ -90,52 +88,79 @@ If a user invokes a task or control command, the bot should behave as a command 
 
 ### 4. Unsupported input should not create noisy UX
 
-If the user input does not meet response criteria, the bot should usually stay silent unless a lightweight clarification is clearly better.
+If the user input does not meet response criteria, the bot should stay silent.
 
 ## Task Command Behavior
 
 `task` mode requires explicit workflow control, so the task interaction surface should be especially clear.
 
+### Command family decision
+
+For v1, task-control interactions should be exposed through a `/task ...` command family.
+
+This means:
+
+- bot instances configured for `task` mode should accept `/task ...` commands
+- bot instances configured for `daily` mode should not expose task-control behavior as normal workflow
+- `/help` should remain available as a general command surface
+- users should not need to guess between natural-language task control and slash-command task control
+
 ### Minimum command capabilities
 
-The product should support user-facing actions for:
+The `/task ...` command family should support user-facing actions for:
 
-- creating a task
-- selecting the active task
-- inspecting the active task
-- clearing or closing the active task
+- `/task`
+  - show the current task name and ID
+- `/task list`
+  - show task names and IDs
+- `/task new <name>`
+  - create a new task and switch the active task to it
+- `/task switch <id>`
+  - switch the active task to the specified task
+- `/task close <id>`
+  - close the specified task
 
 ### Expected command properties
 
-Task commands should be:
+`/task ...` commands should be:
 
 - explicit
 - easy to discover
 - hard to misunderstand
 - consistent in naming and output structure
 
+`/help` should:
+
+- list the supported command surface
+- explain that `/task ...` is available only in `task` mode bot instances
+- help users recover from missing-context situations without reading internal docs
+
 ### Success behavior
 
-When a task command succeeds, the response should tell the user:
+When a `/task ...` command succeeds, the response should tell the user:
 
 - what changed
 - what the active task is now, if relevant
 - what they can do next
 
+When `/help` succeeds, the response should give a concise list of supported commands and a short explanation of when to use them.
+
 ### Failure behavior
 
-When a task command fails, the response should:
+When a `/task ...` command fails, the response should:
 
 - say what could not be completed
 - explain the reason in user-facing language
 - suggest the next action when possible
+
+If `/task ...` is invoked against a bot instance running in `daily` mode, the bot should explain that task commands are not available for that instance rather than pretending the command was accepted.
 
 ## Ambiguous Input Handling
 
 ### Missing task context
 
 If `task` mode requires an active task and none exists, the bot should not guess.
-It should tell the user what is missing and what command or action to use next.
+It should tell the user what is missing and what `/task ...` command or action to use next.
 
 ### Ambiguous command intent
 
@@ -183,9 +208,12 @@ The product should make it easy for users to discover supported command behavior
 
 Possible mechanisms include:
 
-- a help command
-- task-mode guidance when task context is missing
+- a `/help` command
+- task-mode guidance that points users toward `/task ...` commands when task context is missing
 - short affordance text after successful state-changing commands
+
+`/help` does not need mode-specific variation in v1.
+`daily` mode bot instances should simply avoid exposing unsupported slash command behavior.
 
 ## Non-Goals
 
@@ -193,11 +221,10 @@ This command behavior layer is not intended to:
 
 - describe internal command parsing implementation
 - define Discord permission infrastructure in technical detail
-- lock in every slash command name before product decisions are stable
+- keep task-control behavior ambiguous between free-form conversation and explicit commands
 
-## Open Questions
+## Decisions
 
-- Which normal-message triggers should be supported in v1: mention-only, dedicated channels, replies, or some combination?
-- Should `daily` mode and `task` mode expose different help text or command hints?
-- Which task controls should be slash commands versus natural-language guidance flows?
-- Should the bot prefer silent ignore or lightweight feedback for unsupported invocation patterns?
+- v1 normal-message triggering should be mention-only.
+- `daily` mode and `task` mode do not need different help text in v1; `daily` mode simply does not expose slash-command workflow.
+- Unsupported invocation patterns should be ignored rather than acknowledged with lightweight feedback.

@@ -38,12 +38,12 @@ It stores:
 
 This state is only required for `task` mode.
 
-It stores the currently selected task identity for a user and channel context.
+It stores the currently selected task identity for a user within the current bot instance.
 
 Conceptually:
 
 ```text
-(user, channel) -> active_task_id
+user -> active_task_id
 ```
 
 This allows ordinary messages to be routed without forcing the user to repeat the task identifier in every message.

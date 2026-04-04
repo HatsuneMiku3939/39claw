@@ -130,7 +130,7 @@ The thread store persists the mapping between:
 - logical thread key
 - Codex thread ID
 
-In `task` mode, a separate state store is also needed to track the currently selected task for a user and channel context.
+In `task` mode, a separate state store is also needed to track the currently selected task for a user within the current bot instance.
 
 ### 6.5 Codex Gateway
 
@@ -166,7 +166,7 @@ Purpose:
 Logical key concept:
 
 ```text
-thread_key = user + channel + local_date
+thread_key = user + local_date
 ```
 
 Behavior:
@@ -196,7 +196,7 @@ Purpose:
 Logical key concept:
 
 ```text
-thread_key = user + channel + task_id
+thread_key = user + task_id
 ```
 
 Behavior:
