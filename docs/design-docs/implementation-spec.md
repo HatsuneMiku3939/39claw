@@ -132,7 +132,7 @@ The expected variables are:
 - `CLAW_DISCORD_COMMAND_NAME`
 - `CLAW_DISCORD_GUILD_ID`
 - `CLAW_CODEX_WORKDIR`
-- `CLAW_SQLITE_PATH`
+- `CLAW_DATADIR`
 - `CLAW_CODEX_EXECUTABLE`
 - `CLAW_CODEX_BASE_URL`
 - `CLAW_CODEX_API_KEY`
@@ -146,7 +146,7 @@ The expected variables are:
 - `CLAW_CODEX_NETWORK_ACCESS`
 - `CLAW_LOG_LEVEL`
 
-`CLAW_MODE`, `CLAW_TIMEZONE`, `CLAW_DISCORD_TOKEN`, `CLAW_DISCORD_COMMAND_NAME`, `CLAW_CODEX_WORKDIR`, `CLAW_SQLITE_PATH`, and `CLAW_CODEX_EXECUTABLE` are required.
+`CLAW_MODE`, `CLAW_TIMEZONE`, `CLAW_DISCORD_TOKEN`, `CLAW_DISCORD_COMMAND_NAME`, `CLAW_CODEX_WORKDIR`, `CLAW_DATADIR`, and `CLAW_CODEX_EXECUTABLE` are required.
 `CLAW_DISCORD_GUILD_ID`, `CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, `CLAW_CODEX_MODEL`, `CLAW_CODEX_SANDBOX_MODE`, `CLAW_CODEX_ADDITIONAL_DIRECTORIES`, `CLAW_CODEX_SKIP_GIT_REPO_CHECK`, `CLAW_CODEX_APPROVAL_POLICY`, `CLAW_CODEX_MODEL_REASONING_EFFORT`, `CLAW_CODEX_WEB_SEARCH_MODE`, `CLAW_CODEX_NETWORK_ACCESS`, and `CLAW_LOG_LEVEL` are optional.
 `CLAW_MODE` accepts `daily` or `task`.
 `CLAW_TIMEZONE` must be set explicitly for each deployment.
@@ -157,6 +157,9 @@ When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guil
 `CLAW_CODEX_APPROVAL_POLICY` defaults to `never` when omitted.
 `CLAW_CODEX_WEB_SEARCH_MODE` defaults to `live` when omitted.
 `CLAW_CODEX_ADDITIONAL_DIRECTORIES` uses the OS path-list separator such as `:` on Unix systems.
+`CLAW_DATADIR` points to a directory, and the SQLite database file is always stored as `39claw.sqlite` inside that directory.
+For local development, the safe-default workflow is an ignored `.env.local` file loaded through an ignored `.envrc`.
+Checked-in examples such as `.env.example` and `.envrc.example` must use placeholders only and must not contain live credentials.
 
 ## Validation Targets
 

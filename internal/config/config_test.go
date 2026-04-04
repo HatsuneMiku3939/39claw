@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -23,7 +24,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_DISCORD_COMMAND_NAME":         " Release-Bot ",
 				"CLAW_DISCORD_GUILD_ID":             "guild-1",
 				"CLAW_CODEX_WORKDIR":                "/workspace/project",
-				"CLAW_SQLITE_PATH":                  "/tmp/39claw.db",
+				"CLAW_DATADIR":                      "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":             "/usr/local/bin/codex",
 				"CLAW_CODEX_BASE_URL":               "https://example.test",
 				"CLAW_CODEX_API_KEY":                "api-key",
@@ -43,7 +44,8 @@ func TestLoadFromLookup(t *testing.T) {
 				DiscordToken:               "discord-token",
 				DiscordGuildID:             "guild-1",
 				DiscordCommandName:         "release-bot",
-				SQLitePath:                 "/tmp/39claw.db",
+				DataDir:                    "/tmp/39claw-data",
+				SQLitePath:                 filepath.Join("/tmp/39claw-data", "39claw.sqlite"),
 				CodexExecutable:            "/usr/local/bin/codex",
 				CodexBaseURL:               "https://example.test",
 				CodexAPIKey:                "api-key",
@@ -67,7 +69,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "daily",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
-				"CLAW_SQLITE_PATH":          "/tmp/39claw.db",
+				"CLAW_DATADIR":              "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
 			},
 			want: Config{
@@ -75,7 +77,8 @@ func TestLoadFromLookup(t *testing.T) {
 				TimezoneName:       "UTC",
 				DiscordToken:       "discord-token",
 				DiscordCommandName: "daily",
-				SQLitePath:         "/tmp/39claw.db",
+				DataDir:            "/tmp/39claw-data",
+				SQLitePath:         filepath.Join("/tmp/39claw-data", "39claw.sqlite"),
 				CodexExecutable:    "codex",
 				CodexWorkdir:       "/workspace/project",
 				LogLevel:           "info",
@@ -96,7 +99,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "release",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
-				"CLAW_SQLITE_PATH":          "/tmp/39claw.db",
+				"CLAW_DATADIR":              "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
 			},
 			wantErr: `unsupported CLAW_MODE "nightly"`,
@@ -109,7 +112,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "Release_Bot",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
-				"CLAW_SQLITE_PATH":          "/tmp/39claw.db",
+				"CLAW_DATADIR":              "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
 			},
 			wantErr: `invalid CLAW_DISCORD_COMMAND_NAME "Release_Bot": use 1-32 lowercase letters, digits, or hyphens`,
@@ -122,7 +125,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_DISCORD_TOKEN":             "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME":      "release",
 				"CLAW_CODEX_WORKDIR":             "/workspace/project",
-				"CLAW_SQLITE_PATH":               "/tmp/39claw.db",
+				"CLAW_DATADIR":                   "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":          "codex",
 				"CLAW_CODEX_SKIP_GIT_REPO_CHECK": "not-bool",
 			},
@@ -136,7 +139,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "release",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
-				"CLAW_SQLITE_PATH":          "/tmp/39claw.db",
+				"CLAW_DATADIR":              "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
 				"CLAW_CODEX_NETWORK_ACCESS": "maybe",
 			},
@@ -150,7 +153,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "daily",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
-				"CLAW_SQLITE_PATH":          "/tmp/39claw.db",
+				"CLAW_DATADIR":              "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
 			},
 			wantErr: `load timezone "Mars/Olympus": unknown time zone Mars/Olympus`,
@@ -205,6 +208,10 @@ func TestLoadFromLookup(t *testing.T) {
 
 			if got.DiscordCommandName != tt.want.DiscordCommandName {
 				t.Fatalf("DiscordCommandName = %q, want %q", got.DiscordCommandName, tt.want.DiscordCommandName)
+			}
+
+			if got.DataDir != tt.want.DataDir {
+				t.Fatalf("DataDir = %q, want %q", got.DataDir, tt.want.DataDir)
 			}
 
 			if got.SQLitePath != tt.want.SQLitePath {

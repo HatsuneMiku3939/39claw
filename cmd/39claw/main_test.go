@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -47,7 +46,7 @@ func TestRun(t *testing.T) {
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "daily",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
-				"CLAW_SQLITE_PATH":          "",
+				"CLAW_DATADIR":              "",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
 				"CLAW_LOG_LEVEL":            "debug",
 			},
@@ -66,7 +65,6 @@ func TestRun(t *testing.T) {
 				"CLAW_DISCORD_TOKEN":                "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME":         "release",
 				"CLAW_CODEX_WORKDIR":                "/workspace/project",
-				"CLAW_SQLITE_PATH":                  "",
 				"CLAW_CODEX_EXECUTABLE":             "codex",
 				"CLAW_CODEX_MODEL":                  "gpt-test",
 				"CLAW_CODEX_SANDBOX_MODE":           "danger-full-access",
@@ -116,7 +114,7 @@ func TestRun(t *testing.T) {
 			}
 
 			if tt.wantErr == "" {
-				env["CLAW_SQLITE_PATH"] = filepath.Join(t.TempDir(), "39claw.db")
+				env["CLAW_DATADIR"] = t.TempDir()
 			}
 
 			err := run(ctx, func(key string) (string, bool) {

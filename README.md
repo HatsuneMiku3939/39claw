@@ -90,6 +90,21 @@ Before you start, make sure you have:
 - a working directory that Codex should operate in
 - Go installed if you plan to run from source
 
+## Local Secret Workflow
+
+The recommended local-development workflow is:
+
+1. copy `.env.example` to `.env.local`
+2. replace every placeholder in `.env.local`
+3. copy `.envrc.example` to `.envrc`
+4. run `direnv allow`
+5. start 39claw without pasting secrets into shell history
+
+`.env.local`, `.envrc`, and `.direnv/` are ignored by Git in this repository.
+Keep real Discord tokens, Codex API keys, and any other credentials only in those ignored files.
+Checked-in examples must contain placeholders only.
+If you do not use `direnv`, keep the same rule: load secrets from an ignored local file instead of tracked scripts or inline launch snippets.
+
 <details>
 <summary>Codex Installation Guide</summary>
 
@@ -146,7 +161,7 @@ If this is your first time running a Discord bot, do this before the quick start
 - open the Discord Developer Portal
 - create a new application
 - add a Bot user to that application
-- copy the bot token and use it as `CLAW_DISCORD_TOKEN`
+- copy the bot token and store it in your ignored `.env.local` file as `CLAW_DISCORD_TOKEN`
 
 ### 2. Enable the required intent
 
@@ -209,29 +224,29 @@ Pick one:
 
 ### 2. Set the required environment variables
 
-These variables are required:
+The safe-default setup is to keep your local values in `.env.local` and load them through `.envrc`.
+Start by copying `.env.example` to `.env.local`, then replace the placeholders with real local values.
+
+These variables are required in `.env.local`:
 
 - `CLAW_MODE`
 - `CLAW_TIMEZONE`
 - `CLAW_DISCORD_TOKEN`
 - `CLAW_DISCORD_COMMAND_NAME`
 - `CLAW_CODEX_WORKDIR`
-- `CLAW_SQLITE_PATH`
+- `CLAW_DATADIR`
 - `CLAW_CODEX_EXECUTABLE`
 
-Example launch:
+Recommended startup flow:
 
 ```bash
-CLAW_MODE=task \
-CLAW_TIMEZONE=Asia/Tokyo \
-CLAW_DISCORD_TOKEN=your-discord-token \
-CLAW_DISCORD_COMMAND_NAME=release \
-CLAW_DISCORD_GUILD_ID=your-test-guild-id \
-CLAW_CODEX_WORKDIR=/absolute/path/to/workdir \
-CLAW_SQLITE_PATH=/tmp/39claw.sqlite \
-CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex \
+cp .env.example .env.local
+cp .envrc.example .envrc
+direnv allow
 go run ./cmd/39claw
 ```
+
+39claw stores its SQLite database at `39claw.sqlite` inside `CLAW_DATADIR`.
 
 If `CLAW_DISCORD_GUILD_ID` is set, 39claw registers commands in that guild for faster testing. If it is omitted, commands are registered globally.
 
@@ -259,8 +274,8 @@ If you are running in `task` mode, create a task first with `/<your-command> act
   - the unique root slash command name for this bot instance
 - `CLAW_CODEX_WORKDIR`
   - working directory passed to Codex
-- `CLAW_SQLITE_PATH`
-  - SQLite database path
+- `CLAW_DATADIR`
+  - directory used for local state; the SQLite database path is fixed to `39claw.sqlite` inside this directory
 - `CLAW_CODEX_EXECUTABLE`
   - path to the `codex` executable
 

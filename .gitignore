@@ -1,2 +1,6 @@
+.direnv/
+.env
+.env.local
+.env.*.local
 .envrc
 .tools
