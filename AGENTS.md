@@ -121,6 +121,11 @@ Use `docs/design-docs/architecture-overview.md` when a quick orientation is enou
 When writing complex features or significant refactors, use an ExecPlan (as described in .agents/PLANS.md) from design to implementation.
 Store active plans under `docs/exec-plans/active` and move them to `docs/exec-plans/completed` when they are finished.
 
+## Repository Skills
+
+Store repository-local Codex skills under `.agents/skills`.
+Keep repository-skill instructions in English and update them when the repository workflow or document locations they depend on change.
+
 ## Maintenance Rule
 
 If a future contributor needs to violate this guide to move the project forward, they should update the relevant architecture documents in the same change so the repository remains self-consistent.
