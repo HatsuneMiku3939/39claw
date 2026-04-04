@@ -12,6 +12,8 @@ It is organized into a small set of document layers so contributors can quickly 
   - Product-facing user journeys, interaction rules, and expected behavior
 - [Design Docs](./design-docs/index.md)
   - Supporting design notes, focused concepts, and onboarding-oriented summaries
+- [ExecPlans](./exec-plans/index.md)
+  - Living execution plans, active implementation tracks, and deferred follow-up notes
 - [References](./references/index.md)
   - External references and bundled source material
 
@@ -28,6 +30,12 @@ Use `docs/design-docs` when the question is about:
 - how the system is structured
 - which responsibilities belong to which component
 - how thread routing, storage, and integration boundaries should work
+
+Use `docs/exec-plans` when the question is about:
+
+- the step-by-step delivery plan for a concrete feature
+- which implementation milestone is currently active
+- which follow-up items were intentionally deferred during delivery
 
 Use the root `ARCHITECTURE.md` when the question is about:
 
@@ -52,5 +60,6 @@ Use `docs/references` when the question is about:
 - Keep product behavior in `docs/product-specs`.
 - Keep the authoritative architecture model in `ARCHITECTURE.md`.
 - Keep supporting implementation design notes in `docs/design-docs`.
+- Keep living execution plans and deferred follow-up notes in `docs/exec-plans`.
 - Keep external source material in `docs/references`.
 - Update this index when a new top-level documentation layer is introduced.

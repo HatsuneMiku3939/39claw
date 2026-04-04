@@ -1,0 +1,31 @@
+# 39claw ExecPlans
+
+This directory stores living execution plans for concrete implementation work.
+
+An ExecPlan is the repository's step-by-step delivery document for a feature, refactor, or milestone-sized change.
+Plans in this directory should be written and maintained in line with `.agents/PLANS.md`.
+
+## Structure
+
+- `active/`
+  - contains plans that are still being implemented or are ready to be picked up next
+- `completed/`
+  - contains plans that have been finished and are kept for historical reference
+- `tech-debt-tracker.md`
+  - tracks follow-up work that was intentionally deferred during implementation
+
+## Working Rules
+
+- Create a new plan in `active/` before starting large feature work or a significant refactor.
+- Keep each plan self-contained so a new contributor can continue from only the plan and the current working tree.
+- Move a plan from `active/` to `completed/` only after its acceptance criteria and validation steps are satisfied.
+- Record intentionally deferred work in `tech-debt-tracker.md` instead of leaving it implicit.
+
+## Current Active Plans
+
+These plans are intended to be executed in numeric order. Each plan is self-contained, but later plans name the repository state they expect to find and explain how to recover if that state is missing.
+
+- [Build the foundation, contracts, and bootstrap path](./active/01-foundation-and-contracts.md)
+- [Implement `daily` mode routing and persistence](./active/02-daily-mode-routing.md)
+- [Implement `task` mode task workflow and command orchestration](./active/03-task-mode-workflow.md)
+- [Implement the Discord runtime, commands, and response presentation](./active/04-discord-runtime-and-presentation.md)
