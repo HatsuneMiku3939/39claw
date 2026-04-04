@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/HatsuneMiku3939/39claw/internal/app"
@@ -18,6 +20,7 @@ type Dependencies struct {
 	Message        app.MessageService
 	TaskCommand    app.TaskCommandService
 	SessionFactory sessionFactory
+	HTTPClient     attachmentHTTPClient
 }
 
 type Runtime struct {
@@ -27,6 +30,7 @@ type Runtime struct {
 	taskCommand app.TaskCommandService
 
 	sessionFactory sessionFactory
+	httpClient     attachmentHTTPClient
 
 	mu       sync.Mutex
 	session  session
@@ -55,12 +59,18 @@ func NewRuntime(deps Dependencies) (*Runtime, error) {
 		factory = newLiveSession
 	}
 
+	httpClient := deps.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
 	return &Runtime{
 		config:         deps.Config,
 		logger:         deps.Logger,
 		message:        deps.Message,
 		taskCommand:    deps.TaskCommand,
 		sessionFactory: factory,
+		httpClient:     httpClient,
 	}, nil
 }
 
@@ -158,6 +168,26 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 
 	request, ok := mapMessageCreate(discordSession.SelfUserID(), event)
 	if !ok {
+		return
+	}
+
+	imagePaths, cleanup, err := prepareImageAttachments(context.Background(), r.httpClient, event.Attachments)
+	if cleanup != nil {
+		defer cleanup()
+	}
+	if err != nil {
+		r.logger.Error("prepare image attachments", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
+		if err := presentMessage(discordSession, request.ChannelID, app.MessageResponse{
+			Text:      imageDownloadErrorMessage,
+			ReplyToID: request.MessageID,
+		}); err != nil {
+			r.logger.Error("present attachment error response", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
+		}
+		return
+	}
+
+	request.ImagePaths = imagePaths
+	if strings.TrimSpace(request.Content) == "" && len(request.ImagePaths) == 0 {
 		return
 	}
 

@@ -4,6 +4,9 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -82,12 +85,223 @@ func TestRuntimeMentionHandlingRepliesToTriggerMessage(t *testing.T) {
 		t.Fatalf("mapped content = %q, want %q", messageService.requests[0].Content, "hello there")
 	}
 
+	if len(messageService.requests[0].ImagePaths) != 0 {
+		t.Fatalf("image path count = %d, want %d", len(messageService.requests[0].ImagePaths), 0)
+	}
+
 	if len(fakeSession.sentMessages) != 1 {
 		t.Fatalf("sent message count = %d, want %d", len(fakeSession.sentMessages), 1)
 	}
 
 	if fakeSession.sentMessages[0].Reference == nil || fakeSession.sentMessages[0].Reference.MessageID != "message-1" {
 		t.Fatal("first sent message missing reply reference")
+	}
+}
+
+func TestRuntimeMentionHandlingDownloadsImageAttachments(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("png-bytes"))
+	}))
+	t.Cleanup(server.Close)
+
+	messageService := &fakeMessageService{
+		response: app.MessageResponse{
+			Text:      "Image-aware response",
+			ReplyToID: "message-1",
+		},
+	}
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithServicesAndClient(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{}, server.Client())
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "channel-1",
+			Content:   "<@bot-user> describe this",
+			Author:    &discordgo.User{ID: "user-1"},
+			Mentions: []*discordgo.User{
+				{ID: "bot-user"},
+			},
+			Attachments: []*discordgo.MessageAttachment{
+				{
+					Filename:    "sample.png",
+					ContentType: "image/png",
+					URL:         server.URL + "/sample.png",
+				},
+			},
+		},
+	})
+
+	if len(messageService.requests) != 1 {
+		t.Fatalf("message request count = %d, want %d", len(messageService.requests), 1)
+	}
+
+	request := messageService.requests[0]
+	if request.Content != "describe this" {
+		t.Fatalf("content = %q, want %q", request.Content, "describe this")
+	}
+
+	if len(request.ImagePaths) != 1 {
+		t.Fatalf("image path count = %d, want %d", len(request.ImagePaths), 1)
+	}
+
+	if _, err := os.Stat(request.ImagePaths[0]); !os.IsNotExist(err) {
+		t.Fatalf("downloaded image path should be cleaned up, stat err = %v", err)
+	}
+}
+
+func TestRuntimeMentionHandlingAcceptsImageOnlyMessage(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("png-bytes"))
+	}))
+	t.Cleanup(server.Close)
+
+	messageService := &fakeMessageService{
+		response: app.MessageResponse{
+			Text:      "Image-only response",
+			ReplyToID: "message-1",
+		},
+	}
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithServicesAndClient(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{}, server.Client())
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "channel-1",
+			Content:   "<@bot-user>",
+			Author:    &discordgo.User{ID: "user-1"},
+			Mentions: []*discordgo.User{
+				{ID: "bot-user"},
+			},
+			Attachments: []*discordgo.MessageAttachment{
+				{
+					Filename:    "sample.png",
+					ContentType: "image/png",
+					URL:         server.URL + "/sample.png",
+				},
+			},
+		},
+	})
+
+	if len(messageService.requests) != 1 {
+		t.Fatalf("message request count = %d, want %d", len(messageService.requests), 1)
+	}
+
+	if messageService.requests[0].Content != "" {
+		t.Fatalf("content = %q, want empty", messageService.requests[0].Content)
+	}
+
+	if len(messageService.requests[0].ImagePaths) != 1 {
+		t.Fatalf("image path count = %d, want %d", len(messageService.requests[0].ImagePaths), 1)
+	}
+}
+
+func TestRuntimeMentionHandlingIgnoresImageOnlyMessageWithoutUsableImages(t *testing.T) {
+	t.Parallel()
+
+	messageService := &fakeMessageService{}
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "channel-1",
+			Content:   "<@bot-user>",
+			Author:    &discordgo.User{ID: "user-1"},
+			Mentions: []*discordgo.User{
+				{ID: "bot-user"},
+			},
+			Attachments: []*discordgo.MessageAttachment{
+				{
+					Filename:    "notes.txt",
+					ContentType: "text/plain",
+					URL:         "https://example.test/notes.txt",
+				},
+			},
+		},
+	})
+
+	if len(messageService.requests) != 0 {
+		t.Fatalf("message request count = %d, want %d", len(messageService.requests), 0)
+	}
+
+	if len(fakeSession.sentMessages) != 0 {
+		t.Fatalf("sent message count = %d, want %d", len(fakeSession.sentMessages), 0)
+	}
+}
+
+func TestRuntimeMentionHandlingReturnsErrorWhenAttachmentDownloadFails(t *testing.T) {
+	t.Parallel()
+
+	messageService := &fakeMessageService{}
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithServicesAndClient(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{}, http.DefaultClient)
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "channel-1",
+			Content:   "<@bot-user> describe this",
+			Author:    &discordgo.User{ID: "user-1"},
+			Mentions: []*discordgo.User{
+				{ID: "bot-user"},
+			},
+			Attachments: []*discordgo.MessageAttachment{
+				{
+					Filename:    "sample.png",
+					ContentType: "image/png",
+					URL:         "http://127.0.0.1:1/unreachable.png",
+				},
+			},
+		},
+	})
+
+	if len(messageService.requests) != 0 {
+		t.Fatalf("message request count = %d, want %d", len(messageService.requests), 0)
+	}
+
+	if len(fakeSession.sentMessages) != 1 {
+		t.Fatalf("sent message count = %d, want %d", len(fakeSession.sentMessages), 1)
+	}
+
+	if fakeSession.sentMessages[0].Content != imageDownloadErrorMessage {
+		t.Fatalf("error message = %q, want %q", fakeSession.sentMessages[0].Content, imageDownloadErrorMessage)
 	}
 }
 
@@ -250,7 +464,7 @@ func TestChunkTextPreservesCodeFences(t *testing.T) {
 
 func newTestRuntime(t *testing.T, mode config.Mode, fakeSession *fakeSession) *Runtime {
 	t.Helper()
-	return newTestRuntimeWithServices(t, mode, fakeSession, &fakeMessageService{}, &fakeTaskCommandService{})
+	return newTestRuntimeWithServicesAndClient(t, mode, fakeSession, &fakeMessageService{}, &fakeTaskCommandService{}, http.DefaultClient)
 }
 
 func newTestRuntimeWithServices(
@@ -259,6 +473,18 @@ func newTestRuntimeWithServices(
 	fakeSession *fakeSession,
 	messageService app.MessageService,
 	taskService app.TaskCommandService,
+) *Runtime {
+	t.Helper()
+	return newTestRuntimeWithServicesAndClient(t, mode, fakeSession, messageService, taskService, http.DefaultClient)
+}
+
+func newTestRuntimeWithServicesAndClient(
+	t *testing.T,
+	mode config.Mode,
+	fakeSession *fakeSession,
+	messageService app.MessageService,
+	taskService app.TaskCommandService,
+	httpClient attachmentHTTPClient,
 ) *Runtime {
 	t.Helper()
 
@@ -271,6 +497,7 @@ func newTestRuntimeWithServices(
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Message:     messageService,
 		TaskCommand: taskService,
+		HTTPClient:  httpClient,
 		SessionFactory: func(token string) (session, error) {
 			return fakeSession, nil
 		},

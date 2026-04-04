@@ -259,7 +259,7 @@ func (r *stubDiscordRuntime) Close() error {
 
 type stubCodexGateway struct{}
 
-func (stubCodexGateway) RunTurn(ctx context.Context, threadID string, prompt string) (app.RunTurnResult, error) {
+func (stubCodexGateway) RunTurn(ctx context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
 	return app.RunTurnResult{}, nil
 }
 

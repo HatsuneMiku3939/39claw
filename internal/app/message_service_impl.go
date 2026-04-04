@@ -127,7 +127,10 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 		binding.TaskID = activeTask.TaskID
 	}
 
-	result, err := s.gateway.RunTurn(ctx, threadID, strings.TrimSpace(request.Content))
+	result, err := s.gateway.RunTurn(ctx, threadID, CodexTurnInput{
+		Prompt:     request.Content,
+		ImagePaths: append([]string(nil), request.ImagePaths...),
+	})
 	if err != nil {
 		return MessageResponse{}, fmt.Errorf("run codex turn: %w", err)
 	}

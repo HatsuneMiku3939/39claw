@@ -12,10 +12,11 @@ After this plan, a Discord user should be able to mention the bot with one or mo
 
 - [x] (2026-04-05 17:20Z) Defined the image-attachment intake plan and acceptance targets.
 - [x] (2026-04-05 17:20Z) Confirmed the current repository state: Discord message intake only forwards text content, while the Codex input layer already supports local image parts.
-- [ ] Extend the normalized message request and Codex gateway contracts so a turn can carry text plus zero or more local image paths.
-- [ ] Implement Discord attachment download, validation, and cleanup for qualifying image attachments.
-- [ ] Implement mention-plus-image and image-only message handling end to end, including tests and documentation updates.
-- [ ] Run `make test`, `make lint`, and a manual Discord smoke test that proves attached images affect the reply.
+- [x] (2026-04-05 20:25Z) Extended the normalized message request and Codex gateway contracts so a turn can carry text plus zero or more local image paths.
+- [x] (2026-04-05 20:25Z) Implemented Discord attachment download, validation, and cleanup for qualifying image attachments.
+- [x] (2026-04-05 20:25Z) Implemented mention-plus-image and image-only message handling end to end, including tests and documentation updates.
+- [x] (2026-04-05 20:27Z) Ran `make test` and `make lint` after the implementation landed.
+- [ ] Run a manual Discord smoke test that proves attached images affect the reply in a live server.
 
 ## Surprises & Discoveries
 
@@ -44,7 +45,15 @@ After this plan, a Discord user should be able to mention the bot with one or mo
 
 ## Outcomes & Retrospective
 
-This plan is not implemented yet. Its intended outcome is a Discord runtime that can transform attached images into local temporary files, carry those file paths through the application layer, and invoke Codex with multipart input that combines optional text and image parts. When complete, the repository should also document the new behavior and include automated coverage for mapper behavior, gateway multipart forwarding, cleanup paths, and at least one end-to-end application scenario.
+This plan is now implemented for code, automated validation, and documentation updates. The intended outcome was a Discord runtime that can transform attached images into local temporary files, carry those file paths through the application layer, and invoke Codex with multipart input that combines optional text and image parts.
+
+The implementation has now landed for the code, automated tests, and documentation updates described above. The remaining gap is only the manual Discord smoke test with disposable credentials so the final proof can show that real Discord-hosted image attachments behave the same way as the automated coverage.
+
+Automated proof completed during implementation:
+
+- `go test ./internal/runtime/discord ./internal/app ./internal/codex ./cmd/39claw`
+- `make test`
+- `make lint`
 
 ## Context and Orientation
 

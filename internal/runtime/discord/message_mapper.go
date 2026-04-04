@@ -22,9 +22,6 @@ func mapMessageCreate(selfUserID string, event *discordgo.MessageCreate) (app.Me
 	}
 
 	content := strings.TrimSpace(stripSelfMentions(event.Content, selfUserID))
-	if content == "" {
-		return app.MessageRequest{}, false
-	}
 
 	receivedAt := event.Timestamp
 	if receivedAt.IsZero() {
