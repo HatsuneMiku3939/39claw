@@ -38,5 +38,5 @@ The following specs are expected to be useful as the product surface expands:
 
 ## Status Notes
 
-Unless otherwise stated, product specs in this directory should be treated as draft working documents for v1.
-They describe intended behavior and should be updated as product decisions become more concrete.
+The documents in this directory define the current v1 product expectations for 39claw.
+Update them when product behavior changes so implementation and documentation remain aligned.
