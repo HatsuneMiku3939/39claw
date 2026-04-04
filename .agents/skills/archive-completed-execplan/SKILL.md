@@ -1,6 +1,6 @@
 ---
 name: archive-completed-execplan
-description: Archive a finished ExecPlan that is incorrectly still listed under `docs/exec-plans/active` in this repository. Use when Codex is asked to clean up, archive, reconcile, or finalize completed active plans, including checking whether the plan is truly done, updating its living-document sections, moving it to `docs/exec-plans/completed`, updating `docs/exec-plans/index.md`, and recording deferred follow-up work in `docs/exec-plans/tech-debt-tracker.md` when needed.
+description: Archive a finished ExecPlan that is incorrectly still listed under `docs/exec-plans/active` in this repository. Use when Codex is asked to clean up, archive, reconcile, or finalize completed active plans, including checking whether the plan is truly done, creating a dedicated branch for the cleanup, updating the plan's living-document sections, moving it to `docs/exec-plans/completed`, updating `docs/exec-plans/index.md`, recording deferred follow-up work in `docs/exec-plans/tech-debt-tracker.md` when needed, and then committing and opening a GitHub pull request.
 ---
 
 # Archive Completed ExecPlan
@@ -8,6 +8,8 @@ description: Archive a finished ExecPlan that is incorrectly still listed under 
 ## Overview
 
 Archive a completed ExecPlan cleanly and conservatively. Confirm that the plan is actually ready to leave `active/`, finish the plan's living-document updates, move it into `completed/`, and keep the plan index plus deferred-work tracker aligned with the new state.
+
+When the plan is ready to archive, complete the full repository workflow instead of stopping at file edits: create a dedicated branch, make the cleanup changes, validate them, commit them, and open a pull request.
 
 ## Read the Required Repository Documents
 
@@ -34,6 +36,20 @@ Require these conditions unless the user explicitly overrides them:
 Leave the plan in `active/` when required implementation or required validation is still missing. Explain the blocker instead of archiving prematurely.
 
 When completion is ambiguous, inspect the relevant code, tests, and documentation first. If the archive decision still depends on an unresolved judgment call, stop and ask the user rather than guessing.
+
+If no active plan is ready to archive, do not create a branch or PR. Report the findings and leave the repository untouched.
+
+## Create a Dedicated Branch Before Editing
+
+If the target plan is ready to archive, create a dedicated branch before modifying files.
+
+Follow these rules:
+
+- Never commit directly to `master` or `main`.
+- Use the repository default prefix `feature/`.
+- Pick a branch name that describes the cleanup, for example `feature/archive-execplan-05`.
+- Check the worktree first and avoid disturbing unrelated user changes.
+- If unrelated staged or modified files would contaminate the archive change, stop and ask the user instead of sweeping them into the branch.
 
 ## Finalize the Plan Before Moving It
 
@@ -72,8 +88,39 @@ Confirm all of the following before finishing:
 - `docs/exec-plans/tech-debt-tracker.md` points at the completed path when deferred work exists
 - the plan's living-document sections reflect the final completed state
 
-If the user also wants a commit, run `make lint` and `make test` before committing because this repository requires both checks before commit.
+Run `make lint` and `make test` before committing because this repository requires both checks before commit.
+
+If these checks fail, do not commit. Report the failure and the reason.
+
+## Commit and Open a Pull Request
+
+After the archive edits and validation succeed, finish the Git workflow.
+
+Follow these rules:
+
+- Stage only the files that belong to the archive cleanup.
+- Write an English Conventional Commit message under 100 characters.
+- Use GitHub CLI for push and PR creation.
+- Write the PR title in English.
+- Write the PR body in English Markdown with exactly these sections:
+  `## Summary`
+  `## Background`
+  `## Related issue(s)`
+  `## Implementation details`
+  `## Test coverage`
+  `## Breaking changes`
+  `## Notes`
+- End the PR body with `Created by Codex`.
+- Add appropriate labels such as `documentation` or `enhancement`.
+
+Unless the user explicitly asks for a different stopping point, the expected finish line for this skill is:
+
+1. a dedicated branch exists
+2. the completed plan has been archived
+3. validation passed
+4. a commit exists
+5. a PR is open
 
 ## Report the Result
 
-Report whether the plan was archived or intentionally left active. Name the files changed, mention any deferred work recorded, and call out any manual follow-up or uncertainty that still remains.
+Report whether the plan was archived or intentionally left active. Name the files changed, mention any deferred work recorded, and call out the branch name, commit, PR URL, and any manual follow-up or uncertainty that still remains.

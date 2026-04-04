@@ -1,4 +1,4 @@
 interface:
   display_name: "Archive Completed ExecPlan"
   short_description: "Archive finished active ExecPlans safely"
-  default_prompt: "Use $archive-completed-execplan to archive a finished active ExecPlan in this repository."
+  default_prompt: "Use $archive-completed-execplan to archive a finished active ExecPlan and open a PR in this repository."
