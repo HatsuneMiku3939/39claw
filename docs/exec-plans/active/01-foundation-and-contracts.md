@@ -11,14 +11,15 @@ After this plan, the repository should have a real application skeleton instead 
 ## Progress
 
 - [x] (2026-04-04 15:27Z) Defined this plan from `ARCHITECTURE.md`, `docs/design-docs/implementation-spec.md`, and the current repository state.
-- [ ] Replace the placeholder `cmd/39claw` executable with real startup wiring.
-- [ ] Add `internal/config` with environment parsing and validation tests.
-- [ ] Add `internal/observe` with `slog` logger construction.
-- [ ] Add the app-layer request and response contracts in `internal/app`.
-- [ ] Add the initial thread-policy and execution-guard seams in `internal/thread`.
-- [ ] Add `internal/store/sqlite` with schema creation and repository-facing interfaces.
-- [ ] Add a higher-level Codex gateway wrapper around the existing `internal/codex` client.
-- [ ] Update startup-oriented docs once the new bootstrap path exists.
+- [x] (2026-04-05 03:58Z) Confirmed the baseline still matched the placeholder startup state and reran `make test` plus `make lint`.
+- [x] (2026-04-05 04:22Z) Replaced the placeholder `cmd/39claw` executable with real startup wiring.
+- [x] (2026-04-05 04:22Z) Added `internal/config` with environment parsing and validation tests.
+- [x] (2026-04-05 04:22Z) Added `internal/observe` with `slog` logger construction.
+- [x] (2026-04-05 04:22Z) Added the app-layer request and response contracts in `internal/app`.
+- [x] (2026-04-05 04:22Z) Added the initial thread-policy and execution-guard seams in `internal/thread`.
+- [x] (2026-04-05 04:22Z) Added `internal/store/sqlite` with schema creation and repository-facing interfaces.
+- [x] (2026-04-05 04:22Z) Added a higher-level Codex gateway wrapper around the existing `internal/codex` client.
+- [x] (2026-04-05 04:28Z) Updated startup-oriented docs once the new bootstrap path existed.
 
 ## Surprises & Discoveries
 
@@ -27,6 +28,12 @@ After this plan, the repository should have a real application skeleton instead 
 
 - Observation: There is no current package layout for application orchestration, storage, or runtime concerns.
   Evidence: `internal/` currently contains only `internal/codex`
+
+- Observation: The low-level Codex adapter does not expose a separate "create empty remote thread" operation today, so the first remote thread ID still appears during the first turn execution.
+  Evidence: `internal/codex/client.go`, `internal/codex/thread.go`
+
+- Observation: A minimal Discord runtime shell is enough to validate dependency injection and graceful shutdown without prematurely pulling Discord SDK details into the app layer.
+  Evidence: `internal/runtime/discord/shell.go`
 
 ## Decision Log
 
@@ -38,9 +45,15 @@ After this plan, the repository should have a real application skeleton instead 
   Rationale: The app layer should not know which SQLite driver was chosen, and the standard library surface is enough for v1.
   Date/Author: 2026-04-04 / Codex
 
+- Decision: Normalize Codex execution around `RunTurn(threadID, prompt)` instead of adding a separate thread-creation call to the first gateway contract.
+  Rationale: The current low-level Codex client creates remote thread identity as part of the first executed turn, so the higher-level seam should match the real behavior instead of pretending an empty-thread API already exists.
+  Date/Author: 2026-04-05 / Codex
+
 ## Outcomes & Retrospective
 
 The outcome of this plan should be a repository that finally has a real startup spine. Even if the bot does not yet answer useful messages, the code should now express where configuration, runtime, storage, application orchestration, and Codex boundaries live.
+
+This outcome is now present in the repository. `cmd/39claw` loads environment configuration, builds a `slog` logger, opens SQLite, initializes schema, constructs the Codex gateway, and runs a minimal Discord runtime shell that starts cleanly and exits cleanly on context cancellation.
 
 ## Context and Orientation
 
