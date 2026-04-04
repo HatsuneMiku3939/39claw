@@ -21,6 +21,7 @@ The repository now includes a real startup spine for `cmd/39claw`:
 The runtime now handles:
 
 - mention-only normal conversation
+- mention-triggered image attachments for normal conversation
 - `/help`
 - `/task current`, `/task list`, `/task new <name>`, `/task switch <id>`, and `/task close <id>`
 - same-channel reply targeting for normal conversation
@@ -30,6 +31,7 @@ The runtime now handles:
 The current test-backed behavior includes:
 
 - mention-only handling versus ignored chatter
+- mention-plus-image and image-only mention handling
 - same-day thread reuse
 - next-day rollover
 - task command orchestration for showing, listing, creating, switching, and closing tasks
@@ -104,6 +106,8 @@ Optional Codex thread-option overrides:
 Smoke-test checklist:
 
 - mention the bot in `daily` mode and confirm the reply targets the original message
+- mention the bot with text plus an image attachment and confirm the reply reflects both inputs
+- mention the bot with only an image attachment and confirm the bot still answers
 - send unrelated chatter without a mention and confirm the bot stays silent
 - run `/help` and confirm it matches the configured mode
 - run `/task current` in `daily` mode and confirm the bot returns a clear not-available response

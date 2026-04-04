@@ -14,7 +14,7 @@ func TestGatewayRunTurn(t *testing.T) {
 		name         string
 		mode         string
 		threadID     string
-		prompt       string
+		input        app.CodexTurnInput
 		wantThreadID string
 		wantText     string
 		wantUsage    *app.TokenUsage
@@ -23,7 +23,7 @@ func TestGatewayRunTurn(t *testing.T) {
 		{
 			name:         "starts a new thread when thread id is empty",
 			mode:         "single-success",
-			prompt:       "hello",
+			input:        app.CodexTurnInput{Prompt: "hello"},
 			wantThreadID: "thread_test",
 			wantText:     "Hi from helper",
 			wantUsage: &app.TokenUsage{
@@ -36,7 +36,7 @@ func TestGatewayRunTurn(t *testing.T) {
 			name:         "resumes an existing thread",
 			mode:         "resume-success",
 			threadID:     "thread_saved",
-			prompt:       "continue",
+			input:        app.CodexTurnInput{Prompt: "continue"},
 			wantThreadID: "thread_saved",
 			wantText:     "Resumed helper response",
 			wantUsage: &app.TokenUsage{
@@ -46,10 +46,22 @@ func TestGatewayRunTurn(t *testing.T) {
 			},
 		},
 		{
-			name:    "rejects empty prompt",
+			name:         "accepts image-only input",
+			mode:         "single-success",
+			input:        app.CodexTurnInput{ImagePaths: []string{"/tmp/screenshot.png"}},
+			wantThreadID: "thread_test",
+			wantText:     "Hi from helper",
+			wantUsage: &app.TokenUsage{
+				InputTokens:       42,
+				CachedInputTokens: 12,
+				OutputTokens:      5,
+			},
+		},
+		{
+			name:    "rejects empty turn input",
 			mode:    "single-success",
-			prompt:  "  ",
-			wantErr: "prompt must not be empty",
+			input:   app.CodexTurnInput{Prompt: "  "},
+			wantErr: "turn input must include text or at least one image",
 		},
 	}
 
@@ -62,7 +74,7 @@ func TestGatewayRunTurn(t *testing.T) {
 			client, _ := newTestClient(t, tt.mode)
 			gateway := NewGateway(client, GatewayOptions{})
 
-			result, err := gateway.RunTurn(context.Background(), tt.threadID, tt.prompt)
+			result, err := gateway.RunTurn(context.Background(), tt.threadID, tt.input)
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("RunTurn() error = nil, want %q", tt.wantErr)

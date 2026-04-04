@@ -10,6 +10,7 @@ import (
 
 const (
 	internalErrorMessage      = "Something went wrong while handling that request. Please retry in a moment."
+	imageDownloadErrorMessage = "I couldn't download one of the image attachments. Please retry in a moment."
 	taskUnavailableDailyMode  = "Task commands are not available in this daily-mode bot. Mention the bot to continue today's conversation."
 	unsupportedTaskActionText = "Unsupported task command. Use `/task current`, `/task list`, `/task new`, `/task switch`, or `/task close`."
 )

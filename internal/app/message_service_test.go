@@ -100,6 +100,14 @@ func TestMessageServiceHandleMessageDailyReusesSameDayBinding(t *testing.T) {
 	if binding.CodexThreadID != "thread-1" {
 		t.Fatalf("CodexThreadID = %q, want %q", binding.CodexThreadID, "thread-1")
 	}
+
+	if gateway.calls[0].input.Prompt != "hello there" {
+		t.Fatalf("first prompt = %q, want %q", gateway.calls[0].input.Prompt, "hello there")
+	}
+
+	if len(gateway.calls[0].input.ImagePaths) != 0 {
+		t.Fatalf("first image path count = %d, want %d", len(gateway.calls[0].input.ImagePaths), 0)
+	}
 }
 
 func TestMessageServiceHandleMessageDailyRollsOverOnNextDay(t *testing.T) {
@@ -372,6 +380,40 @@ func TestMessageServiceHandleMessageTaskSwitchesThreadsByActiveTask(t *testing.T
 	}
 }
 
+func TestMessageServiceHandleMessageForwardsImagePathsToGateway(t *testing.T) {
+	t.Parallel()
+
+	gateway := &fakeCodexGateway{
+		results: []app.RunTurnResult{
+			{ThreadID: "thread-1", ResponseText: "Image response"},
+		},
+	}
+	service := newDailyMessageService(t, &memoryThreadStore{}, gateway, &stubExecutionGuard{})
+
+	_, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		MessageID:  "message-1",
+		Content:    "describe this screenshot",
+		ImagePaths: []string{"/tmp/one.png", "/tmp/two.png"},
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	if len(gateway.calls) != 1 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(gateway.calls), 1)
+	}
+
+	if gateway.calls[0].input.Prompt != "describe this screenshot" {
+		t.Fatalf("prompt = %q, want %q", gateway.calls[0].input.Prompt, "describe this screenshot")
+	}
+
+	if got := gateway.calls[0].input.ImagePaths; len(got) != 2 || got[0] != "/tmp/one.png" || got[1] != "/tmp/two.png" {
+		t.Fatalf("image paths = %v, want [/tmp/one.png /tmp/two.png]", got)
+	}
+}
+
 func newDailyMessageService(
 	t *testing.T,
 	store app.ThreadStore,
@@ -465,13 +507,16 @@ type fakeCodexGateway struct {
 
 type runTurnCall struct {
 	threadID string
-	prompt   string
+	input    app.CodexTurnInput
 }
 
-func (g *fakeCodexGateway) RunTurn(_ context.Context, threadID string, prompt string) (app.RunTurnResult, error) {
+func (g *fakeCodexGateway) RunTurn(_ context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
 	g.calls = append(g.calls, runTurnCall{
 		threadID: threadID,
-		prompt:   prompt,
+		input: app.CodexTurnInput{
+			Prompt:     input.Prompt,
+			ImagePaths: append([]string(nil), input.ImagePaths...),
+		},
 	})
 
 	if g.err != nil {

@@ -81,6 +81,8 @@ Examples:
 - explicit mention required
 
 v1 should use mention-only triggering for normal-message interaction.
+When the bot is mentioned, a normal message may contain typed text, one or more image attachments, or both.
+If the mention is present but the message contains neither text nor a usable image attachment, the bot should stay silent.
 
 ### 3. Command interactions should always be explicit
 

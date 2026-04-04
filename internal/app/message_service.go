@@ -19,7 +19,7 @@ type ThreadStore interface {
 }
 
 type CodexGateway interface {
-	RunTurn(ctx context.Context, threadID string, prompt string) (RunTurnResult, error)
+	RunTurn(ctx context.Context, threadID string, input CodexTurnInput) (RunTurnResult, error)
 }
 
 type MessageService interface {

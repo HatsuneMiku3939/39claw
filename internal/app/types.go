@@ -7,6 +7,7 @@ type MessageRequest struct {
 	ChannelID   string
 	MessageID   string
 	Content     string
+	ImagePaths  []string
 	Mentioned   bool
 	CommandName string
 	CommandArgs []string
@@ -62,4 +63,9 @@ type RunTurnResult struct {
 	ThreadID     string
 	ResponseText string
 	Usage        *TokenUsage
+}
+
+type CodexTurnInput struct {
+	Prompt     string
+	ImagePaths []string
 }

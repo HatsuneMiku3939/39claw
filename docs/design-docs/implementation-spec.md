@@ -47,7 +47,7 @@ The recommended delivery order is:
 The following internal contracts should be treated as stable v1 design targets even if exact Go type names evolve during implementation.
 
 - `MessageRequest`
-  - carries Discord user ID, channel ID, message ID, message content, mention or command metadata, and received time
+  - carries Discord user ID, channel ID, message ID, optional message content, optional local image paths, mention or command metadata, and received time
 - `MessageResponse`
   - carries rendered response text and presentation hints needed for Discord reply, chunking, and ephemeral command responses
 - `ThreadPolicy`
@@ -102,6 +102,7 @@ The logical thread key defaults are:
 
 Normal conversation is mention-only in v1.
 When a qualifying normal message is handled, the bot replies in the same channel and targets the triggering message as the reply root.
+Qualifying normal messages may include text, image attachments, or both as long as the bot mention is present and at least one usable input remains after attachment filtering.
 
 `/help` and `/task ...` are slash-command surfaces.
 Task-control command responses are ephemeral by default.
@@ -111,6 +112,7 @@ When a bot instance runs in `task` mode, normal messages without an active task 
 They should return actionable guidance that points the user to `/task new <name>`, `/task list`, or `/task switch <id>`.
 
 Unsupported non-mention chatter is ignored.
+Mention-only posts that contain no text and no usable image attachments are also ignored.
 Long responses are chunked into Discord-safe messages while preserving code fences when practical.
 Only one Codex turn may run at a time for a given logical thread key.
 If another message arrives for the same logical thread while a turn is running, the bot should return a busy or retry response rather than queueing implicitly.
@@ -155,11 +157,13 @@ When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guil
 The initial implementation should demonstrate the following observable behavior:
 
 - In `daily` mode, the first qualifying mention creates a thread binding, a second same-day mention reuses it, and the first mention on the next local date creates a new binding.
+- A mention-triggered message with text plus image attachments reaches Codex as multipart input.
+- A mention-triggered message with only one or more usable image attachments is accepted and answered.
 - In `task` mode, a normal mention without an active task returns guidance instead of routing to Codex.
 - `/task current` shows the active task for the requesting user.
 - `/task new <name>` creates a task and sets it active for the requesting user.
 - `/task switch <id>` changes the routing target for subsequent normal messages.
 - `/task close <id>` closes the task and clears active state when the closed task was active.
 - Existing `daily` and `task` bindings survive process restart through SQLite-backed state.
-- Non-mention chatter is ignored, supported slash commands respond correctly, and long replies are chunked cleanly.
+- Non-mention chatter is ignored, unsupported non-image-only mention posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.
 - Simultaneous requests for the same logical thread do not execute overlapping Codex turns.
