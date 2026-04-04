@@ -25,7 +25,7 @@ Plans in this directory should be written and maintained in line with `.agents/P
 
 These plans are intended to be executed in numeric order. Each plan is self-contained, but later plans name the repository state they expect to find and explain how to recover if that state is missing.
 
-- None right now.
+- [Replace shared `/help` and `/task` slash commands with one instance-specific root command](./active/07-instance-specific-root-command.md)
 
 ## Recently Completed Plans
 
