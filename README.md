@@ -207,7 +207,7 @@ These variables are required:
 - `CLAW_TIMEZONE`
 - `CLAW_DISCORD_TOKEN`
 - `CLAW_CODEX_WORKDIR`
-- `CLAW_SQLITE_PATH`
+- `CLAW_DATADIR`
 - `CLAW_CODEX_EXECUTABLE`
 
 Example launch:
@@ -218,10 +218,12 @@ CLAW_TIMEZONE=Asia/Tokyo \
 CLAW_DISCORD_TOKEN=your-discord-token \
 CLAW_DISCORD_GUILD_ID=your-test-guild-id \
 CLAW_CODEX_WORKDIR=/absolute/path/to/workdir \
-CLAW_SQLITE_PATH=/tmp/39claw.sqlite \
+CLAW_DATADIR=/tmp/39claw \
 CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex \
 go run ./cmd/39claw
 ```
+
+39claw stores its SQLite database at `39claw.sqlite` inside `CLAW_DATADIR`.
 
 If `CLAW_DISCORD_GUILD_ID` is set, 39claw registers commands in that guild for faster testing. If it is omitted, commands are registered globally.
 
@@ -247,8 +249,8 @@ If you are running in `task` mode, create a task first with `/task new <name>`.
   - Discord bot token
 - `CLAW_CODEX_WORKDIR`
   - working directory passed to Codex
-- `CLAW_SQLITE_PATH`
-  - SQLite database path
+- `CLAW_DATADIR`
+  - directory used for local state; the SQLite database path is fixed to `39claw.sqlite` inside this directory
 - `CLAW_CODEX_EXECUTABLE`
   - path to the `codex` executable
 
