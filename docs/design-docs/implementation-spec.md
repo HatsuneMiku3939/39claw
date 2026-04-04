@@ -59,7 +59,7 @@ The following internal contracts should be treated as stable v1 design targets e
   - creates the first remote thread implicitly when the first turn runs without a saved thread ID
   - returns a normalized final response plus the thread ID that should be persisted
 - `TaskCommandService`
-  - implements `/task current`, `/task list`, `/task new <name>`, `/task switch <id>`, and `/task close <id>`
+  - implements the `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, and `action:task-close` workflow behind the configured root command
 
 The application layer should depend on these responsibilities rather than on Discord SDK details or raw SQL.
 
@@ -91,7 +91,7 @@ The storage model uses three tables:
 
 Task status is `open` or `closed`.
 Closing a task marks it `closed` and removes its `active_tasks` mapping when that task is currently active.
-`/task list` should show open tasks and clearly mark the active task for the requesting user.
+`action:task-list` should show open tasks and clearly mark the active task for the requesting user.
 
 The logical thread key defaults are:
 
@@ -104,12 +104,14 @@ Normal conversation is mention-only in v1.
 When a qualifying normal message is handled, the bot replies in the same channel and targets the triggering message as the reply root.
 Qualifying normal messages may include text, image attachments, or both as long as the bot mention is present and at least one usable input remains after attachment filtering.
 
-`/help` and `/task ...` are slash-command surfaces.
+Each bot instance should expose one slash-command surface whose root name comes from `CLAW_DISCORD_COMMAND_NAME`.
+That root command should always expose `action:help`.
 Task-control command responses are ephemeral by default.
-When a bot instance runs in `daily` mode, `/task ...` must return a clear not-available response instead of pretending the command worked.
+When a bot instance runs in `daily` mode, task actions must return a clear not-available response instead of pretending the command worked.
+When a bot instance runs in `task` mode, the root command should expose `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, and `action:task-close`.
 
 When a bot instance runs in `task` mode, normal messages without an active task must not be routed to Codex.
-They should return actionable guidance that points the user to `/task new <name>`, `/task list`, or `/task switch <id>`.
+They should return actionable guidance that points the user to `action:task-new`, `action:task-list`, or `action:task-switch` on the configured root command.
 
 Unsupported non-mention chatter is ignored.
 Mention-only posts that contain no text and no usable image attachments are also ignored.
@@ -127,6 +129,7 @@ The expected variables are:
 - `CLAW_MODE`
 - `CLAW_TIMEZONE`
 - `CLAW_DISCORD_TOKEN`
+- `CLAW_DISCORD_COMMAND_NAME`
 - `CLAW_DISCORD_GUILD_ID`
 - `CLAW_CODEX_WORKDIR`
 - `CLAW_SQLITE_PATH`
@@ -143,10 +146,11 @@ The expected variables are:
 - `CLAW_CODEX_NETWORK_ACCESS`
 - `CLAW_LOG_LEVEL`
 
-`CLAW_MODE`, `CLAW_TIMEZONE`, `CLAW_DISCORD_TOKEN`, `CLAW_CODEX_WORKDIR`, `CLAW_SQLITE_PATH`, and `CLAW_CODEX_EXECUTABLE` are required.
+`CLAW_MODE`, `CLAW_TIMEZONE`, `CLAW_DISCORD_TOKEN`, `CLAW_DISCORD_COMMAND_NAME`, `CLAW_CODEX_WORKDIR`, `CLAW_SQLITE_PATH`, and `CLAW_CODEX_EXECUTABLE` are required.
 `CLAW_DISCORD_GUILD_ID`, `CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, `CLAW_CODEX_MODEL`, `CLAW_CODEX_SANDBOX_MODE`, `CLAW_CODEX_ADDITIONAL_DIRECTORIES`, `CLAW_CODEX_SKIP_GIT_REPO_CHECK`, `CLAW_CODEX_APPROVAL_POLICY`, `CLAW_CODEX_MODEL_REASONING_EFFORT`, `CLAW_CODEX_WEB_SEARCH_MODE`, `CLAW_CODEX_NETWORK_ACCESS`, and `CLAW_LOG_LEVEL` are optional.
 `CLAW_MODE` accepts `daily` or `task`.
 `CLAW_TIMEZONE` must be set explicitly for each deployment.
+`CLAW_DISCORD_COMMAND_NAME` must be unique per bot instance, normalized to lowercase, and validated conservatively before Discord registration.
 `CLAW_LOG_LEVEL` defaults to `info` when omitted.
 When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guild for faster development feedback.
 `CLAW_CODEX_SANDBOX_MODE` defaults to `workspace-write` when omitted.
@@ -162,10 +166,10 @@ The initial implementation should demonstrate the following observable behavior:
 - A mention-triggered message with text plus image attachments reaches Codex as multipart input.
 - A mention-triggered message with only one or more usable image attachments is accepted and answered.
 - In `task` mode, a normal mention without an active task returns guidance instead of routing to Codex.
-- `/task current` shows the active task for the requesting user.
-- `/task new <name>` creates a task and sets it active for the requesting user.
-- `/task switch <id>` changes the routing target for subsequent normal messages.
-- `/task close <id>` closes the task and clears active state when the closed task was active.
+- `/<instance-command> action:task-current` shows the active task for the requesting user.
+- `/<instance-command> action:task-new task_name:<name>` creates a task and sets it active for the requesting user.
+- `/<instance-command> action:task-switch task_id:<id>` changes the routing target for subsequent normal messages.
+- `/<instance-command> action:task-close task_id:<id>` closes the task and clears active state when the closed task was active.
 - Existing `daily` and `task` bindings survive process restart through SQLite-backed state.
 - Non-mention chatter is ignored, unsupported non-image-only mention posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.
 - Simultaneous requests for the same logical thread do not execute overlapping Codex turns.

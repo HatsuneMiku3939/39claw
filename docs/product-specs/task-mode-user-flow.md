@@ -38,7 +38,7 @@ The product should make that behavior understandable to the user.
 
 ### 4. Missing context should produce actionable guidance
 
-If the user tries to work without an active task, the response should tell them what to do next in simple language and point them toward the `/task ...` command flow.
+If the user tries to work without an active task, the response should tell them what to do next in simple language and point them toward the `/<instance-command> action:task-*` command flow.
 
 ## Primary Flow
 
@@ -61,7 +61,7 @@ Expected user perception:
 
 Expected flow:
 
-1. The user uses `/task new <name>`, `/task switch <id>`, or `/task current` plus other `/task ...` controls to establish the desired task context.
+1. The user uses `/<instance-command> action:task-new task_name:<name>`, `/<instance-command> action:task-switch task_id:<id>`, or `/<instance-command> action:task-current` plus other task actions to establish the desired task context.
 2. 39claw records that task as the active context for the user within the current bot instance.
 3. The next normal message routes to the thread associated with that task.
 4. If the task has no bound thread yet, 39claw creates one.
@@ -116,18 +116,18 @@ Expected user perception:
 
 For `task` mode to feel usable, v1 should support at least:
 
-- `/task current`
+- `/<instance-command> action:task-current`
   - show the current task name and ID
-- `/task list`
+- `/<instance-command> action:task-list`
   - show task names and IDs
-- `/task new <name>`
+- `/<instance-command> action:task-new task_name:<name>`
   - create a new task and switch the active task to it
-- `/task switch <id>`
+- `/<instance-command> action:task-switch task_id:<id>`
   - switch the active task to the specified task
-- `/task close <id>`
+- `/<instance-command> action:task-close task_id:<id>`
   - close the specified task
 
-The command family should stay explicit and stable enough that users can learn it as the standard task-control surface for `task` mode.
+The root-command action surface should stay explicit and stable enough that users can learn it as the standard task-control surface for `task` mode.
 
 ## UX Requirements
 
@@ -147,7 +147,7 @@ The active task should remain active until the user explicitly closes it or swit
 ### Task identity clarity
 
 If task names, IDs, or labels are exposed, the product should make it obvious which task is currently active.
-That is especially important for `/task current`, `/task list`, and `/task switch <id>`.
+That is especially important for `action:task-current`, `action:task-list`, and `action:task-switch`.
 
 ### Task scope
 
@@ -162,7 +162,7 @@ When no active task exists, the bot should:
 
 - say that an active task is required
 - explain the next action clearly
-- direct the user toward `/task new <name>`, `/task switch <id>`, or `/task list` as appropriate
+- direct the user toward `/<instance-command> action:task-new task_name:<name>`, `/<instance-command> action:task-switch task_id:<id>`, or `/<instance-command> action:task-list` as appropriate
 - avoid pretending the user message was processed normally
 
 If a user closes a task and then immediately sends a normal message, the bot should treat that as a missing-active-task case.

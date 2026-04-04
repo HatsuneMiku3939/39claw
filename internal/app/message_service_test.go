@@ -179,7 +179,8 @@ func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 	t.Parallel()
 
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
-		Mode: config.ModeTask,
+		Mode:        config.ModeTask,
+		CommandName: "release",
 		Policy: stubThreadPolicy{
 			err: app.ErrNoActiveTask,
 		},
@@ -200,7 +201,7 @@ func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 		t.Fatalf("HandleMessage() error = %v", err)
 	}
 
-	if response.Text != "No active task is selected. Use `/task new <name>`, `/task list`, or `/task switch <id>` first." {
+	if response.Text != "No active task is selected. Use `/release action:task-new task_name:<name>`, `/release action:task-list`, or `/release action:task-switch task_id:<id>` first." {
 		t.Fatalf("guidance text = %q", response.Text)
 	}
 }
@@ -649,6 +650,7 @@ func newDailyMessageService(
 
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
 		Mode:        config.ModeDaily,
+		CommandName: "release",
 		Policy:      policy,
 		Store:       store,
 		Gateway:     gateway,
@@ -685,6 +687,7 @@ func newTaskMessageService(
 
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
 		Mode:        config.ModeTask,
+		CommandName: "release",
 		Policy:      policy,
 		Store:       store,
 		Gateway:     gateway,

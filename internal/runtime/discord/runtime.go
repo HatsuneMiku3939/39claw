@@ -108,7 +108,7 @@ func (r *Runtime) Start(_ context.Context) error {
 	if _, err := discordSession.ApplicationCommandBulkOverwrite(
 		appID,
 		r.config.DiscordGuildID,
-		registeredCommands(),
+		registeredCommands(r.config),
 	); err != nil {
 		_ = discordSession.Close()
 		r.resetLocked()
@@ -259,37 +259,44 @@ func (r *Runtime) handleInteractionCreate(_ *discordgo.Session, event *discordgo
 }
 
 func (r *Runtime) routeCommand(ctx context.Context, request commandRequest) (app.MessageResponse, error) {
-	switch request.Name {
-	case commandHelp:
-		return helpResponse(r.config.Mode), nil
-	case commandTask:
+	if request.Name != r.config.DiscordCommandName {
+		return app.MessageResponse{
+			Text:      fmt.Sprintf("Unsupported command. Use `/%s action:%s`.", r.config.DiscordCommandName, actionHelp),
+			Ephemeral: true,
+		}, nil
+	}
+
+	switch request.Action {
+	case actionHelp:
+		return helpResponse(r.config.DiscordCommandName, r.config.Mode), nil
+	case actionTaskCurrent, actionTaskList, actionTaskNew, actionTaskSwitch, actionTaskClose:
 		if r.config.Mode != config.ModeTask {
 			return app.MessageResponse{
-				Text:      taskUnavailableDailyMode,
+				Text:      taskUnavailableDailyMode(r.config.DiscordCommandName),
 				Ephemeral: true,
 			}, nil
 		}
 
-		switch request.Task.Action {
-		case "", taskActionCurrent:
+		switch request.Action {
+		case actionTaskCurrent:
 			return r.taskCommand.ShowCurrentTask(ctx, request.UserID)
-		case taskActionList:
+		case actionTaskList:
 			return r.taskCommand.ListTasks(ctx, request.UserID)
-		case taskActionNew:
-			return r.taskCommand.CreateTask(ctx, request.UserID, request.Task.Name)
-		case taskActionSwitch:
-			return r.taskCommand.SwitchTask(ctx, request.UserID, request.Task.ID)
-		case taskActionClose:
-			return r.taskCommand.CloseTask(ctx, request.UserID, request.Task.ID)
-		default:
-			return app.MessageResponse{
-				Text:      unsupportedTaskActionText,
-				Ephemeral: true,
-			}, nil
+		case actionTaskNew:
+			return r.taskCommand.CreateTask(ctx, request.UserID, request.TaskName)
+		case actionTaskSwitch:
+			return r.taskCommand.SwitchTask(ctx, request.UserID, request.TaskID)
+		case actionTaskClose:
+			return r.taskCommand.CloseTask(ctx, request.UserID, request.TaskID)
 		}
+
+		return app.MessageResponse{
+			Text:      unsupportedActionText(r.config.DiscordCommandName, r.config.Mode),
+			Ephemeral: true,
+		}, nil
 	default:
 		return app.MessageResponse{
-			Text:      "Unsupported command.",
+			Text:      unsupportedActionText(r.config.DiscordCommandName, r.config.Mode),
 			Ephemeral: true,
 		}, nil
 	}

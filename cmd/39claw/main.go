@@ -90,6 +90,7 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 
 	messageService, err := app.NewMessageService(app.MessageServiceDependencies{
 		Mode:        cfg.Mode,
+		CommandName: cfg.DiscordCommandName,
 		Policy:      policy,
 		Store:       store,
 		Gateway:     gateway,
@@ -100,7 +101,8 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	}
 
 	taskService, err := app.NewTaskCommandService(app.TaskCommandServiceDependencies{
-		Store: store,
+		CommandName: cfg.DiscordCommandName,
+		Store:       store,
 	})
 	if err != nil {
 		return fmt.Errorf("build task service: %w", err)

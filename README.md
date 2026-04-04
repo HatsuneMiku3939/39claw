@@ -10,7 +10,7 @@ It is built for teams or individuals who want to work with Codex from inside Dis
 
 - mention-based conversation in Discord
 - two conversation modes for different workflows
-- slash commands for help and task control
+- one instance-specific slash command with explicit action choices
 - SQLite-backed continuity across restarts
 - image attachment support for mention-triggered turns
 - queued acknowledgments when the same conversation is already busy
@@ -32,7 +32,7 @@ Use `daily` mode when you want a lightweight shared assistant for day-to-day wor
 Use `task` mode when you want durable work streams that continue across multiple days.
 
 - each user works through an explicit active task
-- `/task ...` commands control which task is active
+- `/<instance-command> action:task-*` controls which task is active
 - normal conversation does not run until a task is selected
 
 ## How It Behaves in Discord
@@ -46,20 +46,28 @@ Use `task` mode when you want durable work streams that continue across multiple
 
 ### Commands
 
-- `/help`
+Each bot instance registers exactly one slash command.
+Its name comes from `CLAW_DISCORD_COMMAND_NAME`, so one instance might expose `/release` while another exposes `/docs`.
+
+For every instance:
+
+- `/<instance-command> action:help`
   - show the supported command surface for the current bot instance
-- `/task current`
+
+In `task` mode, the same root command also supports:
+
+- `/<instance-command> action:task-current`
   - show the active task
-- `/task list`
+- `/<instance-command> action:task-list`
   - list open tasks and mark the active one
-- `/task new <name>`
+- `/<instance-command> action:task-new task_name:<name>`
   - create a task and make it active
-- `/task switch <id>`
+- `/<instance-command> action:task-switch task_id:<id>`
   - switch the active task
-- `/task close <id>`
+- `/<instance-command> action:task-close task_id:<id>`
   - close a task
 
-In `daily` mode, `/task ...` commands return a clear not-available response instead of pretending they worked.
+In `daily` mode, the root command exposes only `action:help`.
 
 ### Busy conversations
 
@@ -155,7 +163,7 @@ Use these scopes:
 - `bot`
 - `applications.commands`
 
-`applications.commands` is required because 39claw registers slash commands such as `/help` and `/task ...`.
+`applications.commands` is required because 39claw registers one instance-specific root slash command such as `/release`.
 
 ### 4. Grant the right bot permissions
 
@@ -206,6 +214,7 @@ These variables are required:
 - `CLAW_MODE`
 - `CLAW_TIMEZONE`
 - `CLAW_DISCORD_TOKEN`
+- `CLAW_DISCORD_COMMAND_NAME`
 - `CLAW_CODEX_WORKDIR`
 - `CLAW_SQLITE_PATH`
 - `CLAW_CODEX_EXECUTABLE`
@@ -216,6 +225,7 @@ Example launch:
 CLAW_MODE=task \
 CLAW_TIMEZONE=Asia/Tokyo \
 CLAW_DISCORD_TOKEN=your-discord-token \
+CLAW_DISCORD_COMMAND_NAME=release \
 CLAW_DISCORD_GUILD_ID=your-test-guild-id \
 CLAW_CODEX_WORKDIR=/absolute/path/to/workdir \
 CLAW_SQLITE_PATH=/tmp/39claw.sqlite \
@@ -233,7 +243,7 @@ Try one of these:
 - mention the bot with text plus an image
 - mention the bot with only an image
 
-If you are running in `task` mode, create a task first with `/task new <name>`.
+If you are running in `task` mode, create a task first with `/<your-command> action:task-new task_name:<name>`.
 
 ## Configuration Reference
 
@@ -245,6 +255,8 @@ If you are running in `task` mode, create a task first with `/task new <name>`.
   - the timezone used for daily rollover
 - `CLAW_DISCORD_TOKEN`
   - Discord bot token
+- `CLAW_DISCORD_COMMAND_NAME`
+  - the unique root slash command name for this bot instance
 - `CLAW_CODEX_WORKDIR`
   - working directory passed to Codex
 - `CLAW_SQLITE_PATH`
@@ -287,8 +299,8 @@ After startup, confirm the basics:
 - mention the bot with text plus an image and confirm the request is handled
 - mention the bot with only an image and confirm the bot still answers
 - send unrelated chatter without a mention and confirm the bot stays silent
-- run `/help` and confirm it matches the configured mode
-- in `task` mode, run `/task new <name>` and confirm the response is ephemeral
+- run `/<your-command> action:help` and confirm it matches the configured mode
+- in `task` mode, run `/<your-command> action:task-new task_name:smoke-test` and confirm the response is ephemeral
 - send overlapping messages for the same conversation and confirm the later one is queued
 - send a long Codex response and confirm the bot splits it into readable Discord-safe chunks
 
@@ -299,8 +311,8 @@ After startup, confirm the basics:
 - mention-only normal conversation
 - mention-triggered image attachment intake
 - `daily` and `task` conversation modes
-- `/help`
-- `/task current`, `/task list`, `/task new`, `/task switch`, and `/task close`
+- one instance-specific root slash command
+- `action:help`, `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, and `action:task-close`
 - SQLite-backed persistence for thread bindings and task state
 - queued acknowledgments with deferred follow-up replies
 

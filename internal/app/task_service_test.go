@@ -38,7 +38,7 @@ func TestTaskCommandServiceShowCurrentTask(t *testing.T) {
 		t.Fatal("Ephemeral = false, want true")
 	}
 
-	want := "Active task: `Release work` (`task-1`). Use `/task list` to see open tasks or `/task close task-1` when you're done."
+	want := "Active task: `Release work` (`task-1`). Use `/release action:task-list` to see open tasks or `/release action:task-close task_id:task-1` when you're done."
 	if response.Text != want {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
@@ -54,7 +54,7 @@ func TestTaskCommandServiceShowCurrentTaskWithoutActiveTaskReturnsGuidance(t *te
 		t.Fatalf("ShowCurrentTask() error = %v", err)
 	}
 
-	want := "No active task is selected. Use `/task new <name>`, `/task list`, or `/task switch <id>` first."
+	want := "No active task is selected. Use `/release action:task-new task_name:<name>`, `/release action:task-list`, or `/release action:task-switch task_id:<id>` first."
 	if response.Text != want {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
@@ -145,7 +145,7 @@ func TestTaskCommandServiceListTasksMarksActiveTask(t *testing.T) {
 		t.Fatalf("ListTasks() error = %v", err)
 	}
 
-	want := "Open tasks:\n- `Release work` (`task-1`)\n- `Docs update` (`task-2`) [active]\nUse `/task switch <id>` to change the active task."
+	want := "Open tasks:\n- `Release work` (`task-1`)\n- `Docs update` (`task-2`) [active]\nUse `/release action:task-switch task_id:<id>` to change the active task."
 	if response.Text != want {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
@@ -171,7 +171,7 @@ func TestTaskCommandServiceSwitchTaskRequiresOpenTask(t *testing.T) {
 		t.Fatalf("SwitchTask() error = %v", err)
 	}
 
-	want := "Task `task-1` is closed. Use `/task list` to find an open task or `/task new <name>` to create another one."
+	want := "Task `task-1` is closed. Use `/release action:task-list` to find an open task or `/release action:task-new task_name:<name>` to create another one."
 	if response.Text != want {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
@@ -267,8 +267,9 @@ func newTaskCommandServiceWithID(
 	t.Helper()
 
 	service, err := app.NewTaskCommandService(app.TaskCommandServiceDependencies{
-		Store:     store,
-		NewTaskID: newTaskID,
+		CommandName: "release",
+		Store:       store,
+		NewTaskID:   newTaskID,
 	})
 	if err != nil {
 		t.Fatalf("NewTaskCommandService() error = %v", err)

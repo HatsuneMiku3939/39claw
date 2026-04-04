@@ -42,8 +42,62 @@ func TestRuntimeStartRegistersCommands(t *testing.T) {
 		t.Fatalf("registered guild id = %q, want %q", fakeSession.registeredGuildID, "guild-1")
 	}
 
-	if len(fakeSession.registeredCommands) != 2 {
-		t.Fatalf("registered command count = %d, want %d", len(fakeSession.registeredCommands), 2)
+	if len(fakeSession.registeredCommands) != 1 {
+		t.Fatalf("registered command count = %d, want %d", len(fakeSession.registeredCommands), 1)
+	}
+
+	command := fakeSession.registeredCommands[0]
+	if command.Name != "release" {
+		t.Fatalf("registered command name = %q, want %q", command.Name, "release")
+	}
+
+	if len(command.Options) != 1 {
+		t.Fatalf("registered option count = %d, want %d", len(command.Options), 1)
+	}
+
+	actionOption := command.Options[0]
+	if actionOption.Name != optionAction {
+		t.Fatalf("action option name = %q, want %q", actionOption.Name, optionAction)
+	}
+
+	if len(actionOption.Choices) != 1 {
+		t.Fatalf("action choice count = %d, want %d", len(actionOption.Choices), 1)
+	}
+
+	if actionOption.Choices[0].Value != actionHelp {
+		t.Fatalf("action choice value = %v, want %q", actionOption.Choices[0].Value, actionHelp)
+	}
+}
+
+func TestRuntimeStartRegistersTaskModeChoices(t *testing.T) {
+	t.Parallel()
+
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntime(t, config.ModeTask, fakeSession)
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	command := fakeSession.registeredCommands[0]
+	if len(command.Options) != 3 {
+		t.Fatalf("registered option count = %d, want %d", len(command.Options), 3)
+	}
+
+	actionOption := command.Options[0]
+	if len(actionOption.Choices) != 6 {
+		t.Fatalf("action choice count = %d, want %d", len(actionOption.Choices), 6)
+	}
+
+	if command.Options[1].Name != optionTaskName {
+		t.Fatalf("task name option = %q, want %q", command.Options[1].Name, optionTaskName)
+	}
+
+	if command.Options[2].Name != optionTaskID {
+		t.Fatalf("task id option = %q, want %q", command.Options[2].Name, optionTaskID)
 	}
 }
 
@@ -414,6 +468,39 @@ func TestRuntimeIgnoresUnsupportedChatter(t *testing.T) {
 	}
 }
 
+func TestRuntimeHelpActionReturnsConfiguredCommandInfo(t *testing.T) {
+	t.Parallel()
+
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntime(t, config.ModeDaily, fakeSession)
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionHelp, "", ""))
+
+	if len(fakeSession.interactionResponses) != 1 {
+		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 1)
+	}
+
+	response := fakeSession.interactionResponses[0]
+	if response.Data == nil {
+		t.Fatal("response data = nil, want non-nil")
+	}
+
+	if !strings.Contains(response.Data.Content, "Command: /release") {
+		t.Fatalf("response content = %q, want configured command name", response.Data.Content)
+	}
+
+	if !strings.Contains(response.Data.Content, "Mode: daily") {
+		t.Fatalf("response content = %q, want mode guidance", response.Data.Content)
+	}
+}
+
 func TestRuntimeTaskCommandInDailyModeIsEphemeral(t *testing.T) {
 	t.Parallel()
 
@@ -427,7 +514,7 @@ func TestRuntimeTaskCommandInDailyModeIsEphemeral(t *testing.T) {
 		_ = runtime.Close()
 	})
 
-	fakeSession.dispatchInteraction(taskInteractionEvent("user-1", taskActionCurrent, "", ""))
+	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskCurrent, "", ""))
 
 	if len(fakeSession.interactionResponses) != 1 {
 		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 1)
@@ -447,10 +534,14 @@ func TestRuntimeTaskCommandInDailyModeIsEphemeral(t *testing.T) {
 	}
 }
 
-func TestRuntimeTaskCommandRoutesTaskModeSubcommands(t *testing.T) {
+func TestRuntimeTaskCommandRoutesTaskModeActions(t *testing.T) {
 	t.Parallel()
 
 	taskService := &fakeTaskCommandService{
+		currentResponse: app.MessageResponse{
+			Text:      "Current task",
+			Ephemeral: true,
+		},
 		createResponse: app.MessageResponse{
 			Text:      "Created task `Release work` (`task-1`) and made it active. Your next message will continue this task.",
 			Ephemeral: true,
@@ -466,7 +557,12 @@ func TestRuntimeTaskCommandRoutesTaskModeSubcommands(t *testing.T) {
 		_ = runtime.Close()
 	})
 
-	fakeSession.dispatchInteraction(taskInteractionEvent("user-1", taskActionNew, "Release work", ""))
+	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskCurrent, "", ""))
+	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskNew, "Release work", ""))
+
+	if len(taskService.currentCalls) != 1 {
+		t.Fatalf("current call count = %d, want %d", len(taskService.currentCalls), 1)
+	}
 
 	if len(taskService.createCalls) != 1 {
 		t.Fatalf("create call count = %d, want %d", len(taskService.createCalls), 1)
@@ -476,11 +572,11 @@ func TestRuntimeTaskCommandRoutesTaskModeSubcommands(t *testing.T) {
 		t.Fatalf("create task name = %q, want %q", taskService.createCalls[0].taskName, "Release work")
 	}
 
-	if len(fakeSession.interactionResponses) != 1 {
-		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 1)
+	if len(fakeSession.interactionResponses) != 2 {
+		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 2)
 	}
 
-	response := fakeSession.interactionResponses[0]
+	response := fakeSession.interactionResponses[1]
 	if response.Data == nil || response.Data.Flags != discordgo.MessageFlagsEphemeral {
 		t.Fatal("task response should be ephemeral")
 	}
@@ -567,9 +663,10 @@ func newTestRuntimeWithServicesAndClient(
 
 	runtime, err := NewRuntime(Dependencies{
 		Config: config.Config{
-			Mode:         mode,
-			TimezoneName: "Asia/Tokyo",
-			DiscordToken: "discord-token",
+			Mode:               mode,
+			TimezoneName:       "Asia/Tokyo",
+			DiscordToken:       "discord-token",
+			DiscordCommandName: "release",
 		},
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Message:     messageService,
@@ -586,39 +683,37 @@ func newTestRuntimeWithServicesAndClient(
 	return runtime
 }
 
-func taskInteractionEvent(userID string, action string, taskName string, taskID string) *discordgo.InteractionCreate {
+func commandInteractionEvent(commandName string, userID string, action string, taskName string, taskID string) *discordgo.InteractionCreate {
 	options := []*discordgo.ApplicationCommandInteractionDataOption{}
 	if action != "" {
-		subcommand := &discordgo.ApplicationCommandInteractionDataOption{
-			Name: action,
-			Type: discordgo.ApplicationCommandOptionSubCommand,
-		}
-		switch action {
-		case taskActionNew:
-			subcommand.Options = []*discordgo.ApplicationCommandInteractionDataOption{
-				{
-					Name:  "name",
-					Type:  discordgo.ApplicationCommandOptionString,
-					Value: taskName,
-				},
-			}
-		case taskActionSwitch, taskActionClose:
-			subcommand.Options = []*discordgo.ApplicationCommandInteractionDataOption{
-				{
-					Name:  "id",
-					Type:  discordgo.ApplicationCommandOptionString,
-					Value: taskID,
-				},
-			}
-		}
-		options = append(options, subcommand)
+		options = append(options, &discordgo.ApplicationCommandInteractionDataOption{
+			Name:  optionAction,
+			Type:  discordgo.ApplicationCommandOptionString,
+			Value: action,
+		})
+	}
+
+	if taskName != "" {
+		options = append(options, &discordgo.ApplicationCommandInteractionDataOption{
+			Name:  optionTaskName,
+			Type:  discordgo.ApplicationCommandOptionString,
+			Value: taskName,
+		})
+	}
+
+	if taskID != "" {
+		options = append(options, &discordgo.ApplicationCommandInteractionDataOption{
+			Name:  optionTaskID,
+			Type:  discordgo.ApplicationCommandOptionString,
+			Value: taskID,
+		})
 	}
 
 	return &discordgo.InteractionCreate{
 		Interaction: &discordgo.Interaction{
 			Type: discordgo.InteractionApplicationCommand,
 			Data: discordgo.ApplicationCommandInteractionData{
-				Name:    commandTask,
+				Name:    commandName,
 				Options: options,
 			},
 			Member: &discordgo.Member{
@@ -765,7 +860,8 @@ func (s *fakeMessageService) HandleMessage(ctx context.Context, request app.Mess
 }
 
 type fakeTaskCommandService struct {
-	createCalls []struct {
+	currentCalls []string
+	createCalls  []struct {
 		userID   string
 		taskName string
 	}
@@ -778,6 +874,7 @@ type fakeTaskCommandService struct {
 }
 
 func (s *fakeTaskCommandService) ShowCurrentTask(ctx context.Context, userID string) (app.MessageResponse, error) {
+	s.currentCalls = append(s.currentCalls, userID)
 	return s.currentResponse, nil
 }
 

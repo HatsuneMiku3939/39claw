@@ -20,6 +20,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_MODE":                         "task",
 				"CLAW_TIMEZONE":                     "Asia/Tokyo",
 				"CLAW_DISCORD_TOKEN":                "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME":         " Release-Bot ",
 				"CLAW_DISCORD_GUILD_ID":             "guild-1",
 				"CLAW_CODEX_WORKDIR":                "/workspace/project",
 				"CLAW_SQLITE_PATH":                  "/tmp/39claw.db",
@@ -41,6 +42,7 @@ func TestLoadFromLookup(t *testing.T) {
 				TimezoneName:               "Asia/Tokyo",
 				DiscordToken:               "discord-token",
 				DiscordGuildID:             "guild-1",
+				DiscordCommandName:         "release-bot",
 				SQLitePath:                 "/tmp/39claw.db",
 				CodexExecutable:            "/usr/local/bin/codex",
 				CodexBaseURL:               "https://example.test",
@@ -60,21 +62,23 @@ func TestLoadFromLookup(t *testing.T) {
 		{
 			name: "defaults optional values",
 			env: map[string]string{
-				"CLAW_MODE":             "daily",
-				"CLAW_TIMEZONE":         "UTC",
-				"CLAW_DISCORD_TOKEN":    "discord-token",
-				"CLAW_CODEX_WORKDIR":    "/workspace/project",
-				"CLAW_SQLITE_PATH":      "/tmp/39claw.db",
-				"CLAW_CODEX_EXECUTABLE": "codex",
+				"CLAW_MODE":                 "daily",
+				"CLAW_TIMEZONE":             "UTC",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "daily",
+				"CLAW_CODEX_WORKDIR":        "/workspace/project",
+				"CLAW_SQLITE_PATH":          "/tmp/39claw.db",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
 			},
 			want: Config{
-				Mode:            ModeDaily,
-				TimezoneName:    "UTC",
-				DiscordToken:    "discord-token",
-				SQLitePath:      "/tmp/39claw.db",
-				CodexExecutable: "codex",
-				CodexWorkdir:    "/workspace/project",
-				LogLevel:        "info",
+				Mode:               ModeDaily,
+				TimezoneName:       "UTC",
+				DiscordToken:       "discord-token",
+				DiscordCommandName: "daily",
+				SQLitePath:         "/tmp/39claw.db",
+				CodexExecutable:    "codex",
+				CodexWorkdir:       "/workspace/project",
+				LogLevel:           "info",
 			},
 		},
 		{
@@ -87,14 +91,28 @@ func TestLoadFromLookup(t *testing.T) {
 		{
 			name: "rejects unsupported mode",
 			env: map[string]string{
-				"CLAW_MODE":             "nightly",
-				"CLAW_TIMEZONE":         "UTC",
-				"CLAW_DISCORD_TOKEN":    "discord-token",
-				"CLAW_CODEX_WORKDIR":    "/workspace/project",
-				"CLAW_SQLITE_PATH":      "/tmp/39claw.db",
-				"CLAW_CODEX_EXECUTABLE": "codex",
+				"CLAW_MODE":                 "nightly",
+				"CLAW_TIMEZONE":             "UTC",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "release",
+				"CLAW_CODEX_WORKDIR":        "/workspace/project",
+				"CLAW_SQLITE_PATH":          "/tmp/39claw.db",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
 			},
 			wantErr: `unsupported CLAW_MODE "nightly"`,
+		},
+		{
+			name: "rejects invalid discord command name",
+			env: map[string]string{
+				"CLAW_MODE":                 "task",
+				"CLAW_TIMEZONE":             "UTC",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "Release_Bot",
+				"CLAW_CODEX_WORKDIR":        "/workspace/project",
+				"CLAW_SQLITE_PATH":          "/tmp/39claw.db",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
+			},
+			wantErr: `invalid CLAW_DISCORD_COMMAND_NAME "Release_Bot": use 1-32 lowercase letters, digits, or hyphens`,
 		},
 		{
 			name: "rejects invalid skip git repo check override",
@@ -102,6 +120,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_MODE":                      "task",
 				"CLAW_TIMEZONE":                  "UTC",
 				"CLAW_DISCORD_TOKEN":             "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME":      "release",
 				"CLAW_CODEX_WORKDIR":             "/workspace/project",
 				"CLAW_SQLITE_PATH":               "/tmp/39claw.db",
 				"CLAW_CODEX_EXECUTABLE":          "codex",
@@ -115,6 +134,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_MODE":                 "task",
 				"CLAW_TIMEZONE":             "UTC",
 				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "release",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
 				"CLAW_SQLITE_PATH":          "/tmp/39claw.db",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
@@ -125,12 +145,13 @@ func TestLoadFromLookup(t *testing.T) {
 		{
 			name: "rejects invalid timezone",
 			env: map[string]string{
-				"CLAW_MODE":             "daily",
-				"CLAW_TIMEZONE":         "Mars/Olympus",
-				"CLAW_DISCORD_TOKEN":    "discord-token",
-				"CLAW_CODEX_WORKDIR":    "/workspace/project",
-				"CLAW_SQLITE_PATH":      "/tmp/39claw.db",
-				"CLAW_CODEX_EXECUTABLE": "codex",
+				"CLAW_MODE":                 "daily",
+				"CLAW_TIMEZONE":             "Mars/Olympus",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "daily",
+				"CLAW_CODEX_WORKDIR":        "/workspace/project",
+				"CLAW_SQLITE_PATH":          "/tmp/39claw.db",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
 			},
 			wantErr: `load timezone "Mars/Olympus": unknown time zone Mars/Olympus`,
 		},
@@ -180,6 +201,10 @@ func TestLoadFromLookup(t *testing.T) {
 
 			if got.DiscordGuildID != tt.want.DiscordGuildID {
 				t.Fatalf("DiscordGuildID = %q, want %q", got.DiscordGuildID, tt.want.DiscordGuildID)
+			}
+
+			if got.DiscordCommandName != tt.want.DiscordCommandName {
+				t.Fatalf("DiscordCommandName = %q, want %q", got.DiscordCommandName, tt.want.DiscordCommandName)
 			}
 
 			if got.SQLitePath != tt.want.SQLitePath {
