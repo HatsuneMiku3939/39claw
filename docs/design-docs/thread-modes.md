@@ -16,13 +16,12 @@ The user should not need to manage thread state explicitly.
 The logical thread key is derived from:
 
 - user
-- channel
 - current local date
 
 Conceptually:
 
 ```text
-thread_key = user + channel + local_date
+thread_key = user + local_date
 ```
 
 ### Behavior
@@ -63,13 +62,12 @@ The user should be able to keep context attached to a named task instead of a da
 The logical thread key is derived from:
 
 - user
-- channel
 - explicit task identity
 
 Conceptually:
 
 ```text
-thread_key = user + channel + task_id
+thread_key = user + task_id
 ```
 
 ### Behavior

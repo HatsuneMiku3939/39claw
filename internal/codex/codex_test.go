@@ -9,7 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+)
+
+var (
+	helperWrapperPath string
+	helperWrapperErr  error
+	helperWrapperOnce sync.Once
 )
 
 func TestThreadRunReturnsCompletedTurn(t *testing.T) {
@@ -303,19 +310,35 @@ func newTestClient(t *testing.T, scenario string) (*Client, string) {
 func createHelperWrapper(t *testing.T) string {
 	t.Helper()
 
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatalf("os.Executable() error = %v", err)
+	helperWrapperOnce.Do(func() {
+		executable, err := os.Executable()
+		if err != nil {
+			helperWrapperErr = fmt.Errorf("os.Executable() error: %w", err)
+			return
+		}
+
+		tempDir, err := os.MkdirTemp("", "codex-helper-*")
+		if err != nil {
+			helperWrapperErr = fmt.Errorf("os.MkdirTemp() error: %w", err)
+			return
+		}
+
+		wrapperPath := filepath.Join(tempDir, "codex-helper")
+		script := fmt.Sprintf("#!/usr/bin/env bash\nexec %q -test.run=TestHelperProcess -- \"$@\"\n", executable)
+
+		if err := os.WriteFile(wrapperPath, []byte(script), 0o755); err != nil {
+			helperWrapperErr = fmt.Errorf("os.WriteFile() error: %w", err)
+			return
+		}
+
+		helperWrapperPath = wrapperPath
+	})
+
+	if helperWrapperErr != nil {
+		t.Fatal(helperWrapperErr)
 	}
 
-	wrapperPath := filepath.Join(t.TempDir(), "codex-helper")
-	script := fmt.Sprintf("#!/usr/bin/env bash\nexec %q -test.run=TestHelperProcess -- \"$@\"\n", executable)
-
-	if err := os.WriteFile(wrapperPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("os.WriteFile() error = %v", err)
-	}
-
-	return wrapperPath
+	return helperWrapperPath
 }
 
 func runHelperProcess() error {
