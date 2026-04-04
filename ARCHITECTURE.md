@@ -195,12 +195,12 @@ Responsibilities:
 Purpose:
 
 - support lightweight daily continuity without explicit task management
-- support knowledge-oriented conversation against a repository that primarily contains instructions and documentation
+- support shared, knowledge-oriented conversation against a repository that primarily contains instructions and documentation
 
 Logical key concept:
 
 ```text
-thread_key = user + local_date
+thread_key = local_date
 ```
 
 Behavior:
@@ -215,11 +215,12 @@ Properties:
 
 - no explicit thread command is required for normal usage
 - simple and low-friction
-- best for conversation-oriented flows
+- best for shared, conversation-oriented assistant flows
 
 Tradeoffs:
 
 - long-running work may be split across date boundaries
+- unrelated same-day conversations may influence one another inside the shared daily context
 - timezone must be an explicit configuration concern
 
 ## 7.2 `task`

@@ -15,13 +15,12 @@ The user should not need to manage thread state explicitly.
 
 The logical thread key is derived from:
 
-- user
 - current local date
 
 Conceptually:
 
 ```text
-thread_key = user + local_date
+thread_key = local_date
 ```
 
 ### Behavior
@@ -43,11 +42,13 @@ Benefits:
 
 - simple and predictable
 - low-friction user experience
+- supports a shared-assistant feel for a bounded team environment
 - very easy to explain
 
 Costs:
 
 - long-running work may be split across calendar boundaries
+- unrelated same-day conversations may share context
 - the definition of "day" depends on a configured timezone
 
 ## Mode B: `task`
