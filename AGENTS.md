@@ -79,6 +79,8 @@ The repository includes a `Makefile` for common development checks.
   - Project principles and architectural beliefs
 - `docs/design-docs/architecture-overview.md`
   - Short onboarding summary of the system shape and request flow
+- `docs/design-docs/implementation-spec.md`
+  - Short implementation-facing defaults that close the remaining v1 gaps between architecture and product specs
 - `docs/design-docs/thread-modes.md`
   - `daily` and `task` mode definitions, expected behavior, and tradeoffs
 - `docs/design-docs/state-and-storage.md`
