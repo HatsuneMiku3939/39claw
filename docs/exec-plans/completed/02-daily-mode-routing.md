@@ -177,3 +177,4 @@ Keep the Discord runtime out of scope here. The app tests should speak in reques
 Revision Note: 2026-04-04 / Codex - Created this smaller child ExecPlan during the split of the original all-in-one runtime plan.
 Revision Note: 2026-04-04 / Codex - Removed the parent-plan dependency and added explicit starting-state and recovery guidance so the document can stand alone.
 Revision Note: 2026-04-05 / Codex - Recorded the completed application-layer daily routing implementation, updated proof commands, and captured the thread-ID persistence nuance.
+Revision Note: 2026-04-05 / Codex - Moved this fully completed ExecPlan from `active/` to `completed/` during ExecPlan index cleanup.
