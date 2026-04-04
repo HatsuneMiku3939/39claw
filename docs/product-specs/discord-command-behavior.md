@@ -1,6 +1,6 @@
 # Discord Command Behavior
 
-Status: Draft
+Status: Active
 
 ## Purpose
 

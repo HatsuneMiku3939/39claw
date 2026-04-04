@@ -1,6 +1,6 @@
 # Daily Mode User Flow
 
-Status: Draft
+Status: Active
 
 ## Purpose
 
