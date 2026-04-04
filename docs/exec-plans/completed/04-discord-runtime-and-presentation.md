@@ -17,7 +17,7 @@ After this plan, `39claw` should expose the implemented application behavior thr
 - [x] (2026-04-05 03:42Z) Added `/help` and `/task ...` slash-command registration and routing, using `/task current` for the current-task action.
 - [x] (2026-04-05 03:42Z) Added ephemeral task-command responses and Discord-safe response chunking that preserves fenced code blocks when practical.
 - [x] (2026-04-05 03:42Z) Added runtime-level tests and a README smoke-test checklist.
-- [ ] Run the manual smoke test against a disposable Discord server and record the result here.
+- [x] (2026-04-05 08:45Z) Archived this ExecPlan after the implementation merged to `master`; the remaining manual smoke test is now tracked in `docs/exec-plans/tech-debt-tracker.md`.
 
 ## Surprises & Discoveries
 
@@ -51,6 +51,8 @@ After this plan, `39claw` should expose the implemented application behavior thr
 The outcome of this plan should be a bot that is observable from Discord, not just from unit tests. Success means the end-user workflow now matches the product docs closely enough for a real smoke test.
 
 The runtime implementation is now in place and covered by focused tests. `cmd/39claw` boots a real Discord adapter, message mentions route through the app layer, slash commands are registered and presented correctly, task-control responses are ephemeral, and long output is chunked for Discord readability. The remaining gap is only the final real-server smoke test, which still requires disposable Discord credentials.
+
+This document is now archived in `completed/` because the implementation work itself has landed on `master`. The deferred live smoke test remains tracked separately so contributors can still find the one remaining validation gap without keeping the whole plan in `active/`.
 
 ## Context and Orientation
 
@@ -198,3 +200,4 @@ Keep `discordgo` imports inside `internal/runtime/discord` and `cmd/39claw` only
 Revision Note: 2026-04-04 / Codex - Created this smaller child ExecPlan during the split of the original all-in-one runtime plan.
 Revision Note: 2026-04-04 / Codex - Removed the parent-plan dependency and added explicit starting-state and recovery guidance so the document can stand alone.
 Revision Note: 2026-04-05 / Codex - Recorded the implemented runtime progress, the `/task current` command-shape decision, and the optional guild-scoped command-registration path for faster smoke tests.
+Revision Note: 2026-04-05 / Codex - Moved this plan to `completed/` after merge and recorded the deferred manual smoke test in `docs/exec-plans/tech-debt-tracker.md`.
