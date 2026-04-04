@@ -10,13 +10,13 @@ import (
 )
 
 const (
-	noActiveTaskMessage        = "No active task is selected. Use `/task new <name>`, `/task list`, or `/task switch <id>` first."
 	queueFullMessage           = "This conversation already has five queued messages. Please retry in a moment."
 	queuedInternalErrorMessage = "Something went wrong while handling your queued message. Please retry in a moment."
 )
 
 type MessageServiceDependencies struct {
 	Mode        config.Mode
+	CommandName string
 	Policy      ThreadPolicy
 	Store       ThreadStore
 	Gateway     CodexGateway
@@ -25,6 +25,7 @@ type MessageServiceDependencies struct {
 
 type DefaultMessageService struct {
 	mode        config.Mode
+	commands    commandSurface
 	policy      ThreadPolicy
 	store       ThreadStore
 	gateway     CodexGateway
@@ -34,6 +35,11 @@ type DefaultMessageService struct {
 func NewMessageService(deps MessageServiceDependencies) (*DefaultMessageService, error) {
 	if deps.Mode == "" {
 		return nil, errors.New("mode must not be empty")
+	}
+
+	commandName := strings.TrimSpace(deps.CommandName)
+	if commandName == "" {
+		return nil, errors.New("command name must not be empty")
 	}
 
 	if deps.Policy == nil {
@@ -54,6 +60,7 @@ func NewMessageService(deps MessageServiceDependencies) (*DefaultMessageService,
 
 	return &DefaultMessageService{
 		mode:        deps.Mode,
+		commands:    newCommandSurface(commandName),
 		policy:      deps.Policy,
 		store:       deps.Store,
 		gateway:     deps.Gateway,
@@ -130,7 +137,7 @@ func (s *DefaultMessageService) prepareMessage(
 	if err != nil {
 		if errors.Is(err, ErrNoActiveTask) {
 			return preparedMessage{}, MessageResponse{
-				Text:      noActiveTaskMessage,
+				Text:      s.noActiveTaskMessage(),
 				ReplyToID: request.MessageID,
 			}, true, nil
 		}
@@ -159,6 +166,15 @@ func (s *DefaultMessageService) prepareMessage(
 	}
 
 	return prepared, MessageResponse{}, false, nil
+}
+
+func (s *DefaultMessageService) noActiveTaskMessage() string {
+	return fmt.Sprintf(
+		"No active task is selected. Use %s, %s, or %s first.",
+		s.commands.taskNewPlaceholder(),
+		s.commands.taskList(),
+		s.commands.taskSwitchPlaceholder(),
+	)
 }
 
 func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prepared preparedMessage) (MessageResponse, error) {

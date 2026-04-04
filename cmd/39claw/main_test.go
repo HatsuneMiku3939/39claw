@@ -41,12 +41,14 @@ func TestRun(t *testing.T) {
 		{
 			name: "boots foundation path and exits cleanly on canceled context",
 			env: map[string]string{
-				"CLAW_MODE":             "daily",
-				"CLAW_TIMEZONE":         "Asia/Tokyo",
-				"CLAW_DISCORD_TOKEN":    "discord-token",
-				"CLAW_CODEX_WORKDIR":    "/workspace/project",
-				"CLAW_CODEX_EXECUTABLE": "codex",
-				"CLAW_LOG_LEVEL":        "debug",
+				"CLAW_MODE":                 "daily",
+				"CLAW_TIMEZONE":             "Asia/Tokyo",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "daily",
+				"CLAW_CODEX_WORKDIR":        "/workspace/project",
+				"CLAW_DATADIR":              "",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
+				"CLAW_LOG_LEVEL":            "debug",
 			},
 			wantThreadOptions: codex.ThreadOptions{
 				WorkingDirectory: "/workspace/project",
@@ -61,6 +63,7 @@ func TestRun(t *testing.T) {
 				"CLAW_MODE":                         "task",
 				"CLAW_TIMEZONE":                     "Asia/Tokyo",
 				"CLAW_DISCORD_TOKEN":                "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME":         "release",
 				"CLAW_CODEX_WORKDIR":                "/workspace/project",
 				"CLAW_CODEX_EXECUTABLE":             "codex",
 				"CLAW_CODEX_MODEL":                  "gpt-test",

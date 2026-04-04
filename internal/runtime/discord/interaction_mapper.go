@@ -7,26 +7,24 @@ import (
 )
 
 const (
-	commandHelp = "help"
-	commandTask = "task"
+	optionAction   = "action"
+	optionTaskName = "task_name"
+	optionTaskID   = "task_id"
 
-	taskActionCurrent = "current"
-	taskActionList    = "list"
-	taskActionNew     = "new"
-	taskActionSwitch  = "switch"
-	taskActionClose   = "close"
+	actionHelp        = "help"
+	actionTaskCurrent = "task-current"
+	actionTaskList    = "task-list"
+	actionTaskNew     = "task-new"
+	actionTaskSwitch  = "task-switch"
+	actionTaskClose   = "task-close"
 )
 
 type commandRequest struct {
-	Name   string
-	UserID string
-	Task   taskCommandRequest
-}
-
-type taskCommandRequest struct {
-	Action string
-	Name   string
-	ID     string
+	Name     string
+	Action   string
+	UserID   string
+	TaskName string
+	TaskID   string
 }
 
 func mapInteractionCommand(event *discordgo.InteractionCreate) (commandRequest, bool) {
@@ -36,19 +34,17 @@ func mapInteractionCommand(event *discordgo.InteractionCreate) (commandRequest, 
 
 	data := event.ApplicationCommandData()
 	request := commandRequest{
-		Name:   data.Name,
-		UserID: interactionUserID(event.Interaction),
+		Name:     data.Name,
+		Action:   optionStringValue(data.Options, optionAction),
+		UserID:   interactionUserID(event.Interaction),
+		TaskName: optionStringValue(data.Options, optionTaskName),
+		TaskID:   optionStringValue(data.Options, optionTaskID),
 	}
 
 	if request.UserID == "" {
 		return commandRequest{}, false
 	}
 
-	if data.Name != commandTask {
-		return request, true
-	}
-
-	request.Task = mapTaskCommand(data.Options)
 	return request, true
 }
 
@@ -66,26 +62,6 @@ func interactionUserID(interaction *discordgo.Interaction) string {
 	}
 
 	return ""
-}
-
-func mapTaskCommand(options []*discordgo.ApplicationCommandInteractionDataOption) taskCommandRequest {
-	if len(options) == 0 {
-		return taskCommandRequest{Action: taskActionCurrent}
-	}
-
-	subcommand := options[0]
-	request := taskCommandRequest{
-		Action: strings.TrimSpace(subcommand.Name),
-	}
-
-	switch request.Action {
-	case taskActionNew:
-		request.Name = optionStringValue(subcommand.Options, "name")
-	case taskActionSwitch, taskActionClose:
-		request.ID = optionStringValue(subcommand.Options, "id")
-	}
-
-	return request
 }
 
 func optionStringValue(options []*discordgo.ApplicationCommandInteractionDataOption, name string) string {

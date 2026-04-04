@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ type Config struct {
 	TimezoneName               string
 	DiscordToken               string
 	DiscordGuildID             string
+	DiscordCommandName         string
 	DataDir                    string
 	SQLitePath                 string
 	CodexExecutable            string
@@ -39,6 +41,8 @@ type Config struct {
 	LogLevel                   string
 }
 
+var discordCommandNamePattern = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
+
 func LoadFromEnv() (Config, error) {
 	return LoadFromLookup(os.LookupEnv)
 }
@@ -48,6 +52,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		"CLAW_MODE",
 		"CLAW_TIMEZONE",
 		"CLAW_DISCORD_TOKEN",
+		"CLAW_DISCORD_COMMAND_NAME",
 		"CLAW_CODEX_WORKDIR",
 		"CLAW_DATADIR",
 		"CLAW_CODEX_EXECUTABLE",
@@ -95,6 +100,11 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, fmt.Errorf("load timezone %q: %w", values["CLAW_TIMEZONE"], err)
 	}
 
+	discordCommandName, err := parseDiscordCommandName(values["CLAW_DISCORD_COMMAND_NAME"])
+	if err != nil {
+		return Config{}, err
+	}
+
 	logLevel := values["CLAW_LOG_LEVEL"]
 	if logLevel == "" {
 		logLevel = "info"
@@ -116,6 +126,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		TimezoneName:               values["CLAW_TIMEZONE"],
 		DiscordToken:               values["CLAW_DISCORD_TOKEN"],
 		DiscordGuildID:             values["CLAW_DISCORD_GUILD_ID"],
+		DiscordCommandName:         discordCommandName,
 		DataDir:                    values["CLAW_DATADIR"],
 		SQLitePath:                 sqlitePath(values["CLAW_DATADIR"]),
 		CodexExecutable:            values["CLAW_CODEX_EXECUTABLE"],
@@ -147,6 +158,18 @@ func parseMode(raw string) (Mode, error) {
 	default:
 		return "", fmt.Errorf("unsupported CLAW_MODE %q", raw)
 	}
+}
+
+func parseDiscordCommandName(raw string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	if !discordCommandNamePattern.MatchString(normalized) {
+		return "", fmt.Errorf(
+			"invalid CLAW_DISCORD_COMMAND_NAME %q: use 1-32 lowercase letters, digits, or hyphens",
+			raw,
+		)
+	}
+
+	return normalized, nil
 }
 
 func splitAdditionalDirectories(raw string) []string {

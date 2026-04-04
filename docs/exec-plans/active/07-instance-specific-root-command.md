@@ -13,13 +13,14 @@ The user-visible proof is simple. If a bot instance starts with `CLAW_DISCORD_CO
 ## Progress
 
 - [x] (2026-04-04 22:29Z) Captured the UX problem, chose the one-root-command-per-instance direction, and wrote this ExecPlan.
-- [ ] Add configuration support for a required instance command name.
-- [ ] Replace the shared `/help` and `/task ...` Discord registration schema with one configurable root command per bot instance.
-- [ ] Rewrite interaction mapping and runtime routing to dispatch by explicit action choice instead of slash-command name plus task subcommand.
-- [ ] Update help text and task guidance so every response refers to the configured root command and identifies the current bot instance clearly.
-- [ ] Add and update Go tests for configuration loading, command registration, interaction parsing, runtime routing, and response wording.
-- [ ] Update `README.md`, `docs/product-specs/discord-command-behavior.md`, `docs/product-specs/task-mode-user-flow.md`, and `docs/design-docs/implementation-spec.md` to describe the new command surface.
-- [ ] Run `make test` and `make lint`, then manually confirm in Discord that one bot instance contributes only one command-search entry.
+- [x] (2026-04-04 23:07Z) Added required `CLAW_DISCORD_COMMAND_NAME` loading, normalization, and validation in `internal/config`.
+- [x] (2026-04-04 23:07Z) Replaced shared `/help` and `/task ...` registration with one configurable root command plus `action`, `task_name`, and `task_id` options.
+- [x] (2026-04-04 23:07Z) Rewrote interaction parsing and runtime routing to dispatch by explicit action choices rather than command-name/subcommand pairs.
+- [x] (2026-04-04 23:07Z) Updated help text and task guidance so responses reference the configured root command and current mode.
+- [x] (2026-04-04 23:07Z) Added and updated Go tests for config loading, command registration, interaction parsing, runtime routing, and root-command response wording.
+- [x] (2026-04-04 23:07Z) Updated `README.md`, `docs/product-specs/discord-command-behavior.md`, `docs/product-specs/task-mode-user-flow.md`, and `docs/design-docs/implementation-spec.md` to describe the new command surface.
+- [x] (2026-04-04 23:07Z) Ran `make test` and `make lint` successfully after the implementation landed.
+- [x] (2026-04-04 23:28Z) Manually confirmed in Discord that a guild-scoped bot instance contributes one `/claw` root command entry and that the task-mode smoke flow succeeds end to end.
 
 ## Surprises & Discoveries
 
@@ -31,6 +32,12 @@ The user-visible proof is simple. If a bot instance starts with `CLAW_DISCORD_CO
 
 - Observation: The current configuration has no concept of bot-instance identity on the Discord command surface, so two instances installed in one server necessarily collide on `/help` and `/task`.
   Evidence: `internal/config/config.go` and `README.md`.
+
+- Observation: Task guidance text is not isolated to the Discord runtime. The app-layer message and task services also embed command examples, so the configured root command has to flow into those services to keep user-facing copy consistent.
+  Evidence: `internal/app/message_service_impl.go` and `internal/app/task_service.go`.
+
+- Observation: Global slash-command propagation is slow enough to obscure local validation, while guild-scoped registration reflects the new root command almost immediately.
+  Evidence: Manual verification on 2026-04-04 showed `/claw` was not yet visible during global registration, then appeared immediately after setting `CLAW_DISCORD_GUILD_ID` for the same instance.
 
 ## Decision Log
 
@@ -50,9 +57,13 @@ The user-visible proof is simple. If a bot instance starts with `CLAW_DISCORD_CO
   Rationale: The selected direction is “one instance-specific root command” because it is more native to Discord UI. Mixing in mention-side command parsing would broaden the scope and blur the product contract again.
   Date/Author: 2026-04-04 / Codex
 
+- Decision: Pass the configured root command name into the app-layer message and task services so all recovery guidance uses the same command surface.
+  Rationale: Missing-task and task-state responses are produced below the Discord runtime boundary. Keeping those strings aligned at the source avoids a split-brain UX where slash-command help and task guidance disagree.
+  Date/Author: 2026-04-04 / Codex
+
 ## Outcomes & Retrospective
 
-Implementation has not started yet beyond plan authoring. The expected outcome is a command surface that scales with the number of installed bot instances instead of scaling with instances multiplied by slash-command variants. This plan also intentionally adds instance identity to user-facing help text so users can tell which 39claw deployment they are talking to after selecting the root command.
+Implementation is complete in code, tests, repository docs, and manual Discord smoke validation. The resulting command surface now scales with the number of installed bot instances instead of scaling with instances multiplied by slash-command variants, and help/task guidance consistently identifies the configured root command for the current deployment. Manual validation in a guild confirmed that one instance contributes one `/claw` root command entry and that the task-mode smoke flow works end to end when guild-scoped registration is used for immediate propagation.
 
 ## Context and Orientation
 

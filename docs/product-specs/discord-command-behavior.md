@@ -53,8 +53,8 @@ Command interaction refers to explicit control operations used to manage bot sta
 Examples may include:
 
 - slash commands
-- `/task ...` task management commands for `task` mode bot instances
-- `/help`
+- one instance-specific root command such as `/release`
+- action choices such as `help` or `task-new`
 
 ### 3. Non-supported or ignored interaction
 
@@ -98,73 +98,79 @@ If the user input does not meet response criteria, the bot should stay silent.
 
 `task` mode requires explicit workflow control, so the task interaction surface should be especially clear.
 
-### Command family decision
+### Root command decision
 
-For v1, task-control interactions should be exposed through a `/task ...` command family.
+For v1, task-control interactions should be exposed through one instance-specific root command.
+The command name should come from the bot-instance configuration, so different deployments can expose different root commands inside the same Discord server.
 
 This means:
 
-- bot instances configured for `task` mode should accept `/task ...` commands
-- bot instances configured for `daily` mode should not expose task-control behavior as normal workflow
-- `/help` should remain available as a general command surface
+- every bot instance should expose exactly one slash-command search result
+- bot instances configured for `task` mode should expose task actions through that root command
+- bot instances configured for `daily` mode should expose only `help` through that root command
 - users should not need to guess between natural-language task control and slash-command task control
 
 ### Minimum command capabilities
 
-The `/task ...` command family should support user-facing actions for:
+The root command should support user-facing actions for:
 
-- `/task current`
+- `/<instance-command> action:task-current`
   - show the current task name and ID
-- `/task list`
+- `/<instance-command> action:task-list`
   - show task names and IDs
-- `/task new <name>`
+- `/<instance-command> action:task-new task_name:<name>`
   - create a new task and switch the active task to it
-- `/task switch <id>`
+- `/<instance-command> action:task-switch task_id:<id>`
   - switch the active task to the specified task
-- `/task close <id>`
+- `/<instance-command> action:task-close task_id:<id>`
   - close the specified task
+
+Every instance should also support:
+
+- `/<instance-command> action:help`
+  - show the commands available for that bot instance
 
 ### Expected command properties
 
-`/task ...` commands should be:
+The root-command action surface should be:
 
 - explicit
 - easy to discover
 - hard to misunderstand
 - consistent in naming and output structure
 
-`/help` should:
+`action:help` should:
 
 - list the supported command surface for the current bot instance
-- explain `/task ...` only when that workflow is available for the current bot instance
+- explain task actions only when that workflow is available for the current bot instance
 - help users recover from missing-context situations without reading internal docs
 
 ### Success behavior
 
-When a `/task ...` command succeeds, the response should tell the user:
+When a task action succeeds, the response should tell the user:
 
 - what changed
 - what the active task is now, if relevant
 - what they can do next
 
-When `/help` succeeds, the response should give a concise list of supported commands and a short explanation of when to use them.
+When `action:help` succeeds, the response should give a concise list of supported actions and a short explanation of when to use them.
 
 ### Failure behavior
 
-When a `/task ...` command fails, the response should:
+When a task action fails, the response should:
 
 - say what could not be completed
 - explain the reason in user-facing language
 - suggest the next action when possible
 
-If `/task ...` is invoked against a bot instance running in `daily` mode, the bot should explain that task commands are not available for that instance rather than pretending the command was accepted.
+If a task action is invoked against a bot instance running in `daily` mode, the bot should explain that task actions are not available for that instance rather than pretending the command was accepted.
 
 ## Ambiguous Input Handling
 
 ### Missing task context
 
 If `task` mode requires an active task and none exists, the bot should not guess.
-It should tell the user what is missing and what `/task ...` command or action to use next.
+It should tell the user what is missing and what `/<instance-command> action:task-*` command to use next.
 
 ### Ambiguous command intent
 
@@ -215,14 +221,14 @@ The product should make it easy for users to discover supported command behavior
 
 Possible mechanisms include:
 
-- a `/help` command
-- task-mode guidance that points users toward `/task ...` commands when task context is missing
+- an instance-specific root command with `action:help`
+- task-mode guidance that points users toward task actions when task context is missing
 - short affordance text after successful state-changing commands
 
-`/help` does not need deep mode-specific customization in v1.
+`action:help` does not need deep mode-specific customization in v1.
 It should still reflect the commands that are actually available in the current bot instance.
-`daily` mode bot instances should avoid advertising unsupported `/task ...` workflow.
-In the Discord slash-command UI, the “show current task” action is exposed as `/task current` so it can live alongside the other explicit task subcommands.
+`daily` mode bot instances should avoid advertising unsupported task workflow.
+In the Discord slash-command UI, task-control behavior should appear as action choices under one root command rather than as multiple searchable leaf commands.
 
 ## Non-Goals
 
@@ -235,5 +241,6 @@ This command behavior layer is not intended to:
 ## Decisions
 
 - v1 normal-message triggering should be mention-only.
-- `/help` should stay structurally simple in v1, but it should only describe commands that are actually available in the current bot instance.
+- each bot instance should register exactly one slash command whose name identifies that instance in Discord search.
+- `action:help` should stay structurally simple in v1, but it should only describe commands that are actually available in the current bot instance.
 - Unsupported invocation patterns should be ignored rather than acknowledged with lightweight feedback.
