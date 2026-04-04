@@ -289,7 +289,7 @@ func (c cliConfig) threadOptions() (codex.ThreadOptions, error) {
 	}
 
 	if c.sandboxMode != "" {
-		mode, err := parseSandboxMode(c.sandboxMode)
+		mode, err := codex.ParseSandboxMode(c.sandboxMode)
 		if err != nil {
 			return codex.ThreadOptions{}, err
 		}
@@ -298,7 +298,7 @@ func (c cliConfig) threadOptions() (codex.ThreadOptions, error) {
 	}
 
 	if c.approvalPolicy != "" {
-		policy, err := parseApprovalPolicy(c.approvalPolicy)
+		policy, err := codex.ParseApprovalPolicy(c.approvalPolicy)
 		if err != nil {
 			return codex.ThreadOptions{}, err
 		}
@@ -307,7 +307,7 @@ func (c cliConfig) threadOptions() (codex.ThreadOptions, error) {
 	}
 
 	if c.modelReasoningEffort != "" {
-		effort, err := parseReasoningEffort(c.modelReasoningEffort)
+		effort, err := codex.ParseModelReasoningEffort(c.modelReasoningEffort)
 		if err != nil {
 			return codex.ThreadOptions{}, err
 		}
@@ -316,7 +316,7 @@ func (c cliConfig) threadOptions() (codex.ThreadOptions, error) {
 	}
 
 	if c.webSearchMode != "" {
-		mode, err := parseWebSearchMode(c.webSearchMode)
+		mode, err := codex.ParseWebSearchMode(c.webSearchMode)
 		if err != nil {
 			return codex.ThreadOptions{}, err
 		}
@@ -334,44 +334,4 @@ func (c cliConfig) threadOptions() (codex.ThreadOptions, error) {
 	}
 
 	return options, nil
-}
-
-func parseSandboxMode(value string) (codex.SandboxMode, error) {
-	switch codex.SandboxMode(value) {
-	case codex.SandboxModeReadOnly, codex.SandboxModeWorkspaceWrite, codex.SandboxModeDangerFullAccess:
-		return codex.SandboxMode(value), nil
-	default:
-		return "", fmt.Errorf("invalid sandbox mode %q", value)
-	}
-}
-
-func parseApprovalPolicy(value string) (codex.ApprovalMode, error) {
-	switch codex.ApprovalMode(value) {
-	case codex.ApprovalModeNever, codex.ApprovalModeOnRequest, codex.ApprovalModeOnFailure, codex.ApprovalModeUntrusted:
-		return codex.ApprovalMode(value), nil
-	default:
-		return "", fmt.Errorf("invalid approval policy %q", value)
-	}
-}
-
-func parseReasoningEffort(value string) (codex.ModelReasoningEffort, error) {
-	switch codex.ModelReasoningEffort(value) {
-	case codex.ModelReasoningEffortMinimal,
-		codex.ModelReasoningEffortLow,
-		codex.ModelReasoningEffortMedium,
-		codex.ModelReasoningEffortHigh,
-		codex.ModelReasoningEffortXHigh:
-		return codex.ModelReasoningEffort(value), nil
-	default:
-		return "", fmt.Errorf("invalid model reasoning effort %q", value)
-	}
-}
-
-func parseWebSearchMode(value string) (codex.WebSearchMode, error) {
-	switch codex.WebSearchMode(value) {
-	case codex.WebSearchModeDisabled, codex.WebSearchModeCached, codex.WebSearchModeLive:
-		return codex.WebSearchMode(value), nil
-	default:
-		return "", fmt.Errorf("invalid web search mode %q", value)
-	}
 }

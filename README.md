@@ -62,6 +62,7 @@ For the intended system shape, thread model, and user-facing behavior, start wit
 
 For manual integration checks, use `cmd/codexplay` to exercise the adapter against the real `codex` CLI.
 For the main bot bootstrap, configure the required environment variables from `docs/design-docs/implementation-spec.md` before running `go run ./cmd/39claw`.
+39claw also supports optional Codex thread-option env vars so deployments can tune the runtime without patching source defaults.
 
 For faster slash-command iteration in a disposable Discord server, set the optional `CLAW_DISCORD_GUILD_ID` environment variable.
 When it is set, 39claw overwrites commands in that guild on startup.
@@ -77,6 +78,28 @@ A minimal smoke-test launch looks like this:
     CLAW_SQLITE_PATH=/tmp/39claw-dev.sqlite \
     CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex \
     go run ./cmd/39claw
+
+Optional Codex thread-option overrides:
+
+- `CLAW_CODEX_MODEL`
+  - sets the Codex model name
+- `CLAW_CODEX_SANDBOX_MODE`
+  - accepts `read-only`, `workspace-write`, or `danger-full-access`
+  - defaults to `workspace-write`
+- `CLAW_CODEX_ADDITIONAL_DIRECTORIES`
+  - adds writable directories using the OS path-list separator such as `:` on Unix
+- `CLAW_CODEX_SKIP_GIT_REPO_CHECK`
+  - accepts `true` or `false`
+- `CLAW_CODEX_APPROVAL_POLICY`
+  - accepts `never`, `on-request`, `on-failure`, or `untrusted`
+  - defaults to `never`
+- `CLAW_CODEX_MODEL_REASONING_EFFORT`
+  - accepts `minimal`, `low`, `medium`, `high`, or `xhigh`
+- `CLAW_CODEX_WEB_SEARCH_MODE`
+  - accepts `disabled`, `cached`, or `live`
+  - defaults to `live`
+- `CLAW_CODEX_NETWORK_ACCESS`
+  - accepts `true` or `false`
 
 Smoke-test checklist:
 
