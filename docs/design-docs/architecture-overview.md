@@ -24,7 +24,7 @@ This leads to two distinct mode families on the same foundation:
 - `daily`
   - knowledge-oriented interaction against repository instructions and documentation
 - `task`
-  - execution-oriented interaction against a work repository where Codex can help perform operational tasks
+  - execution-oriented interaction against a Git work repository where each task eventually runs inside its own task-specific worktree
 
 The detailed rationale for these modes lives in `ARCHITECTURE.md` and `thread-modes.md`.
 
@@ -55,11 +55,11 @@ Converts Discord context into a logical thread key according to the globally con
 
 ### Thread Store
 
-Persists the local continuity data that lets 39claw resume the correct Codex thread.
+Persists the local continuity data that lets 39claw resume the correct Codex thread, plus task and task-worktree metadata in `task` mode.
 
 ### Codex Gateway
 
-Owns the direct integration with the Codex SDK or Codex API layer.
+Owns the direct integration with the Codex SDK or Codex API layer, including the effective working directory for each turn.
 
 ### Response Presenter
 

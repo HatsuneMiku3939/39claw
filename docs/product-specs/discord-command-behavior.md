@@ -153,6 +153,10 @@ When a task action succeeds, the response should tell the user:
 - what the active task is now, if relevant
 - what they can do next
 
+For `action:task-new`, the success response should set the expectation that the first normal message may prepare the task workspace before Codex answers.
+
+For `action:task-close`, the success response does not need to describe background worktree pruning in detail, but the product behavior should remain consistent with the task retention policy.
+
 When `action:help` succeeds, the response should give a concise list of supported actions and a short explanation of when to use them.
 
 ### Failure behavior
@@ -171,6 +175,11 @@ If a task action is invoked against a bot instance running in `daily` mode, the 
 
 If `task` mode requires an active task and none exists, the bot should not guess.
 It should tell the user what is missing and what `/<instance-command> action:task-*` command to use next.
+
+### Workspace preparation failure
+
+If a normal message targets a task whose workspace cannot be prepared yet, the bot should not claim that Codex processed the turn.
+It should explain that the task workspace could not be prepared and tell the user to retry.
 
 ### Ambiguous command intent
 
@@ -244,3 +253,4 @@ This command behavior layer is not intended to:
 - each bot instance should register exactly one slash command whose name identifies that instance in Discord search.
 - `action:help` should stay structurally simple in v1, but it should only describe commands that are actually available in the current bot instance.
 - Unsupported invocation patterns should be ignored rather than acknowledged with lightweight feedback.
+- In `task` mode, the configured workdir is a Git repository source for task worktrees rather than only one shared execution directory.

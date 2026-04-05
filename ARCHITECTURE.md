@@ -55,7 +55,7 @@ Instead, it routes Discord interactions into Codex threads that operate against 
 The distinction between `daily` mode and `task` mode is therefore not a different execution engine.
 It is a difference in the role of the repository that Codex is operating against.
 
-- In `task` mode, the repository is an execution-oriented work repository where Codex can help perform operational tasks such as code changes, pull request handling, and release workflows.
+- In `task` mode, the configured workdir must be a Git repository that serves as the source repository for task-isolated worktrees, allowing Codex to help perform operational tasks such as code changes, pull request handling, and release workflows.
 - In `daily` mode, the repository is a knowledge-oriented repository that primarily contains instructions and documentation, allowing Codex to answer questions by following local guidance and searching the knowledge base.
 
 Both modes share the same Codex-native foundation.
@@ -165,7 +165,7 @@ The thread store persists the mapping between:
 - logical thread key
 - Codex thread ID
 
-In `task` mode, a separate state store is also needed to track the currently selected task for a user within the current bot instance.
+In `task` mode, the thread store must also track task records, the currently selected task for a user within the current bot instance, and task worktree metadata such as branch name, worktree path, and worktree lifecycle state.
 
 ### 6.5 Queue Coordinator
 
@@ -189,6 +189,7 @@ Responsibilities:
 
 - resume remote threads by ID
 - send a turn to Codex
+- accept the effective working directory for the turn
 - return the resulting remote thread ID for persistence when the first turn creates it
 - normalize Codex output for the application layer
 
@@ -244,7 +245,7 @@ Tradeoffs:
 Purpose:
 
 - support longer-running work streams with explicit task identity
-- support execution-oriented repository work through Discord
+- support execution-oriented repository work through Discord using task-isolated Git worktrees
 
 Logical key concept:
 
@@ -254,10 +255,13 @@ thread_key = user + task_id
 
 Behavior:
 
+- `task` mode requires `CLAW_CODEX_WORKDIR` to be a Git repository
 - normal messages require an active task context
+- each task reserves its own branch identity and eventually its own Git worktree
 - messages route to the thread bound to the active task
+- the first normal message for a task may lazily create the task worktree before Codex runs
 - changing the active task changes the target thread
-- each task maps to a distinct Codex conversation thread, so switching tasks also switches execution context
+- each task maps to a distinct Codex conversation thread, so switching tasks also switches execution context and working directory once the task worktree exists
 
 Minimum v1 UX requirements:
 
@@ -276,6 +280,7 @@ Tradeoffs:
 
 - requires more explicit user interaction
 - requires task-state persistence in addition to thread binding
+- requires Git worktree lifecycle management and cleanup policy
 
 ## 8. Request Flow
 
@@ -308,6 +313,7 @@ The minimum persistent state for v1 is:
 
 - thread bindings
 - active task selection for `task` mode
+- task records with task worktree metadata for `task` mode
 
 The bounded queued-message backlog is not persisted.
 It exists only in memory while the process is running.
@@ -340,6 +346,7 @@ v1 should include:
 - `task` mode
 - local persistent thread binding
 - local persistent active task state
+- task-isolated Git worktrees for `task` mode
 - structured logging with `log/slog`
 
 v1 should not include:

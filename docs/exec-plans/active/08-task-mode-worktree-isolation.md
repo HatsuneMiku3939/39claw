@@ -1,0 +1,243 @@
+# Add task-isolated Git worktrees to `task` mode
+
+This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
+
+This document must be maintained in accordance with `.agents/PLANS.md`.
+
+## Purpose / Big Picture
+
+After this plan, `task` mode should no longer run every task inside one shared checkout. A user should be able to create a task, send the first normal message, and have 39claw prepare a task-specific Git worktree under `CLAW_DATADIR` before Codex runs. Switching tasks should then switch both the Codex thread context and the isolated working directory used for execution.
+
+The user-visible proof is practical. In `task` mode, creating two tasks and sending one normal message to each should produce two distinct task worktrees under `${CLAW_DATADIR}/worktrees`, each bound to its own task branch and Codex thread. Closing many tasks should retain only the fifteen most recently closed ready worktrees while leaving the task branches intact.
+
+## Progress
+
+- [x] (2026-04-04 23:57Z) Captured the new task-mode worktree direction, hard Git-repository requirement, lazy creation flow, and closed-task pruning policy in repository documentation.
+- [ ] Extend startup validation so `task` mode refuses non-Git `CLAW_CODEX_WORKDIR` values.
+- [ ] Add task worktree metadata to persistence and migrate the SQLite schema safely.
+- [ ] Route task-mode Codex turns through task-specific worktree paths instead of the global workdir.
+- [ ] Implement lazy worktree creation, retry behavior, and closed-task pruning.
+- [ ] Add unit and integration coverage for startup validation, lazy creation, retry, and pruning.
+- [ ] Run `make test` and `make lint` after the implementation lands.
+
+## Surprises & Discoveries
+
+- Observation: The current repository already has a useful separation between task lifecycle and thread binding lifecycle, but it does not yet have any persistent concept of task worktree state.
+  Evidence: `internal/app/types.go` and `internal/store/sqlite/store.go`
+
+- Observation: `CLAW_CODEX_SKIP_GIT_REPO_CHECK` already exists because the Codex CLI supports bypassing its own Git validation, but the current application does not impose a task-mode-specific repository requirement before Codex runs.
+  Evidence: `internal/config/config.go`, `cmd/39claw/main.go`, and `internal/codex/exec.go`
+
+- Observation: The current architecture and implementation spec still describe one working directory per bot instance, so both documents must be updated before implementation to avoid misleading later contributors.
+  Evidence: `ARCHITECTURE.md` and `docs/design-docs/implementation-spec.md`
+
+## Decision Log
+
+- Decision: Treat `CLAW_CODEX_WORKDIR` as a hard Git-repository requirement in `task` mode.
+  Rationale: Task switching should mean switching between isolated repository workspaces, not only between saved conversation labels.
+  Date/Author: 2026-04-04 / Codex
+
+- Decision: Create task worktrees lazily on the first normal message instead of during `task-new`.
+  Rationale: Task creation should remain lightweight, and filesystem cost should be paid only when a task is actually used for execution.
+  Date/Author: 2026-04-04 / Codex
+
+- Decision: Detect the task base ref by checking `main` first and `master` second.
+  Rationale: The repository should prefer a simple, fixed v1 rule over additional configuration.
+  Date/Author: 2026-04-04 / Codex
+
+- Decision: Prune only worktrees, not task branches, when closed-task retention exceeds fifteen ready worktrees.
+  Rationale: This keeps disk usage bounded while preserving repository history and manual recovery options.
+  Date/Author: 2026-04-04 / Codex
+
+- Decision: Failed lazy worktree creation should be retried automatically on the next normal message.
+  Rationale: Many failure causes are transient or operator-fixable, so the product should recover without introducing extra task-repair commands in v1.
+  Date/Author: 2026-04-04 / Codex
+
+## Outcomes & Retrospective
+
+This plan is not yet implemented. At this stage, the repository has the architectural and product decisions needed to start coding without reopening the core behavior questions. The main remaining risk is keeping schema migration, task orchestration, and Codex workdir selection aligned so task-mode behavior remains understandable and testable.
+
+## Context and Orientation
+
+39claw is a Discord bot that routes user messages into Codex threads. In `daily` mode, one bot instance uses one shared working directory and one date-derived logical thread key at a time. In `task` mode today, the logical thread key is already `discord_user_id + task_id`, but execution still assumes one global Codex working directory per bot instance.
+
+This plan changes that assumption. In the new design, `task` mode still stores task identity and active-task state in SQLite, but each task also owns metadata for a lazily created Git worktree. The source repository root remains the configured `CLAW_CODEX_WORKDIR`, while the actual Codex working directory for a ready task becomes `${CLAW_DATADIR}/worktrees/<task_id>`.
+
+The most relevant files are:
+
+- `cmd/39claw/main.go`
+  - startup wiring, thread options, and integration assembly
+- `internal/config/config.go`
+  - environment loading and validation
+- `internal/app/types.go`
+  - task and thread-binding data shapes
+- `internal/app/task_service.go`
+  - task command orchestration
+- `internal/app/message_service_impl.go`
+  - normal-message orchestration before Codex runs
+- `internal/store/sqlite/store.go`
+  - schema creation and task persistence
+- `internal/thread`
+  - task-mode key resolution
+- `internal/codex`
+  - Codex gateway and CLI execution wrapper
+- `ARCHITECTURE.md`
+  - authoritative architecture document
+- `docs/design-docs/task-mode-worktrees.md`
+  - design rules this plan must implement
+
+Terms used in this plan:
+
+- source repository: the Git repository configured by `CLAW_CODEX_WORKDIR`
+- task worktree: the task-specific checkout stored under `CLAW_DATADIR`
+- base ref: the Git branch used as the starting point for creating the task worktree, chosen from `main` or `master`
+- prune: remove an old closed-task worktree from disk while leaving the task branch in Git
+
+## Plan of Work
+
+Start by updating startup validation. In `internal/config` or a nearby validation layer, detect whether the configured workdir is a Git repository whenever `CLAW_MODE=task`. Fail startup with a clear error if the path is missing, not a directory, or not a Git repository. Keep `daily` mode behavior unchanged.
+
+Next, extend the task data model in `internal/app/types.go` and the SQLite schema in `internal/store/sqlite/store.go`. Add persistent task fields for `branch_name`, `base_ref`, `worktree_path`, `worktree_status`, `worktree_created_at`, `worktree_pruned_at`, and `last_used_at`. Because the repository already has live schema creation through `CREATE TABLE IF NOT EXISTS`, add additive migration logic that checks for missing columns and adds them. Preserve existing task rows by giving the new fields safe defaults such as `worktree_status='pending'` when older rows are encountered.
+
+Then implement a small task workspace service in the app layer or a focused internal package. That service should generate branch names during `task-new`, detect the base ref, create task worktrees lazily, and prune old closed-task worktrees. Keep the task command service responsible for user-facing task workflow, but move Git-specific worktree operations out of it if that keeps the task command layer readable.
+
+After that, update normal-message handling in `internal/app/message_service_impl.go` so `task` mode resolves the active task, ensures a usable worktree when the task is `pending` or `failed`, and only then calls the Codex gateway. The Codex gateway path must accept a per-turn working directory override so task-mode turns can use the task worktree while `daily` mode continues using the global workdir. Record `last_used_at` for successful task use.
+
+Finally, update close behavior. When `task-close` succeeds, trigger closed-task pruning for tasks with `worktree_status=ready`. Sort closed tasks by `closed_at` descending, keep the most recent fifteen ready worktrees, and remove older ready worktrees with `git worktree remove --force`. If pruning fails for a task, log the failure and leave that task in `closed + ready` so a later cleanup pass can try again.
+
+## Concrete Steps
+
+Run all commands from `/home/filepang/playground/39claw`.
+
+1. Confirm the current repository state before implementation.
+
+    make test
+    make lint
+
+    Expected result:
+
+        all Go tests pass
+        lint passes with 0 issues
+
+2. Update documentation first so implementation has a fixed target.
+
+    Edit:
+
+    - `ARCHITECTURE.md`
+    - `docs/design-docs/architecture-overview.md`
+    - `docs/design-docs/implementation-spec.md`
+    - `docs/design-docs/state-and-storage.md`
+    - `docs/design-docs/thread-modes.md`
+    - `docs/design-docs/task-mode-worktrees.md`
+    - `docs/product-specs/task-mode-user-flow.md`
+    - `docs/product-specs/discord-command-behavior.md`
+    - `README.md`
+
+3. Implement startup validation, schema changes, and task workspace orchestration in:
+
+    - `internal/config/config.go`
+    - `internal/config/config_test.go`
+    - `internal/app/types.go`
+    - `internal/app/task_service.go`
+    - `internal/app/message_service_impl.go`
+    - `internal/store/sqlite/store.go`
+    - new focused worktree helper package or service files if needed
+
+4. Add or update tests in:
+
+    - `cmd/39claw/main_test.go`
+    - `internal/app/task_service_test.go`
+    - `internal/app/message_service_test.go`
+    - `internal/store/sqlite/store_test.go`
+    - any new package-specific tests for Git worktree behavior and pruning logic
+
+5. Run focused tests while iterating.
+
+    go test ./cmd/39claw ./internal/app ./internal/config ./internal/store/sqlite
+
+    Expected result:
+
+        ok   github.com/HatsuneMiku3939/39claw/cmd/39claw
+        ok   github.com/HatsuneMiku3939/39claw/internal/app
+        ok   github.com/HatsuneMiku3939/39claw/internal/config
+        ok   github.com/HatsuneMiku3939/39claw/internal/store/sqlite
+
+6. Run the full repository checks after the implementation lands.
+
+    make test
+    make lint
+
+7. Record proof artifacts showing:
+
+    - `task` mode startup fails when `CLAW_CODEX_WORKDIR` is not a Git repository
+    - the first message for a new task creates a worktree under `${CLAW_DATADIR}/worktrees/<task_id>`
+    - switching tasks routes later turns through different worktree paths
+    - closing enough tasks prunes only old ready worktrees, not branches
+
+## Validation and Acceptance
+
+This plan is complete when all of the following are true:
+
+- `task` mode startup rejects a non-Git `CLAW_CODEX_WORKDIR`
+- `daily` mode startup still accepts a non-Git workdir when other requirements are met
+- `task-new` creates a task with reserved branch metadata and `worktree_status=pending`
+- the first normal message for a pending task creates the task worktree lazily and then runs Codex in that worktree
+- a failed worktree creation returns a user-facing failure response and retries on the next normal message
+- `task-switch` changes only active task selection, not eager Git state
+- `task-close` keeps task branches but prunes ready worktrees beyond the fifteen most recent closed tasks
+- open-task worktrees are never pruned
+- existing task-mode thread continuity still works across days and restarts
+- `make test` passes
+- `make lint` passes
+
+The acceptance bar is behavioral. A contributor should be able to observe isolated worktree directories on disk and prove that different tasks execute against different task-specific working directories.
+
+## Idempotence and Recovery
+
+Schema migration must be additive and safe to rerun. Startup or test code should tolerate a database that already contains the new columns. Worktree creation should be written so a repeated attempt can recover from partial failure by cleaning up any incomplete worktree directory before retrying, while still leaving the reserved task branch intact.
+
+Pruning is intentionally best-effort after the task close operation succeeds. If pruning fails, do not reopen the task or clear its `closed_at`. Log the failure, keep the worktree metadata in `ready`, and allow later cleanup to retry. Forced worktree removal is allowed because the task is already closed and old closed-task worktrees are treated as disposable local workspace state.
+
+## Artifacts and Notes
+
+Important expected task-mode lifecycle after this plan:
+
+    /<instance-command> action:task-new task_name:Release prep
+    -> task created with branch metadata, no worktree yet
+
+    mention bot with normal prompt
+    -> lazy worktree creation
+    -> Codex runs in ${CLAW_DATADIR}/worktrees/<task_id>
+
+    /<instance-command> action:task-switch task_id:<other>
+    -> active task changes only
+
+    /<instance-command> action:task-close task_id:<id>
+    -> task closes
+    -> old closed ready worktrees beyond retention are force-pruned
+    -> task branch remains in the source repository
+
+## Interfaces and Dependencies
+
+At the end of this plan, the repository should expose a task model shaped like:
+
+    type Task struct {
+        TaskID             string
+        DiscordUserID      string
+        TaskName           string
+        Status             TaskStatus
+        BranchName         string
+        BaseRef            string
+        WorktreePath       string
+        WorktreeStatus     TaskWorktreeStatus
+        CreatedAt          time.Time
+        UpdatedAt          time.Time
+        ClosedAt           *time.Time
+        WorktreeCreatedAt  *time.Time
+        WorktreePrunedAt   *time.Time
+        LastUsedAt         *time.Time
+    }
+
+The persistence layer should support reading and updating those fields without the app layer needing raw SQL knowledge. The Codex execution path should accept a task-specific working directory override while preserving the existing global configuration path for `daily` mode.
+
+Revision Note: 2026-04-04 / Codex - Created this active ExecPlan after the task worktree isolation design was agreed and documented.
