@@ -41,12 +41,31 @@ This state is required in `daily` mode.
 It lives inside the configured Codex workdir instead of SQLite:
 
 - `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/MEMORY.md`
-- `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/YYYY-MM-DD.md`
+- `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/YYYY-MM-DD.<generation>.md`
 
 `MEMORY.md` is the compact primary memory file that carries durable facts such as user preferences or long-lived workflow context across local-day boundaries.
-The dated file records what the new-day preflight promoted, updated, or rejected when it resumed the previous daily Codex thread.
+The dated generation-scoped file records what the preflight promoted, updated, or rejected when it resumed the previous daily Codex thread before the first visible turn of a fresh generation.
 
-### 3. Active Task State
+### 3. Daily Session State
+
+This state is only required for `daily` mode.
+
+It stores the active shared generation for each local date and the previous generation used as the durable-memory preflight source.
+
+Conceptually:
+
+```text
+local_date -> active_generation -> logical_thread_key
+```
+
+This metadata allows 39claw to:
+
+- keep one active shared same-day generation at a time
+- rotate to a fresh generation when `action:clear` is invoked
+- keep old same-day generations addressable for durable-memory preflight
+- avoid inferring the active daily session from `updated_at` or other implicit heuristics
+
+### 4. Active Task State
 
 This state is only required for `task` mode.
 
@@ -60,7 +79,7 @@ user -> active_task_id
 
 This allows ordinary messages to be routed without forcing the user to repeat the task identifier in every message.
 
-### 4. Task Worktree Metadata
+### 5. Task Worktree Metadata
 
 This state is only required for `task` mode.
 
@@ -92,10 +111,11 @@ Reasons:
 The current concept points toward:
 
 - `thread_bindings`
+- `daily_sessions`
 - `tasks`
 - `active_tasks`
 
-SQLite remains the source of truth for remote thread bindings and task metadata.
+SQLite remains the source of truth for remote thread bindings, daily-session metadata, and task metadata.
 The `AGENT_MEMORY` Markdown files are intentionally stored in the Codex workdir so Codex can read and update them directly during the daily memory-bridge preflight.
 
 The design should favor explicit structured columns over packing all data into a single opaque key string, unless implementation simplicity proves more valuable.

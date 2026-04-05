@@ -13,29 +13,34 @@ The user should not need to manage thread state explicitly.
 
 ### Thread Key Concept
 
-The logical thread key is derived from:
+The daily routing bucket is derived from:
 
 - current local date
 
 Conceptually:
 
 ```text
-thread_key = local_date
+daily_bucket = local_date
+active_thread_key = local_date + "#" + generation
 ```
 
 ### Behavior
 
-- when a message arrives, 39claw computes the key automatically
-- if a Codex thread is already bound to that key, 39claw resumes it
-- if no binding exists, 39claw creates a new Codex thread
-- when the date changes, a new logical thread is used automatically
-- before the first visible turn for that new day, 39claw may resume the previous day's Codex thread once to refresh durable Markdown memory under `AGENT_MEMORY/`
-- the visible turn for the new day still starts a fresh Codex thread even when durable memory is carried forward
+- when a message arrives, 39claw computes the current local-date bucket automatically
+- each local-date bucket has exactly one active shared generation at a time
+- if a Codex thread is already bound to the active generation key, 39claw resumes it
+- if no binding exists for the active generation key, 39claw creates a new Codex thread
+- `/<instance-command> action:clear` rotates the active shared generation to a fresh same-day key such as `YYYY-MM-DD#2`
+- if the active shared generation still has in-flight or queued work, `action:clear` is rejected instead of interleaving old and new replies
+- when the date changes, a new bucket is used automatically and its first active generation starts at `#1`
+- before the first visible turn for a new generation, 39claw may resume the previous recorded daily generation once to refresh durable Markdown memory under `AGENT_MEMORY/`
+- the visible turn for a new generation still starts a fresh Codex thread even when durable memory is carried forward
 
 ### UX Properties
 
 - no explicit thread command is required for normal use
-- continuity exists within the same day
+- continuity exists within the currently active same-day generation
+- users can intentionally reset the shared same-day thread without waiting for midnight
 - the remote thread resets naturally across days
 - durable preferences or long-lived context can still carry forward through runtime-managed memory files
 
@@ -52,6 +57,7 @@ Costs:
 
 - long-running work may still be split across remote thread boundaries
 - unrelated same-day conversations may share context
+- resetting the shared same-day thread affects the whole bot instance, not just the user who issued `action:clear`
 - the definition of "day" depends on a configured timezone
 - the durable-memory bridge depends on a write-capable Codex sandbox and managed files inside the configured workdir
 

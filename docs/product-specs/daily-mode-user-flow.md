@@ -18,6 +18,7 @@ At a product level, this mode should feel like talking to a living knowledge bas
 In `daily` mode, the bot should feel like:
 
 - a shared conversation that continues during the current day
+- a tool that can intentionally start a fresh shared same-day thread when users need to cut down context growth
 - a fresh remote thread on a new day without losing durable preferences or other long-lived context
 - a tool that does not require explicit setup for normal use
 
@@ -31,12 +32,18 @@ The user should be able to send a message without first creating a task, selecti
 
 Messages handled on the same local date should feel like they continue the same line of work unless the product explicitly says otherwise.
 
-### 3. Day boundaries should reset the thread cleanly without discarding durable memory
+### 3. Same-day resets should be explicit and shared
+
+If a user invokes `/<instance-command> action:clear`, the bot should start a fresh shared same-day generation for the whole bot instance.
+That reset should apply to the shared daily context, not only to the user who issued the command.
+If the current shared generation is still busy, the bot should reject the clear request and ask the user to retry after the queued work finishes.
+
+### 4. Day boundaries should reset the thread cleanly without discarding durable memory
 
 When the relevant local date changes, the user should experience a fresh conversation thread.
 That reset should feel predictable rather than surprising, while durable facts that matter on future days may still carry forward through the runtime-managed memory bridge.
 
-### 4. The bot should avoid over-explaining thread mechanics
+### 5. The bot should avoid over-explaining thread mechanics
 
 The user does not need internal detail about logical keys or Codex thread IDs during normal operation.
 
@@ -49,8 +56,9 @@ Expected flow:
 1. The user sends a normal message in a supported channel.
 2. 39claw determines that the message should be handled.
 3. 39claw resolves the current daily thread bucket.
-4. If no thread exists for that bucket, 39claw creates a new one automatically.
-5. The user receives a normal response.
+4. If no active generation exists for that bucket yet, 39claw creates generation `#1` automatically.
+5. If no thread exists for that active generation, 39claw creates a new one automatically.
+6. The user receives a normal response.
 
 Expected user perception:
 
@@ -62,7 +70,7 @@ Expected user perception:
 Expected flow:
 
 1. The user sends another message on the same local date.
-2. 39claw routes the message to the already bound daily thread.
+2. 39claw routes the message to the current active same-day generation.
 3. The response reflects same-day continuity.
 
 Expected user perception:
@@ -75,7 +83,7 @@ Expected user perception:
 Expected flow:
 
 1. The user sends a message for the current daily conversation while an earlier same-day turn is still executing.
-2. 39claw accepts the later message into the per-day waiting queue if capacity remains.
+2. 39claw accepts the later message into the active-generation waiting queue if capacity remains.
 3. The bot immediately posts a short queued acknowledgment as a reply to the later message.
 4. After the earlier turn completes, 39claw executes the queued message in the same daily thread.
 5. The user receives the real answer later as a reply to the queued message.
@@ -85,16 +93,32 @@ Expected user perception:
 - “The bot accepted my message instead of making me retry manually.”
 - “The later answer still belongs to the message I actually sent.”
 
+### Scenario: A user intentionally clears today's shared context
+
+Expected flow:
+
+1. A user invokes `/<instance-command> action:clear`.
+2. 39claw checks whether the current active daily generation is idle.
+3. If the generation is idle, 39claw rotates the shared same-day session to the next generation and confirms the reset.
+4. The next normal message on the same local date targets that fresh generation.
+5. Before the first visible reply on the new generation, 39claw may run a hidden memory-refresh preflight against the previous generation and update `AGENT_MEMORY/MEMORY.md` plus `AGENT_MEMORY/YYYY-MM-DD.<generation>.md`.
+
+Expected user perception:
+
+- “We intentionally started fresh for today.”
+- “The next message uses a new thread without losing durable memory.”
+
 ### Scenario: First message on a new day
 
 Expected flow:
 
 1. The user sends a message after the local date has changed.
 2. 39claw resolves a new daily bucket automatically.
-3. If no thread exists for the new bucket and a previous-day daily thread exists, 39claw first runs a hidden memory-refresh preflight against that previous thread.
-4. The preflight updates `AGENT_MEMORY/MEMORY.md` plus today's `AGENT_MEMORY/YYYY-MM-DD.md` note.
-5. 39claw creates the new day's visible Codex thread.
-6. The response begins from a fresh thread and may reflect durable remembered preferences or long-lived context when the deployment's own instructions tell Codex to consult the projected memory files.
+3. If no active generation exists for the new bucket yet, 39claw creates generation `#1` automatically.
+4. If no thread exists for the new generation and a previous recorded daily generation exists, 39claw first runs a hidden memory-refresh preflight against that previous thread.
+5. The preflight updates `AGENT_MEMORY/MEMORY.md` plus today's `AGENT_MEMORY/YYYY-MM-DD.<generation>.md` note.
+6. 39claw creates the new day's visible Codex thread.
+7. The response begins from a fresh thread and may reflect durable remembered preferences or long-lived context when the deployment's own instructions tell Codex to consult the projected memory files.
 
 Expected user perception:
 
@@ -111,7 +135,7 @@ The user should not have to manually select a thread for normal use in `daily` m
 
 Continuity should be preserved:
 
-- on the same configured local date
+- within the active generation on the same configured local date
 
 Across different days, same-thread continuity should not be assumed, but durable memory may still be projected forward through the runtime-managed Markdown bridge.
 Whether that projected memory affects normal visible turns depends on the deployment's own instructions rather than on 39claw rewriting user-owned instruction files.
@@ -123,7 +147,7 @@ The bot should behave as if continuity is normal, not as if the user is performi
 
 ### Reset clarity
 
-If a date-boundary reset causes confusion, the product may need a lightweight explanation, but this should not be the default for every first message of the day.
+If a date-boundary reset or explicit `action:clear` reset causes confusion, the product may need a lightweight explanation, but this should not be the default for every fresh generation.
 
 ## Failure and Edge Cases
 
@@ -136,6 +160,7 @@ If the bot cannot resolve or create the required thread, it should:
 - tell the user whether retrying is likely to help
 
 If the hidden new-day memory refresh fails, the bot should still continue with the visible reply instead of failing the whole user request.
+If `action:clear` is requested while the active generation is still busy or has queued work, the bot should reject the clear request and tell the user to retry later.
 
 ### Timezone confusion
 
@@ -163,6 +188,7 @@ If multiple same-day requests stack up while one turn is already running, up to 
 ## Decisions
 
 - The bot should not proactively mention that a new day created a fresh context.
+- The bot may expose `/<instance-command> action:clear` so users can intentionally rotate the shared same-day generation.
 - There should not be an explicit command for inspecting the current daily context in v1.
 - The configured timezone should not be surfaced proactively to end users in normal daily-mode flow.
 - The bot should not provide lightweight guidance when channel changes preserve continuity.
