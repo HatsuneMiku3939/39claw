@@ -267,6 +267,15 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 		return
 	}
 
+	livePresenter := newLiveMessagePresenter(discordSession, request.ChannelID, request.MessageID, r.config.CodexWorkdir)
+	request.ProgressSink = app.MessageProgressSinkFunc(func(ctx context.Context, progress app.MessageProgress) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		return livePresenter.Update(progress.Text)
+	})
+
 	deferredSink := app.DeferredReplySinkFunc(func(ctx context.Context, response app.MessageResponse) error {
 		logAttrs := []any{
 			"event", "deferred_reply_delivery",
@@ -320,8 +329,15 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 		}
 	}
 
-	if err := r.presentMessageResponse(discordSession, request.ChannelID, response); err != nil {
-		r.logger.Error("present message response", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
+	var presentErr error
+	if livePresenter.Active() {
+		presentErr = livePresenter.Update(response.Text)
+	} else {
+		presentErr = r.presentMessageResponse(discordSession, request.ChannelID, response)
+	}
+
+	if presentErr != nil {
+		r.logger.Error("present message response", "error", presentErr, "channel_id", request.ChannelID, "message_id", request.MessageID)
 	}
 }
 

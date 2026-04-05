@@ -129,6 +129,7 @@ Responsibilities:
 - determine whether the bot should respond
 - normalize input into application requests
 - send formatted responses back to Discord
+- surface best-effort streamed progress by editing the in-flight Discord reply while a non-queued Codex turn is still running
 - own the runtime lifecycle for in-flight and queued background work during shutdown
 
 The runtime must not directly talk to storage or Codex implementation details.
@@ -147,7 +148,8 @@ Responsibilities:
 5. load any existing binding from the thread store
 6. call the Codex gateway with or without an existing thread ID
 7. persist the returned thread ID when a new binding is created or updated
-8. return an immediate response and, when needed, deliver a deferred follow-up reply
+8. stream best-effort progress updates for immediate turns when the runtime requests them
+9. return an immediate response and, when needed, deliver a deferred follow-up reply
 
 ### 6.3 Thread Policy
 
@@ -299,8 +301,9 @@ Tradeoffs:
 5. If the turn starts immediately, the thread store looks up any existing Codex thread ID
 6. If missing, Codex creates a new thread
 7. The binding is persisted
-8. Discord runtime posts either the final response immediately or a queued acknowledgment
-9. If the turn was queued, the application service later executes it and the runtime posts the deferred reply
+8. Discord runtime posts either a queued acknowledgment or, for immediate turns, an editable placeholder reply
+9. While a non-queued Codex turn is running, streamed Codex events may update that placeholder with progress or partial assistant text
+10. If the turn was queued, the application service later executes it and the runtime posts the deferred reply
 ```
 
 ## 8.1 Concurrency Model

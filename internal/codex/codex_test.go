@@ -409,6 +409,43 @@ func runHelperProcess() error {
 	case "process-failed":
 		_, _ = fmt.Fprintln(os.Stderr, "helper process failed")
 		return errors.New("helper process failed")
+	case "stream-progress":
+		writeHelperEvent(map[string]any{"type": "thread.started", "thread_id": "thread_stream"})
+		writeHelperEvent(map[string]any{"type": "turn.started"})
+		writeHelperEvent(map[string]any{
+			"type": "item.started",
+			"item": map[string]any{
+				"id":      "item_cmd",
+				"type":    "command_execution",
+				"command": "go test ./...",
+				"status":  "in_progress",
+			},
+		})
+		writeHelperEvent(map[string]any{
+			"type": "item.updated",
+			"item": map[string]any{
+				"id":   "item_msg",
+				"type": "agent_message",
+				"text": "Partial helper response",
+			},
+		})
+		writeHelperEvent(map[string]any{
+			"type": "item.completed",
+			"item": map[string]any{
+				"id":   "item_msg",
+				"type": "agent_message",
+				"text": "Final helper response",
+			},
+		})
+		writeHelperEvent(map[string]any{
+			"type": "turn.completed",
+			"usage": map[string]any{
+				"input_tokens":        8,
+				"cached_input_tokens": 0,
+				"output_tokens":       4,
+			},
+		})
+		return nil
 	default:
 		return fmt.Errorf("unknown helper scenario %q", os.Getenv("CODEX_TEST_SCENARIO"))
 	}

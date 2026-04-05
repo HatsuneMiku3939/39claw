@@ -19,6 +19,15 @@ type session interface {
 		data *discordgo.MessageSend,
 		options ...discordgo.RequestOption,
 	) (*discordgo.Message, error)
+	ChannelMessageEditComplex(
+		data *discordgo.MessageEdit,
+		options ...discordgo.RequestOption,
+	) (*discordgo.Message, error)
+	ChannelMessageDelete(
+		channelID string,
+		messageID string,
+		options ...discordgo.RequestOption,
+	) error
 	InteractionRespond(
 		interaction *discordgo.Interaction,
 		resp *discordgo.InteractionResponse,

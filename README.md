@@ -530,6 +530,7 @@ For the complete release candidate checklist, tagging steps, and post-release ve
 - one instance-specific root slash command
 - `action:help`, `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, and `action:task-close`
 - SQLite-backed persistence for thread bindings and task state
+- streamed in-place progress updates for immediate Discord turns
 - queued acknowledgments with deferred follow-up replies
 
 ## Learn More
