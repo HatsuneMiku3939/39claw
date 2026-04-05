@@ -226,6 +226,7 @@ Pick one:
 
 If you choose `task`, `CLAW_CODEX_WORKDIR` must point to a Git repository.
 39claw treats that repository as the source repository for task-specific worktrees stored under `CLAW_DATADIR`.
+If startup finds a missing or non-Git task workdir, the bot exits with a clear configuration error before it connects to Discord.
 
 ### 2. Set the required environment variables
 
@@ -264,6 +265,7 @@ Try one of these:
 - mention the bot with only an image
 
 If you are running in `task` mode, create a task first with `/<your-command> action:task-new task_name:<name>`.
+The first normal message for a new task may spend a moment preparing that task's dedicated worktree before Codex replies.
 
 ## Configuration Reference
 

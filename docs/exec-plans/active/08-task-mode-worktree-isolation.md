@@ -13,12 +13,12 @@ The user-visible proof is practical. In `task` mode, creating two tasks and send
 ## Progress
 
 - [x] (2026-04-04 23:57Z) Captured the new task-mode worktree direction, hard Git-repository requirement, lazy creation flow, and closed-task pruning policy in repository documentation.
-- [ ] Extend startup validation so `task` mode refuses non-Git `CLAW_CODEX_WORKDIR` values.
-- [ ] Add task worktree metadata to persistence and migrate the SQLite schema safely.
-- [ ] Route task-mode Codex turns through task-specific worktree paths instead of the global workdir.
-- [ ] Implement lazy worktree creation, retry behavior, and closed-task pruning.
-- [ ] Add unit and integration coverage for startup validation, lazy creation, retry, and pruning.
-- [ ] Run `make test` and `make lint` after the implementation lands.
+- [x] (2026-04-05 00:24Z) Extended startup validation so `task` mode now rejects missing, non-directory, and non-Git `CLAW_CODEX_WORKDIR` values before Discord startup.
+- [x] (2026-04-05 00:24Z) Added task worktree metadata to persistence, including additive SQLite migration and branch-name backfill for older rows.
+- [x] (2026-04-05 00:24Z) Routed task-mode Codex turns through task-specific worktree paths while leaving `daily` mode on the configured global workdir.
+- [x] (2026-04-05 00:24Z) Implemented lazy worktree creation, automatic retry after failed preparation, and closed-task worktree pruning with branch retention.
+- [x] (2026-04-05 00:24Z) Added unit and integration coverage for startup validation, lazy creation, retry behavior, pruning, and schema migration.
+- [x] (2026-04-05 00:24Z) Ran `make test` and `make lint` after the implementation landed.
 
 ## Surprises & Discoveries
 
@@ -30,6 +30,12 @@ The user-visible proof is practical. In `task` mode, creating two tasks and send
 
 - Observation: The current architecture and implementation spec still describe one working directory per bot instance, so both documents must be updated before implementation to avoid misleading later contributors.
   Evidence: `ARCHITECTURE.md` and `docs/design-docs/implementation-spec.md`
+
+- Observation: Retrying a failed lazy worktree creation needs to tolerate the case where Git already created the reserved branch during an earlier partial attempt.
+  Evidence: `internal/app/task_workspace.go` now checks for an existing task branch and switches between `git worktree add -b <branch>` and `git worktree add <path> <branch>` on retry.
+
+- Observation: Additive SQLite migration also needs a backfill step because older task rows otherwise keep an empty `branch_name`, which breaks the "reserved branch at task creation" rule for reopened databases.
+  Evidence: `internal/store/sqlite/store.go` runs `UPDATE tasks SET branch_name = 'task/' || task_id WHERE branch_name = ''` after schema migration.
 
 ## Decision Log
 
@@ -55,7 +61,9 @@ The user-visible proof is practical. In `task` mode, creating two tasks and send
 
 ## Outcomes & Retrospective
 
-This plan is not yet implemented. At this stage, the repository has the architectural and product decisions needed to start coding without reopening the core behavior questions. The main remaining risk is keeping schema migration, task orchestration, and Codex workdir selection aligned so task-mode behavior remains understandable and testable.
+This plan is now implemented in the repository. `task` mode startup rejects non-Git source repositories, task creation reserves branch metadata with `worktree_status=pending`, the first normal task message lazily creates a task-specific worktree under `${CLAW_DATADIR}/worktrees/<task_id>`, and later turns reuse that task-specific working directory and Codex thread binding. Closing tasks now keeps task branches but prunes older closed ready worktrees beyond the configured retention window.
+
+The most important lesson was that the feature touches three kinds of state at once: Discord-visible task workflow, Codex thread continuity, and Git workspace lifecycle. Keeping those aligned required a narrow app-layer worktree manager plus additive store migration rather than folding Git operations into the task command flow directly. The remaining follow-up work is operational rather than architectural: if future product needs want manual cleanup commands or richer worktree status output in Discord, those can build on the now-persistent task worktree metadata without changing the core model again.
 
 ## Context and Orientation
 
@@ -167,6 +175,16 @@ Run all commands from `/home/filepang/playground/39claw`.
     make test
     make lint
 
+    Observed result on 2026-04-05:
+
+        ok   github.com/HatsuneMiku3939/39claw/cmd/39claw
+        ok   github.com/HatsuneMiku3939/39claw/internal/app
+        ok   github.com/HatsuneMiku3939/39claw/internal/config
+        ok   github.com/HatsuneMiku3939/39claw/internal/store/sqlite
+        ok   github.com/HatsuneMiku3939/39claw/internal/thread
+        0 issues.
+        Linting passed
+
 7. Record proof artifacts showing:
 
     - `task` mode startup fails when `CLAW_CODEX_WORKDIR` is not a Git repository
@@ -217,6 +235,20 @@ Important expected task-mode lifecycle after this plan:
     -> old closed ready worktrees beyond retention are force-pruned
     -> task branch remains in the source repository
 
+Implemented proof points in automated coverage:
+
+    cmd/39claw/main_test.go
+    -> rejects non-Git task-mode startup workdirs
+
+    internal/app/message_service_test.go
+    -> proves lazy task workdir selection, task switching to distinct worktree paths, and automatic retry after failed workspace setup
+
+    internal/app/task_workspace_test.go
+    -> creates and prunes real Git worktrees in a temporary repository
+
+    internal/store/sqlite/store_test.go
+    -> proves additive migration and closed-ready task ordering for pruning
+
 ## Interfaces and Dependencies
 
 At the end of this plan, the repository should expose a task model shaped like:
@@ -237,6 +269,8 @@ At the end of this plan, the repository should expose a task model shaped like:
         WorktreePrunedAt   *time.Time
         LastUsedAt         *time.Time
     }
+
+Revision note (2026-04-05 00:24Z): Updated the living sections after implementing the full task worktree isolation flow, adding persistence migration, Git worktree orchestration, validation, tests, and final verification results.
 
 The persistence layer should support reading and updating those fields without the app layer needing raw SQL knowledge. The Codex execution path should accept a task-specific working directory override while preserving the existing global configuration path for `daily` mode.
 

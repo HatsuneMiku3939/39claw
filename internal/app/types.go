@@ -38,14 +38,30 @@ const (
 	TaskStatusClosed TaskStatus = "closed"
 )
 
+type TaskWorktreeStatus string
+
+const (
+	TaskWorktreeStatusPending TaskWorktreeStatus = "pending"
+	TaskWorktreeStatusReady   TaskWorktreeStatus = "ready"
+	TaskWorktreeStatusFailed  TaskWorktreeStatus = "failed"
+	TaskWorktreeStatusPruned  TaskWorktreeStatus = "pruned"
+)
+
 type Task struct {
-	TaskID        string
-	DiscordUserID string
-	TaskName      string
-	Status        TaskStatus
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	ClosedAt      *time.Time
+	TaskID            string
+	DiscordUserID     string
+	TaskName          string
+	Status            TaskStatus
+	BranchName        string
+	BaseRef           string
+	WorktreePath      string
+	WorktreeStatus    TaskWorktreeStatus
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	ClosedAt          *time.Time
+	WorktreeCreatedAt *time.Time
+	WorktreePrunedAt  *time.Time
+	LastUsedAt        *time.Time
 }
 
 type ActiveTask struct {
@@ -67,8 +83,9 @@ type RunTurnResult struct {
 }
 
 type CodexTurnInput struct {
-	Prompt     string
-	ImagePaths []string
+	Prompt           string
+	ImagePaths       []string
+	WorkingDirectory string
 }
 
 type QueueAdmission struct {

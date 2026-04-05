@@ -21,11 +21,18 @@ type ThreadStore interface {
 	UpsertThreadBinding(ctx context.Context, binding ThreadBinding) error
 	CreateTask(ctx context.Context, task Task) error
 	GetTask(ctx context.Context, discordUserID string, taskID string) (Task, bool, error)
+	UpdateTask(ctx context.Context, task Task) error
 	ListOpenTasks(ctx context.Context, discordUserID string) ([]Task, error)
+	ListClosedReadyTasks(ctx context.Context) ([]Task, error)
 	SetActiveTask(ctx context.Context, activeTask ActiveTask) error
 	GetActiveTask(ctx context.Context, discordUserID string) (ActiveTask, bool, error)
 	ClearActiveTask(ctx context.Context, discordUserID string) error
 	CloseTask(ctx context.Context, discordUserID string, taskID string) error
+}
+
+type TaskWorkspaceManager interface {
+	EnsureReady(ctx context.Context, task Task) (Task, error)
+	PruneClosed(ctx context.Context) error
 }
 
 type CodexGateway interface {

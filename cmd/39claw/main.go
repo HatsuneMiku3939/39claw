@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -48,10 +49,15 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		return err
 	}
 
+	if err := config.ValidateRuntimePaths(cfg); err != nil {
+		return err
+	}
+
 	logger, err := observe.NewLogger(cfg.LogLevel)
 	if err != nil {
 		return err
 	}
+	slog.SetDefault(logger)
 
 	store, err := sqlitestore.Open(cfg.SQLitePath)
 	if err != nil {
@@ -83,26 +89,41 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		ThreadOptions: threadOptions,
 	})
 
+	var workspaceManager app.TaskWorkspaceManager
+	if cfg.Mode == config.ModeTask {
+		workspaceManager, err = app.NewTaskWorkspaceManager(app.TaskWorkspaceManagerDependencies{
+			Store:            store,
+			SourceRepository: cfg.CodexWorkdir,
+			DataDir:          cfg.DataDir,
+			Logger:           logger,
+		})
+		if err != nil {
+			return fmt.Errorf("build task workspace manager: %w", err)
+		}
+	}
+
 	policy, err := thread.NewPolicy(cfg.Mode, cfg.Timezone, store)
 	if err != nil {
 		return fmt.Errorf("build thread policy: %w", err)
 	}
 
 	messageService, err := app.NewMessageService(app.MessageServiceDependencies{
-		Mode:        cfg.Mode,
-		CommandName: cfg.DiscordCommandName,
-		Policy:      policy,
-		Store:       store,
-		Gateway:     gateway,
-		Coordinator: thread.NewQueueCoordinator(),
+		Mode:             cfg.Mode,
+		CommandName:      cfg.DiscordCommandName,
+		Policy:           policy,
+		Store:            store,
+		WorkspaceManager: workspaceManager,
+		Gateway:          gateway,
+		Coordinator:      thread.NewQueueCoordinator(),
 	})
 	if err != nil {
 		return fmt.Errorf("build message service: %w", err)
 	}
 
 	taskService, err := app.NewTaskCommandService(app.TaskCommandServiceDependencies{
-		CommandName: cfg.DiscordCommandName,
-		Store:       store,
+		CommandName:      cfg.DiscordCommandName,
+		Store:            store,
+		WorkspaceManager: workspaceManager,
 	})
 	if err != nil {
 		return fmt.Errorf("build task service: %w", err)

@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -87,6 +90,19 @@ func TestRun(t *testing.T) {
 				ApprovalPolicy:        codex.ApprovalModeOnRequest,
 			},
 		},
+		{
+			name: "rejects non-git workdir in task mode during startup",
+			env: map[string]string{
+				"CLAW_MODE":                 "task",
+				"CLAW_TIMEZONE":             "Asia/Tokyo",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "release",
+				"CLAW_CODEX_WORKDIR":        "/workspace/not-a-repo",
+				"CLAW_DATADIR":              "/tmp/39claw-data",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
+			},
+			wantErr: "task mode requires CLAW_CODEX_WORKDIR to exist",
+		},
 	}
 
 	for _, tt := range tests {
@@ -117,6 +133,15 @@ func TestRun(t *testing.T) {
 				env["CLAW_DATADIR"] = t.TempDir()
 			}
 
+			if env["CLAW_MODE"] == "task" && tt.wantErr == "" {
+				workdir := filepath.Join(t.TempDir(), "repo")
+				if err := os.MkdirAll(filepath.Join(workdir, ".git"), 0o755); err != nil {
+					t.Fatalf("MkdirAll(.git) error = %v", err)
+				}
+				env["CLAW_CODEX_WORKDIR"] = workdir
+				tt.wantThreadOptions.WorkingDirectory = workdir
+			}
+
 			err := run(ctx, func(key string) (string, bool) {
 				value, ok := env[key]
 				return value, ok
@@ -126,8 +151,8 @@ func TestRun(t *testing.T) {
 					t.Fatalf("run() error = nil, want %q", tt.wantErr)
 				}
 
-				if err.Error() != tt.wantErr {
-					t.Fatalf("run() error = %q, want %q", err.Error(), tt.wantErr)
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("run() error = %q, want substring %q", err.Error(), tt.wantErr)
 				}
 
 				return

@@ -198,6 +198,14 @@ func TestStoreTaskStatePersistsAcrossReopen(t *testing.T) {
 		t.Fatalf("TaskName = %q, want %q", task.TaskName, "Release work")
 	}
 
+	if task.BranchName != "task/task-1" {
+		t.Fatalf("BranchName = %q, want %q", task.BranchName, "task/task-1")
+	}
+
+	if task.WorktreeStatus != app.TaskWorktreeStatusPending {
+		t.Fatalf("WorktreeStatus = %q, want %q", task.WorktreeStatus, app.TaskWorktreeStatusPending)
+	}
+
 	activeTask, ok, err := reopened.GetActiveTask(ctx, "user-1")
 	if err != nil {
 		t.Fatalf("GetActiveTask() reopen error = %v", err)
@@ -244,6 +252,14 @@ func TestStoreTaskLifecycle(t *testing.T) {
 
 	if task.Status != app.TaskStatusOpen {
 		t.Fatalf("Status = %q, want %q", task.Status, app.TaskStatusOpen)
+	}
+
+	if task.BranchName != "task/task-1" {
+		t.Fatalf("BranchName = %q, want %q", task.BranchName, "task/task-1")
+	}
+
+	if task.WorktreeStatus != app.TaskWorktreeStatusPending {
+		t.Fatalf("WorktreeStatus = %q, want %q", task.WorktreeStatus, app.TaskWorktreeStatusPending)
 	}
 
 	tasks, err := store.ListOpenTasks(ctx, "user-1")
@@ -358,6 +374,135 @@ func TestStoreCloseTaskKeepsDifferentActiveTask(t *testing.T) {
 	}
 }
 
+func TestStoreInitSchemaMigratesExistingTaskTable(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "39claw.db")
+
+	db, err := sql.Open(driverName, path)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+
+	if _, err := db.ExecContext(context.Background(), `CREATE TABLE tasks (
+		task_id TEXT PRIMARY KEY,
+		discord_user_id TEXT NOT NULL,
+		task_name TEXT NOT NULL,
+		status TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		closed_at TEXT NULL
+	);`); err != nil {
+		t.Fatalf("create legacy tasks table error = %v", err)
+	}
+
+	createdAt := time.Date(2026, time.April, 5, 15, 4, 0, 0, time.UTC).Format(time.RFC3339Nano)
+	if _, err := db.ExecContext(
+		context.Background(),
+		`INSERT INTO tasks (task_id, discord_user_id, task_name, status, created_at, updated_at, closed_at)
+		VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+		"task-1",
+		"user-1",
+		"Legacy task",
+		string(app.TaskStatusOpen),
+		createdAt,
+		createdAt,
+	); err != nil {
+		t.Fatalf("insert legacy task error = %v", err)
+	}
+
+	if err := db.Close(); err != nil {
+		t.Fatalf("db.Close() error = %v", err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer func() {
+		if closeErr := store.Close(); closeErr != nil {
+			t.Fatalf("Close() error = %v", closeErr)
+		}
+	}()
+
+	if err := store.InitSchema(context.Background()); err != nil {
+		t.Fatalf("InitSchema() error = %v", err)
+	}
+
+	task, ok, err := store.GetTask(context.Background(), "user-1", "task-1")
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("GetTask() ok = false, want true")
+	}
+
+	if task.BranchName != "task/task-1" {
+		t.Fatalf("BranchName = %q, want %q", task.BranchName, "task/task-1")
+	}
+
+	if task.WorktreeStatus != app.TaskWorktreeStatusPending {
+		t.Fatalf("WorktreeStatus = %q, want %q", task.WorktreeStatus, app.TaskWorktreeStatusPending)
+	}
+}
+
+func TestStoreUpdateTaskAndListClosedReadyTasks(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tasks := []app.Task{
+		{
+			TaskID:         "task-1",
+			DiscordUserID:  "user-1",
+			TaskName:       "Older closed task",
+			Status:         app.TaskStatusClosed,
+			BranchName:     "task/task-1",
+			WorktreePath:   "/tmp/worktrees/task-1",
+			WorktreeStatus: app.TaskWorktreeStatusReady,
+			ClosedAt:       timePtr(time.Date(2026, time.April, 5, 10, 0, 0, 0, time.UTC)),
+		},
+		{
+			TaskID:         "task-2",
+			DiscordUserID:  "user-1",
+			TaskName:       "Newest closed task",
+			Status:         app.TaskStatusClosed,
+			BranchName:     "task/task-2",
+			WorktreePath:   "/tmp/worktrees/task-2",
+			WorktreeStatus: app.TaskWorktreeStatusReady,
+			ClosedAt:       timePtr(time.Date(2026, time.April, 5, 12, 0, 0, 0, time.UTC)),
+		},
+	}
+
+	for _, task := range tasks {
+		if err := store.CreateTask(ctx, task); err != nil {
+			t.Fatalf("CreateTask(%s) error = %v", task.TaskID, err)
+		}
+		if err := store.UpdateTask(ctx, task); err != nil {
+			t.Fatalf("UpdateTask(%s) error = %v", task.TaskID, err)
+		}
+	}
+
+	closedReady, err := store.ListClosedReadyTasks(ctx)
+	if err != nil {
+		t.Fatalf("ListClosedReadyTasks() error = %v", err)
+	}
+
+	if len(closedReady) != 2 {
+		t.Fatalf("ListClosedReadyTasks() len = %d, want %d", len(closedReady), 2)
+	}
+
+	if closedReady[0].TaskID != "task-2" {
+		t.Fatalf("first closed ready task = %q, want %q", closedReady[0].TaskID, "task-2")
+	}
+
+	if closedReady[1].TaskID != "task-1" {
+		t.Fatalf("second closed ready task = %q, want %q", closedReady[1].TaskID, "task-1")
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 
@@ -381,4 +526,8 @@ func newTestStore(t *testing.T) *Store {
 	})
 
 	return store
+}
+
+func timePtr(value time.Time) *time.Time {
+	return &value
 }

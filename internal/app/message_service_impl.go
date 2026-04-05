@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/HatsuneMiku3939/39claw/internal/config"
 )
@@ -15,12 +17,13 @@ const (
 )
 
 type MessageServiceDependencies struct {
-	Mode        config.Mode
-	CommandName string
-	Policy      ThreadPolicy
-	Store       ThreadStore
-	Gateway     CodexGateway
-	Coordinator QueueCoordinator
+	Mode             config.Mode
+	CommandName      string
+	Policy           ThreadPolicy
+	Store            ThreadStore
+	WorkspaceManager TaskWorkspaceManager
+	Gateway          CodexGateway
+	Coordinator      QueueCoordinator
 }
 
 type DefaultMessageService struct {
@@ -28,6 +31,7 @@ type DefaultMessageService struct {
 	commands    commandSurface
 	policy      ThreadPolicy
 	store       ThreadStore
+	worktrees   TaskWorkspaceManager
 	gateway     CodexGateway
 	coordinator QueueCoordinator
 }
@@ -50,6 +54,10 @@ func NewMessageService(deps MessageServiceDependencies) (*DefaultMessageService,
 		return nil, errors.New("thread store must not be nil")
 	}
 
+	if deps.Mode == config.ModeTask && deps.WorkspaceManager == nil {
+		return nil, errors.New("task workspace manager must not be nil in task mode")
+	}
+
 	if deps.Gateway == nil {
 		return nil, errors.New("codex gateway must not be nil")
 	}
@@ -63,6 +71,7 @@ func NewMessageService(deps MessageServiceDependencies) (*DefaultMessageService,
 		commands:    newCommandSurface(commandName),
 		policy:      deps.Policy,
 		store:       deps.Store,
+		worktrees:   deps.WorkspaceManager,
 		gateway:     deps.Gateway,
 		coordinator: deps.Coordinator,
 	}, nil
@@ -120,6 +129,7 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 
 type preparedMessage struct {
 	logicalKey string
+	userID     string
 	taskID     string
 	replyToID  string
 	input      CodexTurnInput
@@ -147,6 +157,7 @@ func (s *DefaultMessageService) prepareMessage(
 
 	prepared := preparedMessage{
 		logicalKey: logicalKey,
+		userID:     request.UserID,
 		replyToID:  request.MessageID,
 		input: CodexTurnInput{
 			Prompt:     request.Content,
@@ -180,6 +191,19 @@ func (s *DefaultMessageService) noActiveTaskMessage() string {
 func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prepared preparedMessage) (MessageResponse, error) {
 	defer runCleanup(prepared.cleanup)
 
+	if s.mode == config.ModeTask {
+		task, response, handled, err := s.ensureTaskReady(ctx, prepared)
+		if err != nil {
+			return MessageResponse{}, err
+		}
+
+		if handled {
+			return response, nil
+		}
+
+		prepared.input.WorkingDirectory = task.WorktreePath
+	}
+
 	binding, ok, err := s.store.GetThreadBinding(ctx, string(s.mode), prepared.logicalKey)
 	if err != nil {
 		return MessageResponse{}, fmt.Errorf("load thread binding: %w", err)
@@ -211,6 +235,12 @@ func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prep
 	binding.CodexThreadID = result.ThreadID
 	if err := s.store.UpsertThreadBinding(ctx, binding); err != nil {
 		return MessageResponse{}, fmt.Errorf("persist thread binding: %w", err)
+	}
+
+	if s.mode == config.ModeTask {
+		if err := s.touchTaskLastUsed(ctx, prepared.userID, prepared.taskID); err != nil {
+			slog.Error("update task last used timestamp", "task_id", prepared.taskID, "error", err)
+		}
 	}
 
 	return MessageResponse{
@@ -281,4 +311,52 @@ func taskIDFromLogicalKey(userID string, logicalKey string) (string, error) {
 	}
 
 	return strings.TrimPrefix(logicalKey, prefix), nil
+}
+
+func (s *DefaultMessageService) ensureTaskReady(
+	ctx context.Context,
+	prepared preparedMessage,
+) (Task, MessageResponse, bool, error) {
+	task, ok, err := s.store.GetTask(ctx, prepared.userID, prepared.taskID)
+	if err != nil {
+		return Task{}, MessageResponse{}, false, fmt.Errorf("load task for execution: %w", err)
+	}
+
+	if !ok || task.Status != TaskStatusOpen {
+		return Task{}, MessageResponse{
+			Text:      s.noActiveTaskMessage(),
+			ReplyToID: prepared.replyToID,
+		}, true, nil
+	}
+
+	task, err = s.worktrees.EnsureReady(ctx, task)
+	if err != nil {
+		slog.Error("prepare task worktree", "task_id", prepared.taskID, "error", err)
+		return Task{}, MessageResponse{
+			Text:      "Task workspace setup failed. Please retry after checking the configured repository.",
+			ReplyToID: prepared.replyToID,
+		}, true, nil
+	}
+
+	return task, MessageResponse{}, false, nil
+}
+
+func (s *DefaultMessageService) touchTaskLastUsed(ctx context.Context, userID string, taskID string) error {
+	task, ok, err := s.store.GetTask(ctx, userID, taskID)
+	if err != nil {
+		return fmt.Errorf("load task before last-used update: %w", err)
+	}
+
+	if !ok {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	task.LastUsedAt = &now
+	task.UpdatedAt = now
+	if err := s.store.UpdateTask(ctx, task); err != nil {
+		return fmt.Errorf("persist task last-used update: %w", err)
+	}
+
+	return nil
 }

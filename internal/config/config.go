@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -143,6 +144,33 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		CodexNetworkAccess:         networkAccess,
 		LogLevel:                   logLevel,
 	}, nil
+}
+
+func ValidateRuntimePaths(cfg Config) error {
+	if cfg.Mode != ModeTask {
+		return nil
+	}
+
+	info, err := os.Stat(cfg.CodexWorkdir)
+	if err != nil {
+		return fmt.Errorf("task mode requires CLAW_CODEX_WORKDIR to exist: %w", err)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("task mode requires CLAW_CODEX_WORKDIR to be a directory: %s", cfg.CodexWorkdir)
+	}
+
+	gitEntryPath := filepath.Join(cfg.CodexWorkdir, ".git")
+	_, err = os.Stat(gitEntryPath)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("task mode requires CLAW_CODEX_WORKDIR to be a Git repository root: %s", cfg.CodexWorkdir)
+	}
+
+	return fmt.Errorf("inspect CLAW_CODEX_WORKDIR git metadata: %w", err)
 }
 
 func sqlitePath(dataDir string) string {
