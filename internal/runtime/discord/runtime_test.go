@@ -273,6 +273,153 @@ func TestRuntimeMentionHandlingPresentsQueuedAcknowledgementAndDeferredReply(t *
 	}
 }
 
+func TestRuntimeCloseWaitsForDeferredQueuedReplyDrain(t *testing.T) {
+	t.Parallel()
+
+	releaseDeferred := make(chan struct{})
+	drainDone := make(chan struct{})
+	messageService := &fakeMessageService{
+		handle: func(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error) {
+			go func() {
+				defer close(drainDone)
+				<-releaseDeferred
+				_ = sink.Deliver(ctx, app.MessageResponse{
+					Text:      "Final queued response",
+					ReplyToID: request.MessageID,
+				})
+			}()
+
+			return app.MessageResponse{
+				Text:      "A response is already running for this conversation. Your message has been queued at position 1.",
+				ReplyToID: request.MessageID,
+			}, nil
+		},
+		waitForDrain: func(ctx context.Context) error {
+			select {
+			case <-drainDone:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	}
+
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithTimeout(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{}, http.DefaultClient, time.Second)
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "channel-1",
+			Content:   "<@bot-user> queue me",
+			Author:    &discordgo.User{ID: "user-1"},
+			Mentions: []*discordgo.User{
+				{ID: "bot-user"},
+			},
+		},
+	})
+
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- runtime.Close()
+	}()
+
+	select {
+	case err := <-closeDone:
+		t.Fatalf("Close() returned early with err = %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	close(releaseDeferred)
+
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for runtime close")
+	}
+
+	if len(fakeSession.sentMessages) != 2 {
+		t.Fatalf("sent message count = %d, want %d", len(fakeSession.sentMessages), 2)
+	}
+
+	if fakeSession.sentMessages[1].Content != "Final queued response" {
+		t.Fatalf("deferred content = %q, want %q", fakeSession.sentMessages[1].Content, "Final queued response")
+	}
+
+	if !fakeSession.closed {
+		t.Fatal("session closed = false, want true")
+	}
+}
+
+func TestRuntimeCloseCancelsDeferredDrainWhenTimeoutExpires(t *testing.T) {
+	t.Parallel()
+
+	drainDone := make(chan struct{})
+	canceled := make(chan struct{})
+	messageService := &fakeMessageService{
+		handle: func(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error) {
+			go func() {
+				defer close(drainDone)
+				<-ctx.Done()
+				close(canceled)
+			}()
+
+			return app.MessageResponse{
+				Text:      "A response is already running for this conversation. Your message has been queued at position 1.",
+				ReplyToID: request.MessageID,
+			}, nil
+		},
+		waitForDrain: func(ctx context.Context) error {
+			select {
+			case <-drainDone:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	}
+
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithTimeout(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{}, http.DefaultClient, 20*time.Millisecond)
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "channel-1",
+			Content:   "<@bot-user> queue me",
+			Author:    &discordgo.User{ID: "user-1"},
+			Mentions: []*discordgo.User{
+				{ID: "bot-user"},
+			},
+		},
+	})
+
+	if err := runtime.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for runtime cancellation")
+	}
+
+	if !fakeSession.closed {
+		t.Fatal("session closed = false, want true")
+	}
+}
+
 func TestRuntimeMentionHandlingDownloadsImageAttachments(t *testing.T) {
 	t.Parallel()
 
@@ -681,7 +828,7 @@ func TestChunkTextPreservesCodeFences(t *testing.T) {
 
 func newTestRuntime(t *testing.T, mode config.Mode, fakeSession *fakeSession) *Runtime {
 	t.Helper()
-	return newTestRuntimeWithServicesAndClient(t, mode, fakeSession, &fakeMessageService{}, &fakeTaskCommandService{}, http.DefaultClient)
+	return newTestRuntimeWithTimeout(t, mode, fakeSession, &fakeMessageService{}, &fakeTaskCommandService{}, http.DefaultClient, 0)
 }
 
 func newTestRuntimeWithServices(
@@ -692,7 +839,7 @@ func newTestRuntimeWithServices(
 	taskService app.TaskCommandService,
 ) *Runtime {
 	t.Helper()
-	return newTestRuntimeWithServicesAndClient(t, mode, fakeSession, messageService, taskService, http.DefaultClient)
+	return newTestRuntimeWithTimeout(t, mode, fakeSession, messageService, taskService, http.DefaultClient, 0)
 }
 
 func newTestRuntimeWithServicesAndClient(
@@ -704,6 +851,19 @@ func newTestRuntimeWithServicesAndClient(
 	httpClient attachmentHTTPClient,
 ) *Runtime {
 	t.Helper()
+	return newTestRuntimeWithTimeout(t, mode, fakeSession, messageService, taskService, httpClient, 0)
+}
+
+func newTestRuntimeWithTimeout(
+	t *testing.T,
+	mode config.Mode,
+	fakeSession *fakeSession,
+	messageService app.MessageService,
+	taskService app.TaskCommandService,
+	httpClient attachmentHTTPClient,
+	shutdownDrainTimeout time.Duration,
+) *Runtime {
+	t.Helper()
 
 	runtime, err := NewRuntime(Dependencies{
 		Config: config.Config{
@@ -712,10 +872,11 @@ func newTestRuntimeWithServicesAndClient(
 			DiscordToken:       "discord-token",
 			DiscordCommandName: "release",
 		},
-		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Message:     messageService,
-		TaskCommand: taskService,
-		HTTPClient:  httpClient,
+		Logger:               slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Message:              messageService,
+		TaskCommand:          taskService,
+		HTTPClient:           httpClient,
+		ShutdownDrainTimeout: shutdownDrainTimeout,
 		SessionFactory: func(token string) (session, error) {
 			return fakeSession, nil
 		},
@@ -879,10 +1040,11 @@ func (s *fakeSession) dispatchInteraction(event *discordgo.InteractionCreate) {
 }
 
 type fakeMessageService struct {
-	requests []app.MessageRequest
-	response app.MessageResponse
-	err      error
-	handle   func(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error)
+	requests     []app.MessageRequest
+	response     app.MessageResponse
+	err          error
+	handle       func(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error)
+	waitForDrain func(ctx context.Context) error
 }
 
 func (s *fakeMessageService) HandleMessage(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error) {
@@ -901,6 +1063,14 @@ func (s *fakeMessageService) HandleMessage(ctx context.Context, request app.Mess
 	}
 
 	return s.response, nil
+}
+
+func (s *fakeMessageService) WaitForDrain(ctx context.Context) error {
+	if s.waitForDrain == nil {
+		return nil
+	}
+
+	return s.waitForDrain(ctx)
 }
 
 type fakeTaskCommandService struct {

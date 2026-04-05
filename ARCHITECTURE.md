@@ -129,6 +129,7 @@ Responsibilities:
 - determine whether the bot should respond
 - normalize input into application requests
 - send formatted responses back to Discord
+- own the runtime lifecycle for in-flight and queued background work during shutdown
 
 The runtime must not directly talk to storage or Codex implementation details.
 
@@ -310,6 +311,16 @@ Concurrency is bounded per logical thread key.
 - A single logical thread key may have only one active Codex turn at a time.
 - Each key may hold up to five additional waiting messages in an in-memory FIFO queue.
 - Queued work is intentionally not durable across process restart.
+
+### 8.2 Shutdown Semantics
+
+Runtime shutdown should follow a bounded graceful-drain policy.
+
+- The Discord runtime stops accepting new events before shutdown draining begins.
+- In-flight immediate turns and already-queued turns may continue during a short graceful-drain window while the Discord session remains open.
+- The runtime should wait up to five seconds for queued and in-flight work to finish cleanly.
+- If the drain window expires, the runtime cancels the shared runtime context for outstanding work and drops any deferred replies that can no longer be delivered predictably.
+- Logs must clearly distinguish queued work that completed, was canceled during shutdown, or was dropped because shutdown forced delivery to stop.
 
 ## 9. Persistence Model
 

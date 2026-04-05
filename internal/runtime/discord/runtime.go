@@ -8,19 +8,26 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/HatsuneMiku3939/39claw/internal/app"
 	"github.com/HatsuneMiku3939/39claw/internal/config"
 	"github.com/bwmarrin/discordgo"
 )
 
+const (
+	defaultShutdownDrainTimeout = 5 * time.Second
+	forcedShutdownWaitTimeout   = time.Second
+)
+
 type Dependencies struct {
-	Config         config.Config
-	Logger         *slog.Logger
-	Message        app.MessageService
-	TaskCommand    app.TaskCommandService
-	SessionFactory sessionFactory
-	HTTPClient     attachmentHTTPClient
+	Config               config.Config
+	Logger               *slog.Logger
+	Message              app.MessageService
+	TaskCommand          app.TaskCommandService
+	SessionFactory       sessionFactory
+	HTTPClient           attachmentHTTPClient
+	ShutdownDrainTimeout time.Duration
 }
 
 type Runtime struct {
@@ -32,9 +39,14 @@ type Runtime struct {
 	sessionFactory sessionFactory
 	httpClient     attachmentHTTPClient
 
-	mu       sync.Mutex
-	session  session
-	cleanups []func()
+	shutdownDrainTimeout time.Duration
+
+	mu               sync.Mutex
+	session          session
+	cleanups         []func()
+	runtimeLifecycle *lifecycleContext
+	closing          bool
+	workers          sync.WaitGroup
 }
 
 func NewRuntime(deps Dependencies) (*Runtime, error) {
@@ -64,17 +76,27 @@ func NewRuntime(deps Dependencies) (*Runtime, error) {
 		httpClient = http.DefaultClient
 	}
 
+	shutdownDrainTimeout := deps.ShutdownDrainTimeout
+	if shutdownDrainTimeout <= 0 {
+		shutdownDrainTimeout = defaultShutdownDrainTimeout
+	}
+
 	return &Runtime{
-		config:         deps.Config,
-		logger:         deps.Logger,
-		message:        deps.Message,
-		taskCommand:    deps.TaskCommand,
-		sessionFactory: factory,
-		httpClient:     httpClient,
+		config:               deps.Config,
+		logger:               deps.Logger,
+		message:              deps.Message,
+		taskCommand:          deps.TaskCommand,
+		sessionFactory:       factory,
+		httpClient:           httpClient,
+		shutdownDrainTimeout: shutdownDrainTimeout,
 	}, nil
 }
 
-func (r *Runtime) Start(_ context.Context) error {
+func (r *Runtime) Start(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -87,6 +109,9 @@ func (r *Runtime) Start(_ context.Context) error {
 		return fmt.Errorf("create discord session: %w", err)
 	}
 
+	r.runtimeLifecycle = newLifecycleContext()
+	r.closing = false
+
 	r.session = discordSession
 	r.cleanups = []func(){
 		discordSession.AddHandler(r.handleMessageCreate),
@@ -94,6 +119,7 @@ func (r *Runtime) Start(_ context.Context) error {
 	}
 
 	if err := discordSession.Open(); err != nil {
+		r.runtimeLifecycle.Cancel()
 		r.resetLocked()
 		return fmt.Errorf("open discord session: %w", err)
 	}
@@ -101,6 +127,7 @@ func (r *Runtime) Start(_ context.Context) error {
 	appID := discordSession.SelfUserID()
 	if appID == "" {
 		_ = discordSession.Close()
+		r.runtimeLifecycle.Cancel()
 		r.resetLocked()
 		return errors.New("discord session did not expose the bot user id after open")
 	}
@@ -111,6 +138,7 @@ func (r *Runtime) Start(_ context.Context) error {
 		registeredCommands(r.config),
 	); err != nil {
 		_ = discordSession.Close()
+		r.runtimeLifecycle.Cancel()
 		r.resetLocked()
 		return fmt.Errorf("register application commands: %w", err)
 	}
@@ -130,20 +158,62 @@ func (r *Runtime) Start(_ context.Context) error {
 
 func (r *Runtime) Close() error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	if r.session == nil {
+		r.resetLocked()
+		r.mu.Unlock()
 		return nil
 	}
 
-	for _, cleanup := range r.cleanups {
+	r.closing = true
+	discordSession := r.session
+	cleanups := append([]func(){}, r.cleanups...)
+	runtimeLifecycle := r.runtimeLifecycle
+	shutdownDrainTimeout := r.shutdownDrainTimeout
+	r.mu.Unlock()
+
+	for _, cleanup := range cleanups {
 		if cleanup != nil {
 			cleanup()
 		}
 	}
 
-	err := r.session.Close()
+	r.logger.Info("discord runtime shutdown started", "graceful_timeout", shutdownDrainTimeout)
+
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), shutdownDrainTimeout)
+	drainErr := r.waitForDrain(drainCtx)
+	drainCancel()
+	if drainErr != nil {
+		r.logger.Warn(
+			"discord runtime shutdown timed out; canceling queued and in-flight turns",
+			"error",
+			drainErr,
+			"graceful_timeout",
+			shutdownDrainTimeout,
+		)
+
+		if runtimeLifecycle != nil {
+			runtimeLifecycle.Cancel()
+		}
+
+		forcedCtx, forcedCancel := context.WithTimeout(context.Background(), forcedShutdownWaitTimeout)
+		forcedErr := r.waitForDrain(forcedCtx)
+		forcedCancel()
+		if forcedErr != nil {
+			r.logger.Warn("discord runtime forced shutdown still had active work", "error", forcedErr)
+		}
+	} else {
+		r.logger.Info("discord runtime shutdown drained queued and in-flight turns")
+		if runtimeLifecycle != nil {
+			runtimeLifecycle.Cancel()
+		}
+	}
+
+	err := discordSession.Close()
+
+	r.mu.Lock()
 	r.resetLocked()
+	r.mu.Unlock()
+
 	if err != nil {
 		return fmt.Errorf("close discord session: %w", err)
 	}
@@ -155,23 +225,23 @@ func (r *Runtime) Close() error {
 func (r *Runtime) resetLocked() {
 	r.session = nil
 	r.cleanups = nil
+	r.runtimeLifecycle = nil
+	r.closing = false
 }
 
 func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.MessageCreate) {
-	r.mu.Lock()
-	discordSession := r.session
-	r.mu.Unlock()
-
-	if discordSession == nil {
+	discordSession, runtimeCtx, ok := r.beginWork()
+	if !ok {
 		return
 	}
+	defer r.workers.Done()
 
 	request, ok := mapMessageCreate(discordSession.SelfUserID(), event)
 	if !ok {
 		return
 	}
 
-	imagePaths, cleanup, err := prepareImageAttachments(context.Background(), r.httpClient, event.Attachments)
+	imagePaths, cleanup, err := prepareImageAttachments(runtimeCtx, r.httpClient, event.Attachments)
 	if err != nil {
 		if cleanup != nil {
 			cleanup()
@@ -197,7 +267,12 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 		return
 	}
 
-	deferredSink := app.DeferredReplySinkFunc(func(_ context.Context, response app.MessageResponse) error {
+	deferredSink := app.DeferredReplySinkFunc(func(ctx context.Context, response app.MessageResponse) error {
+		if err := ctx.Err(); err != nil {
+			r.logger.Warn("drop deferred message response during shutdown", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
+			return err
+		}
+
 		r.mu.Lock()
 		currentSession := r.session
 		r.mu.Unlock()
@@ -216,7 +291,7 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 		return nil
 	})
 
-	response, err := r.message.HandleMessage(context.Background(), request, deferredSink)
+	response, err := r.message.HandleMessage(runtimeCtx, request, deferredSink)
 	if err != nil {
 		r.logger.Error("handle message", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
 		response = app.MessageResponse{
@@ -231,20 +306,18 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 }
 
 func (r *Runtime) handleInteractionCreate(_ *discordgo.Session, event *discordgo.InteractionCreate) {
-	r.mu.Lock()
-	discordSession := r.session
-	r.mu.Unlock()
-
-	if discordSession == nil {
+	discordSession, runtimeCtx, ok := r.beginWork()
+	if !ok {
 		return
 	}
+	defer r.workers.Done()
 
 	request, ok := mapInteractionCommand(event)
 	if !ok {
 		return
 	}
 
-	response, err := r.routeCommand(context.Background(), request)
+	response, err := r.routeCommand(runtimeCtx, request)
 	if err != nil {
 		r.logger.Error("handle interaction", "error", err, "command", request.Name, "user_id", request.UserID)
 		response = app.MessageResponse{
@@ -256,6 +329,87 @@ func (r *Runtime) handleInteractionCreate(_ *discordgo.Session, event *discordgo
 	if err := r.presentInteractionResponse(discordSession, event.Interaction, response); err != nil {
 		r.logger.Error("present interaction response", "error", err, "command", request.Name, "user_id", request.UserID)
 	}
+}
+
+func (r *Runtime) beginWork() (session, context.Context, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.session == nil || r.closing || r.runtimeLifecycle == nil {
+		return nil, nil, false
+	}
+
+	r.workers.Add(1)
+	return r.session, r.runtimeLifecycle, true
+}
+
+func (r *Runtime) waitForDrain(ctx context.Context) error {
+	if err := waitForWaitGroup(ctx, &r.workers); err != nil {
+		return err
+	}
+
+	drainer, ok := r.message.(app.DrainableMessageService)
+	if !ok {
+		return nil
+	}
+
+	return drainer.WaitForDrain(ctx)
+}
+
+func waitForWaitGroup(ctx context.Context, wg *sync.WaitGroup) error {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+type lifecycleContext struct {
+	mu   sync.Mutex
+	done chan struct{}
+	err  error
+	once sync.Once
+}
+
+func newLifecycleContext() *lifecycleContext {
+	return &lifecycleContext{
+		done: make(chan struct{}),
+	}
+}
+
+func (c *lifecycleContext) Deadline() (time.Time, bool) {
+	return time.Time{}, false
+}
+
+func (c *lifecycleContext) Done() <-chan struct{} {
+	return c.done
+}
+
+func (c *lifecycleContext) Err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.err
+}
+
+func (c *lifecycleContext) Value(any) any {
+	return nil
+}
+
+func (c *lifecycleContext) Cancel() {
+	c.once.Do(func() {
+		c.mu.Lock()
+		c.err = context.Canceled
+		c.mu.Unlock()
+		close(c.done)
+	})
 }
 
 func (r *Runtime) presentMessageResponse(discordSession session, channelID string, response app.MessageResponse) error {

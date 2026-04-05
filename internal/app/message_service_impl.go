@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/HatsuneMiku3939/39claw/internal/config"
@@ -36,6 +37,7 @@ type DefaultMessageService struct {
 	dailyMemory DailyMemoryRefresher
 	gateway     CodexGateway
 	coordinator QueueCoordinator
+	queueWG     sync.WaitGroup
 }
 
 func NewMessageService(deps MessageServiceDependencies) (*DefaultMessageService, error) {
@@ -105,9 +107,8 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 	}
 
 	executionKey := buildExecutionKey(s.mode, prepared.logicalKey)
-	queuedCtx := context.WithoutCancel(ctx)
 	admission, err := s.coordinator.Admit(executionKey, func() {
-		s.processQueuedMessage(queuedCtx, prepared)
+		s.processQueuedMessage(ctx, prepared)
 	})
 	if err != nil {
 		if errors.Is(err, ErrExecutionQueueFull) {
@@ -266,7 +267,29 @@ func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prep
 
 func (s *DefaultMessageService) processQueuedMessage(ctx context.Context, prepared preparedMessage) {
 	response, err := s.executePreparedMessage(ctx, prepared)
-	if err != nil {
+	switch {
+	case err == nil:
+	case isLifecycleContextError(err):
+		slog.Warn(
+			"queued message canceled during shutdown",
+			"logical_key",
+			prepared.logicalKey,
+			"reply_to_id",
+			prepared.replyToID,
+			"error",
+			err,
+		)
+		return
+	default:
+		slog.Error(
+			"queued message failed",
+			"logical_key",
+			prepared.logicalKey,
+			"reply_to_id",
+			prepared.replyToID,
+			"error",
+			err,
+		)
 		response = MessageResponse{
 			Text:      queuedInternalErrorMessage,
 			ReplyToID: prepared.replyToID,
@@ -275,9 +298,39 @@ func (s *DefaultMessageService) processQueuedMessage(ctx context.Context, prepar
 
 	if prepared.sink != nil {
 		if err := prepared.sink.Deliver(ctx, response); err != nil {
+			if isLifecycleContextError(err) {
+				slog.Warn(
+					"queued message reply dropped during shutdown",
+					"logical_key",
+					prepared.logicalKey,
+					"reply_to_id",
+					prepared.replyToID,
+					"error",
+					err,
+				)
+				return
+			}
+
+			slog.Error(
+				"deliver queued message reply",
+				"logical_key",
+				prepared.logicalKey,
+				"reply_to_id",
+				prepared.replyToID,
+				"error",
+				err,
+			)
 			return
 		}
 	}
+
+	slog.Info(
+		"queued message completed",
+		"logical_key",
+		prepared.logicalKey,
+		"reply_to_id",
+		prepared.replyToID,
+	)
 }
 
 func (s *DefaultMessageService) completeExecution(executionKey string) {
@@ -286,7 +339,11 @@ func (s *DefaultMessageService) completeExecution(executionKey string) {
 		return
 	}
 
-	go s.drainQueue(executionKey, work)
+	s.queueWG.Add(1)
+	go func() {
+		defer s.queueWG.Done()
+		s.drainQueue(executionKey, work)
+	}()
 }
 
 func (s *DefaultMessageService) drainQueue(executionKey string, work func()) {
@@ -299,6 +356,21 @@ func (s *DefaultMessageService) drainQueue(executionKey string, work func()) {
 		}
 
 		work = next
+	}
+}
+
+func (s *DefaultMessageService) WaitForDrain(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.queueWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -326,6 +398,10 @@ func taskIDFromLogicalKey(userID string, logicalKey string) (string, error) {
 	}
 
 	return strings.TrimPrefix(logicalKey, prefix), nil
+}
+
+func isLifecycleContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func (s *DefaultMessageService) ensureTaskReady(
