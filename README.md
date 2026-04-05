@@ -15,6 +15,103 @@ It is built for teams or individuals who want to work with Codex from inside Dis
 - image attachment support for mention-triggered turns
 - queued acknowledgments when the same conversation is already busy
 
+## Installation
+
+### Homebrew
+
+Install the macOS cask from the custom tap.
+
+```bash
+brew tap hatsunemiku3939/homebrew-tap
+brew install --cask 39claw
+```
+
+You can also install it without a separate tap step.
+
+```bash
+brew install --cask hatsunemiku3939/homebrew-tap/39claw
+```
+
+The cask installs an unsigned binary. If macOS blocks execution, inspect the binary first and then remove the quarantine attribute manually.
+
+```bash
+xattr -dr com.apple.quarantine "$(brew --prefix)/Caskroom/39claw/<version>/39claw"
+```
+
+### Linux packages
+
+Release assets for Linux include both `.deb` and `.rpm` packages for `amd64` and `arm64`.
+
+Download the package that matches your distribution and CPU architecture from the [GitHub Releases page](https://github.com/HatsuneMiku3939/39claw/releases) before installing it locally.
+
+Install a Debian package:
+
+```bash
+sudo dpkg -i ./39claw_<version>_amd64.deb
+```
+
+Install an RPM package:
+
+```bash
+sudo rpm -i ./39claw-<version>-1.x86_64.rpm
+```
+
+### GitHub release archives
+
+Download the archive that matches your platform from the [GitHub Releases page](https://github.com/HatsuneMiku3939/39claw/releases).
+
+The first stable release is assumed to be `v1.0.0`, and the release archives follow this naming pattern:
+
+- `39claw_v1.0.0_Linux_x86_64.tar.gz`
+- `39claw_v1.0.0_Linux_arm64.tar.gz`
+- `39claw_v1.0.0_Darwin_x86_64.zip`
+- `39claw_v1.0.0_Darwin_arm64.zip`
+- `39claw_v1.0.0_Windows_x86_64.zip`
+- `39claw_v1.0.0_Windows_arm64.zip`
+
+After downloading the archive:
+
+1. extract it
+2. move the `39claw` binary somewhere on your `PATH`
+3. run `39claw version` to confirm the installed release version
+
+Example for Linux `amd64`:
+
+```bash
+curl -LO https://github.com/HatsuneMiku3939/39claw/releases/download/v1.0.0/39claw_v1.0.0_Linux_x86_64.tar.gz
+tar -xzf 39claw_v1.0.0_Linux_x86_64.tar.gz
+chmod +x 39claw
+sudo mv ./39claw /usr/local/bin/39claw
+39claw version
+```
+
+Example for macOS `arm64`:
+
+```bash
+curl -LO https://github.com/HatsuneMiku3939/39claw/releases/download/v1.0.0/39claw_v1.0.0_Darwin_arm64.zip
+unzip 39claw_v1.0.0_Darwin_arm64.zip
+chmod +x 39claw
+sudo mv ./39claw /usr/local/bin/39claw
+39claw version
+```
+
+Example for Windows `amd64` with PowerShell:
+
+```powershell
+curl.exe -L -o 39claw_v1.0.0_Windows_x86_64.zip https://github.com/HatsuneMiku3939/39claw/releases/download/v1.0.0/39claw_v1.0.0_Windows_x86_64.zip
+tar -xf 39claw_v1.0.0_Windows_x86_64.zip
+.\39claw.exe version
+```
+
+### Build from source
+
+If you prefer to build from source instead of using a release archive:
+
+```bash
+go build -o ./bin/39claw ./cmd/39claw
+./bin/39claw version
+```
+
 ## Conversation Modes
 
 39claw runs in exactly one mode per bot instance.
@@ -375,6 +472,40 @@ After startup, confirm the basics:
 - send overlapping messages for the same conversation and confirm the later one is queued
 - send a long Codex response and confirm the bot splits it into readable Discord-safe chunks
 
+## Release
+
+39claw now has a first-stage tag-driven release path for the production `39claw` binary.
+The flow is intentionally conservative:
+
+- release tags are created manually
+- GitHub Actions builds the release from a pushed `v*` tag
+- GoReleaser creates a draft GitHub Release instead of publishing immediately
+- Linux `.deb` and `.rpm` packages are attached to the draft release
+- the macOS Homebrew cask is updated in the `HatsuneMiku3939/homebrew-tap` repository
+
+Before tagging, run the local validation commands from the repository root:
+
+```bash
+make test
+make lint
+go vet ./...
+make release-check
+make release-snapshot
+```
+
+After the release candidate gate passes, create and push a tag such as:
+
+```bash
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
+
+Pushing a tag that starts with `v` triggers the GitHub Actions release workflow and creates a draft GitHub Release with cross-platform archives for `39claw`.
+
+The same release workflow also publishes Linux package artifacts and updates the Homebrew cask in the `HatsuneMiku3939/homebrew-tap` repository. Set the `HOMEBREW_TAP_GITHUB_TOKEN` GitHub Actions secret to a token with write access to that repository before pushing a release tag.
+
+For the complete release candidate checklist, tagging steps, and post-release verification flow, use [RELEASE_RUNBOOK.md](./docs/operations/RELEASE_RUNBOOK.md).
+
 ## Current Status
 
 39claw is still early-stage software, but the current build already supports:
@@ -396,3 +527,4 @@ For deeper detail, start here:
 - [docs/product-specs/task-mode-user-flow.md](./docs/product-specs/task-mode-user-flow.md)
 - [docs/index.md](./docs/index.md)
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [RELEASE_RUNBOOK.md](./docs/operations/RELEASE_RUNBOOK.md)

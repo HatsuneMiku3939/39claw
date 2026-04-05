@@ -33,3 +33,23 @@ jobs:
 
       - name: Run lint
         run: make lint
+
+  release-config:
+    name: Release Config
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Validate GoReleaser configuration
+        uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552
+        with:
+          version: "latest"
+          args: check

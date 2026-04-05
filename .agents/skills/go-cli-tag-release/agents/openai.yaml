@@ -1,0 +1,4 @@
+interface:
+  display_name: "Go CLI Tag Release"
+  short_description: "Bootstrap v-tag Go CLI releases"
+  default_prompt: "Use $go-cli-tag-release to set up v-tag GitHub Releases for this Go CLI repository."

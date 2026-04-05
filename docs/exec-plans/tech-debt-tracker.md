@@ -31,6 +31,27 @@ Describe the smallest safe follow-up that should address the debt.
 
 ## Current Entries
 
+### First live tagged release follow-up
+
+- Status: open
+- Date: 2026-04-05
+- Related plan: `docs/exec-plans/completed/10-first-stage-release-automation.md`
+- Owner: Unassigned
+
+### Context
+
+The repository now contains a complete first-stage tag-driven release path, including a checked-in runbook, release workflow, GoReleaser config, CI validation, and successful local snapshot verification. What has not yet been done from this implementation environment is pushing the first real `v*` tag that would create a draft GitHub Release in the GitHub repository.
+
+This gap is intentional. Pushing a real release tag is an operator action with external effects, so it was left outside the coding change itself even though the repository is now ready for it.
+
+### Risk
+
+Until one maintainer performs the first live tagged release, the project still lacks proof that the exact GitHub-hosted draft-release flow works end to end against the production repository permissions and release page. Local snapshot builds and `goreleaser check` prove the repository configuration, but they do not prove the final hosted release event.
+
+### Next step
+
+Follow `docs/operations/RELEASE_RUNBOOK.md` from a clean, up-to-date `master` checkout and perform the first live tagged release, starting with a small version such as `v0.1.0`. After the draft GitHub Release is created successfully and the attached archives are verified, mark this entry resolved or replace it with any concrete follow-up discovered during the first live run.
+
 ### Discord runtime smoke test follow-up
 
 - Status: open

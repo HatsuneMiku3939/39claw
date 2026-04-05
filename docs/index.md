@@ -8,6 +8,8 @@ It is organized into a small set of document layers so contributors can quickly 
 
 - [Root Architecture Reference](../ARCHITECTURE.md)
   - The authoritative architecture document for the repository
+- [Release Runbook](./operations/RELEASE_RUNBOOK.md)
+  - Operator-facing release readiness, tagging, and post-release verification steps
 - [Product Specs](./product-specs/index.md)
   - Product-facing user journeys, interaction rules, and expected behavior
 - [Design Docs](./design-docs/index.md)
@@ -42,6 +44,12 @@ Use the root `ARCHITECTURE.md` when the question is about:
 - the authoritative architecture decision
 - the intended system boundaries or v1 scope
 - resolving ambiguity between design notes
+
+Use `docs/operations/RELEASE_RUNBOOK.md` when the question is about:
+
+- how to decide whether a commit is releasable
+- how to create and push a release tag
+- how to verify the draft GitHub Release after automation runs
 
 Use `docs/references` when the question is about:
 

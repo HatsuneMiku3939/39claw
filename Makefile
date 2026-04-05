@@ -13,3 +13,13 @@ test:
 .PHONY: lint
 lint:
 	@./scripts/lint -c .golangci.yml
+
+## release-check: Validate the GoReleaser configuration
+.PHONY: release-check
+release-check:
+	@go run github.com/goreleaser/goreleaser/v2@latest check
+
+## release-snapshot: Build snapshot release artifacts locally
+.PHONY: release-snapshot
+release-snapshot:
+	@go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
