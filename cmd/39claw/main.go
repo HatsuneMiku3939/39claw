@@ -12,6 +12,7 @@ import (
 	"github.com/HatsuneMiku3939/39claw/internal/app"
 	"github.com/HatsuneMiku3939/39claw/internal/codex"
 	"github.com/HatsuneMiku3939/39claw/internal/config"
+	"github.com/HatsuneMiku3939/39claw/internal/dailymemory"
 	"github.com/HatsuneMiku3939/39claw/internal/observe"
 	runtimediscord "github.com/HatsuneMiku3939/39claw/internal/runtime/discord"
 	sqlitestore "github.com/HatsuneMiku3939/39claw/internal/store/sqlite"
@@ -85,9 +86,29 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		return err
 	}
 
+	if cfg.Mode == config.ModeDaily {
+		if threadOptions.SandboxMode == codex.SandboxModeReadOnly {
+			return errors.New("daily memory bridge requires CLAW_CODEX_SANDBOX_MODE to allow writes inside CLAW_CODEX_WORKDIR")
+		}
+
+		if err := (dailymemory.Bootstrap{Workdir: cfg.CodexWorkdir}).Ensure(ctx); err != nil {
+			return fmt.Errorf("bootstrap daily memory bridge: %w", err)
+		}
+	}
+
 	gateway := newCodexGateway(client, codex.GatewayOptions{
 		ThreadOptions: threadOptions,
 	})
+
+	var dailyMemory app.DailyMemoryRefresher
+	if cfg.Mode == config.ModeDaily {
+		dailyMemory = dailymemory.Refresher{
+			Timezone: cfg.Timezone,
+			Store:    store,
+			Gateway:  gateway,
+			Workdir:  cfg.CodexWorkdir,
+		}
+	}
 
 	var workspaceManager app.TaskWorkspaceManager
 	if cfg.Mode == config.ModeTask {
@@ -113,6 +134,7 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		Policy:           policy,
 		Store:            store,
 		WorkspaceManager: workspaceManager,
+		DailyMemory:      dailyMemory,
 		Gateway:          gateway,
 		Coordinator:      thread.NewQueueCoordinator(),
 	})

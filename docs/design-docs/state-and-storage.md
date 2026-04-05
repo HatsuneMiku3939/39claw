@@ -34,7 +34,19 @@ It stores:
 - creation time
 - last update time
 
-### 2. Active Task State
+### 2. Durable Daily Memory Files
+
+This state is required in `daily` mode.
+
+It lives inside the configured Codex workdir instead of SQLite:
+
+- `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/MEMORY.md`
+- `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/YYYY-MM-DD.md`
+
+`MEMORY.md` is the compact primary memory file that carries durable facts such as user preferences or long-lived workflow context across local-day boundaries.
+The dated file records what the new-day preflight promoted, updated, or rejected when it resumed the previous daily Codex thread.
+
+### 3. Active Task State
 
 This state is only required for `task` mode.
 
@@ -48,7 +60,7 @@ user -> active_task_id
 
 This allows ordinary messages to be routed without forcing the user to repeat the task identifier in every message.
 
-### 3. Task Worktree Metadata
+### 4. Task Worktree Metadata
 
 This state is only required for `task` mode.
 
@@ -82,6 +94,9 @@ The current concept points toward:
 - `thread_bindings`
 - `tasks`
 - `active_tasks`
+
+SQLite remains the source of truth for remote thread bindings and task metadata.
+The `AGENT_MEMORY` Markdown files are intentionally stored in the Codex workdir so Codex can read and update them directly during the daily memory-bridge preflight.
 
 The design should favor explicit structured columns over packing all data into a single opaque key string, unless implementation simplicity proves more valuable.
 

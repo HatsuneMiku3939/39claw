@@ -15,13 +15,13 @@ The user-visible proof should be practical. A user should be able to tell the bo
 - [x] (2026-04-05 01:19Z) Captured the agreed product direction for a `daily` memory bridge, including the `MEMORY.md + YYYY-MM-DD.md` storage model and app-driven preflight refresh.
 - [x] (2026-04-05 01:26Z) Expanded the plan with a precise managed skill contract, exact bootstrap targets, and exact memory-file templates so the runtime-injected skill can be implemented without reopening format questions.
 - [x] (2026-04-05 01:41Z) Reworked the plan to use the fixed in-workdir `AGENT_MEMORY` directory instead of an external facts directory and removed the `CLAW_FACTS_DIR` contract.
-- [ ] Update architecture, design, and product documents so `daily` mode explicitly supports a durable memory bridge instead of a pure date-boundary reset.
-- [ ] Add startup bootstrap code that materializes the managed memory skill and managed `AGENTS.md` block in the configured daily-mode workdir.
-- [ ] Add startup validation that requires at least `workspace-write` sandboxing whenever the daily memory bridge is enabled.
-- [ ] Implement the `daily` preflight coordinator that refreshes memory from the previous daily thread before the first new-day user-visible turn.
-- [ ] Implement graceful fallback behavior when the preflight refresh fails or times out.
-- [ ] Add unit and integration coverage for bootstrap, preflight, fallback, and cross-day continuity behavior.
-- [ ] Run `make test` and `make lint` after the implementation lands.
+- [x] (2026-04-05 02:11Z) Updated architecture, design, product, and operator docs so `daily` mode now promises a fresh daily thread plus a durable memory bridge instead of a hard cross-day reset.
+- [x] (2026-04-05 02:19Z) Added `internal/dailymemory` bootstrap code that materializes `AGENT_MEMORY/`, the managed refresh skill, and the managed `AGENTS.md` block inside the configured daily-mode workdir.
+- [x] (2026-04-05 02:21Z) Added daily-mode startup validation that rejects `read-only` sandboxing because the durable memory bridge must write inside `CLAW_CODEX_WORKDIR`.
+- [x] (2026-04-05 02:28Z) Implemented the `daily` preflight refresher and wired it into `internal/app/message_service_impl.go` before the first visible turn of a new local day.
+- [x] (2026-04-05 02:31Z) Implemented graceful fallback behavior by logging daily preflight refresh failures and continuing with the visible turn when refresh work fails or times out.
+- [x] (2026-04-05 02:42Z) Added unit coverage for bootstrap idempotence, managed `AGENTS.md` replacement, startup validation, preflight invocation, timeout/error handling, and daily message-service fallback sequencing.
+- [x] (2026-04-05 02:49Z) Ran `make test` and `make lint` after the implementation landed; both passed after adding a targeted `gosec` suppression comment for the validated runtime-managed `AGENTS.md` write path.
 
 ## Surprises & Discoveries
 
@@ -36,6 +36,9 @@ The user-visible proof should be practical. A user should be able to tell the bo
 
 - Observation: Keeping memory files inside `CLAW_CODEX_WORKDIR` removes the need for a separate discovery environment variable or extra writable roots, but it also means the feature depends on a write-capable sandbox mode.
   Evidence: `cmd/39claw/main.go`, `internal/codex/exec.go`, and the current Codex CLI sandbox model
+
+- Observation: The existing `CodexGateway` boundary was already sufficient for the hidden daily preflight turn, so the new feature fit cleanly behind `internal/dailymemory` without extending the Codex integration surface.
+  Evidence: `internal/dailymemory/service.go` only depends on `app.ThreadStore` and `app.CodexGateway`, and `go test ./internal/dailymemory ./internal/app ./cmd/39claw` passed after the new package was introduced.
 
 ## Decision Log
 
@@ -77,9 +80,9 @@ The user-visible proof should be practical. A user should be able to tell the bo
 
 ## Outcomes & Retrospective
 
-This plan is not yet implemented. At this stage, the repository has a clear direction for how durable memory should fit a Codex-native `daily` mode: memory generation is a runtime-controlled preflight on the previous thread, memory consumption happens through ordinary Markdown files plus `AGENTS.md` guidance, and failure handling prioritizes replying to the user even when continuity refresh fails.
+The durable daily memory bridge is now implemented. `daily` mode startup creates and refreshes the runtime-managed memory artifacts inside `CLAW_CODEX_WORKDIR`, the first visible turn of a new local day can refresh durable memory from the previous day's thread, and visible replies still proceed when that hidden refresh fails.
 
-The main remaining risks are making runtime-managed workdir edits safe, keeping the memory refresh prompt idempotent, and updating the current documentation so it no longer promises a hard fresh reset at day boundaries.
+Repository-wide validation is complete: `make test` and `make lint` both pass. The main lesson from implementation was that keeping the feature behind the existing application and gateway boundaries made the change much smaller than introducing any new persistence table or Codex-specific orchestration layer.
 
 ## Context and Orientation
 
@@ -405,3 +408,4 @@ The implementation should depend on the existing `ThreadStore` and `CodexGateway
 Revision Note: 2026-04-05 / Codex - Created this active ExecPlan after agreeing the `daily` durable-memory bridge behavior, storage layout, and runtime-controlled preflight refresh model.
 Revision Note: 2026-04-05 / Codex - Expanded the plan with the exact runtime-managed skill contract, exact prompt shape, and exact initial memory-file templates so the injected daily-memory skill can be implemented deterministically.
 Revision Note: 2026-04-05 / Codex - Reworked the plan to use `CLAW_CODEX_WORKDIR/AGENT_MEMORY` instead of an external facts directory and to treat write-capable sandboxing as an explicit feature requirement.
+Revision Note: 2026-04-05 / Codex - Updated the living sections after implementation landed, including the final bootstrap, preflight, fallback, and documentation results.
