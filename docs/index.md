@@ -10,6 +10,8 @@ It is organized into a small set of document layers so contributors can quickly 
   - The authoritative architecture document for the repository
 - [Release Runbook](./operations/RELEASE_RUNBOOK.md)
   - Operator-facing release readiness, tagging, and post-release verification steps
+- [Example Setups](../example/README.md)
+  - End-user-oriented step-by-step setup guides for common `daily` and `task` deployments
 - [Product Specs](./product-specs/index.md)
   - Product-facing user journeys, interaction rules, and expected behavior
 - [Design Docs](./design-docs/index.md)

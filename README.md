@@ -330,6 +330,11 @@ If you set `CLAW_DISCORD_GUILD_ID`, 39claw registers slash commands in that guil
 
 ## Quick Start
 
+If you want a guided setup instead of the condensed quick start, use the step-by-step example guides in [example/README.md](./example/README.md):
+
+- [daily mode in an Obsidian vault](./example/daily-obsidian-vault.md)
+- [task mode for one Git repository](./example/task-repository.md)
+
 ### 1. Choose a mode
 
 Pick one:
