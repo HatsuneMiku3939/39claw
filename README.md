@@ -330,6 +330,11 @@ If you set `CLAW_DISCORD_GUILD_ID`, 39claw registers slash commands in that guil
 
 ## Quick Start
 
+If you want a guided setup instead of the condensed quick start, use the step-by-step example guides in [example/README.md](./example/README.md):
+
+- [daily mode in an Obsidian vault](./example/daily-obsidian-vault.md)
+- [task mode for one Git repository](./example/task-repository.md)
+
 ### 1. Choose a mode
 
 Pick one:
@@ -355,6 +360,13 @@ These variables are required in `.env.local`:
 - `CLAW_CODEX_WORKDIR`
 - `CLAW_DATADIR`
 - `CLAW_CODEX_EXECUTABLE`
+
+For Discord deployments, also set:
+
+- `CLAW_CODEX_APPROVAL_POLICY=never`
+
+This is effectively required in 39claw today because the current Codex SDK integration does not expose an API surface for handling interactive approval requests.
+If you set `CLAW_CODEX_APPROVAL_POLICY` to `on-request`, `on-failure`, or `untrusted`, the bot can reach approval-gated work without any supported way for 39claw to complete that approval interaction.
 
 Recommended startup flow:
 
@@ -431,6 +443,7 @@ The first normal message for a new task may spend a moment preparing that task's
   - `true` or `false`
 - `CLAW_CODEX_APPROVAL_POLICY`
   - `never`, `on-request`, `on-failure`, or `untrusted`
+  - for 39claw today, `never` is effectively required because the current Codex SDK integration does not expose an approval-handling API surface
 - `CLAW_CODEX_MODEL_REASONING_EFFORT`
   - `minimal`, `low`, `medium`, `high`, or `xhigh`
 - `CLAW_CODEX_WEB_SEARCH_MODE`
