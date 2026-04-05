@@ -235,7 +235,9 @@ Properties:
 - no explicit thread command is required for normal usage
 - simple and low-friction
 - best for shared, conversation-oriented assistant flows
-- same-day continuity comes from the remote Codex thread, while cross-day continuity comes from runtime-managed Markdown memory files inside the workdir
+- same-day continuity comes from the remote Codex thread
+- cross-day durable memory can be projected into Markdown files inside the workdir without 39claw modifying user-owned `AGENTS.md`
+- whether normal visible turns consult those memory files is controlled by the user-owned instructions in the workdir
 
 Tradeoffs:
 

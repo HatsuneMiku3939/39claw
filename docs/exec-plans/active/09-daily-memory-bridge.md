@@ -16,12 +16,13 @@ The user-visible proof should be practical. A user should be able to tell the bo
 - [x] (2026-04-05 01:26Z) Expanded the plan with a precise managed skill contract, exact bootstrap targets, and exact memory-file templates so the runtime-injected skill can be implemented without reopening format questions.
 - [x] (2026-04-05 01:41Z) Reworked the plan to use the fixed in-workdir `AGENT_MEMORY` directory instead of an external facts directory and removed the `CLAW_FACTS_DIR` contract.
 - [x] (2026-04-05 02:11Z) Updated architecture, design, product, and operator docs so `daily` mode now promises a fresh daily thread plus a durable memory bridge instead of a hard cross-day reset.
-- [x] (2026-04-05 02:19Z) Added `internal/dailymemory` bootstrap code that materializes `AGENT_MEMORY/`, the managed refresh skill, and the managed `AGENTS.md` block inside the configured daily-mode workdir.
+- [x] (2026-04-05 02:19Z) Added `internal/dailymemory` bootstrap code that materializes `AGENT_MEMORY/` and the managed refresh skill inside the configured daily-mode workdir.
 - [x] (2026-04-05 02:21Z) Added daily-mode startup validation that rejects `read-only` sandboxing because the durable memory bridge must write inside `CLAW_CODEX_WORKDIR`.
 - [x] (2026-04-05 02:28Z) Implemented the `daily` preflight refresher and wired it into `internal/app/message_service_impl.go` before the first visible turn of a new local day.
 - [x] (2026-04-05 02:31Z) Implemented graceful fallback behavior by logging daily preflight refresh failures and continuing with the visible turn when refresh work fails or times out.
-- [x] (2026-04-05 02:42Z) Added unit coverage for bootstrap idempotence, managed `AGENTS.md` replacement, startup validation, preflight invocation, timeout/error handling, and daily message-service fallback sequencing.
-- [x] (2026-04-05 02:49Z) Ran `make test` and `make lint` after the implementation landed; both passed after adding a targeted `gosec` suppression comment for the validated runtime-managed `AGENTS.md` write path.
+- [x] (2026-04-05 02:42Z) Added unit coverage for bootstrap idempotence, startup validation, preflight invocation, timeout/error handling, and daily message-service fallback sequencing.
+- [x] (2026-04-05 02:49Z) Ran `make test` and `make lint` after the implementation landed; both passed.
+- [x] (2026-04-05 03:02Z) Removed runtime-managed `AGENTS.md` edits after clarifying that `AGENTS.md` is user-owned and any memory-consumption guidance must be authored by the user, not by 39claw.
 
 ## Surprises & Discoveries
 
@@ -54,15 +55,15 @@ The user-visible proof should be practical. A user should be able to tell the bo
   Rationale: A fixed workspace-relative location is simpler for both runtime bootstrap and Codex prompt instructions, and the user wants these files to remain directly visible and editable inside the workdir.
   Date/Author: 2026-04-05 / Codex
 
-- Decision: The workdir `AGENTS.md` file will contain a runtime-managed block that points directly at `AGENT_MEMORY/MEMORY.md` and `AGENT_MEMORY/YYYY-MM-DD.md`, but normal conversation turns will not be responsible for performing the refresh workflow.
-  Rationale: The agent should always know where memory lives, yet the refresh itself must remain a runtime-controlled preflight step so the user experiences continuity consistently.
+- Decision: 39claw must not create or modify `AGENTS.md`; if a deployment wants visible turns to consult `AGENT_MEMORY`, the deployment owner must express that in their own user-authored instructions.
+  Rationale: `AGENTS.md` is a user-owned instruction surface, so runtime-managed edits would violate that ownership boundary even if the content were well intentioned.
   Date/Author: 2026-04-05 / Codex
 
 - Decision: The once-per-day preflight gate will be derived from the absence of today's thread binding rather than from a separate persisted preflight table.
   Rationale: If today's binding already exists, the first-turn refresh has already happened or was intentionally bypassed. If preflight succeeds and the process crashes before today's thread is created, rerunning the idempotent refresh on the next attempt is acceptable and keeps persistence simpler.
   Date/Author: 2026-04-05 / Codex
 
-- Decision: Startup bootstrap failures for the managed skill, managed `AGENTS.md` block, or `AGENT_MEMORY` directory should fail daily-mode startup, but preflight execution failures should degrade continuity rather than availability.
+- Decision: Startup bootstrap failures for the managed skill or `AGENT_MEMORY` directory should fail daily-mode startup, but preflight execution failures should degrade continuity rather than availability.
   Rationale: The runtime should not advertise a configured durable-memory system that it cannot initialize at all, but transient refresh failures should not block the bot from replying to users.
   Date/Author: 2026-04-05 / Codex
 
@@ -82,7 +83,7 @@ The user-visible proof should be practical. A user should be able to tell the bo
 
 The durable daily memory bridge is now implemented. `daily` mode startup creates and refreshes the runtime-managed memory artifacts inside `CLAW_CODEX_WORKDIR`, the first visible turn of a new local day can refresh durable memory from the previous day's thread, and visible replies still proceed when that hidden refresh fails.
 
-Repository-wide validation is complete: `make test` and `make lint` both pass. The main lesson from implementation was that keeping the feature behind the existing application and gateway boundaries made the change much smaller than introducing any new persistence table or Codex-specific orchestration layer.
+Repository-wide validation is complete: `make test` and `make lint` both pass. The main lesson from implementation was that keeping the feature behind the existing application and gateway boundaries made the change much smaller than introducing any new persistence table or Codex-specific orchestration layer, and that user-owned instruction files such as `AGENTS.md` must remain outside runtime-managed writes.
 
 ## Context and Orientation
 
@@ -95,7 +96,6 @@ Terms used in this plan:
 - durable memory: information likely to matter on a future day, such as user preferences, standing workflow expectations, or long-lived project context
 - bridge note: the dated Markdown file for the current day that records what was promoted from the previous thread into durable memory
 - preflight: an internal Codex turn that runs before the first user-visible turn of a new day
-- managed `AGENTS.md` block: a runtime-owned section inside the configured workdir's `AGENTS.md` file that 39claw can create or update without overwriting unrelated user-authored instructions
 - memory directory: `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY`, created and maintained by the runtime inside the Codex workspace
 
 The most relevant files today are:
@@ -125,7 +125,7 @@ The most relevant files today are:
 
 Start by updating the repository documents that define `daily` mode. `ARCHITECTURE.md`, `docs/design-docs/thread-modes.md`, `docs/design-docs/implementation-spec.md`, `docs/design-docs/state-and-storage.md`, and `docs/product-specs/daily-mode-user-flow.md` must all explain that a new day now means a fresh Codex thread plus a runtime-managed durable memory bridge. Keep the distinction explicit: the remote thread resets, but durable memory can carry forward through Markdown files under `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY`.
 
-Next, add a small startup bootstrap layer for daily mode. This layer should derive `memoryDir := filepath.Join(cfg.CodexWorkdir, "AGENT_MEMORY")`, ensure the directory exists, ensure `MEMORY.md` exists, and materialize runtime-managed artifacts inside `CLAW_CODEX_WORKDIR`: a dedicated daily-memory skill under `.agents/skills/<stable-skill-name>/` and a managed block inside `AGENTS.md`. If `AGENTS.md` does not yet exist, create it. If it already exists, replace only the content between stable markers such as `<!-- 39claw:daily-memory start -->` and `<!-- 39claw:daily-memory end -->`. The managed block should explain that durable memory lives under `AGENT_MEMORY/`, that `MEMORY.md` is the primary source, that the latest dated note is secondary bridge context, and that the latest explicit user instruction overrides memory. The same bootstrap or validation path should reject `read-only` sandbox mode for deployments that enable this feature.
+Next, add a small startup bootstrap layer for daily mode. This layer should derive `memoryDir := filepath.Join(cfg.CodexWorkdir, "AGENT_MEMORY")`, ensure the directory exists, ensure `MEMORY.md` exists, and materialize runtime-managed artifacts inside `CLAW_CODEX_WORKDIR`: a dedicated daily-memory skill under `.agents/skills/<stable-skill-name>/`. It must not create or rewrite `AGENTS.md`; if an operator wants normal visible turns to consult `AGENT_MEMORY`, they must express that in their own instructions. The same bootstrap or validation path should reject `read-only` sandbox mode for deployments that enable this feature.
 
 Then add a focused daily-memory service in the application layer. This service should accept the configured timezone, the thread store, and the Codex gateway. Given an incoming `daily` request, it should compute today's date key and the previous day's date key. If today's binding already exists, it should do nothing. If today's binding is missing and the previous day's binding is also missing, it should do nothing. If today's binding is missing and the previous day's binding exists, it should build the current day's bridge filename, construct the internal refresh prompt, and run one internal Codex turn against the previous day's thread ID before the visible turn continues.
 
@@ -133,7 +133,7 @@ The refresh prompt should be deterministic and idempotent. It should instruct Co
 
 After that, integrate the preflight step into `internal/app/message_service_impl.go`. The cleanest place is after the logical thread key is resolved but before the visible `gateway.RunTurn` call. Reuse the existing queue coordinator so the first message of the new day occupies the same serialized execution slot as any queued follow-ups. The preflight should not generate any user-facing message. If it succeeds, proceed to the normal visible turn. If it fails, log the failure, skip the memory refresh for that attempt, and still proceed to the visible turn so users are not blocked.
 
-Finally, add tests and proofs. Cover startup bootstrap idempotence, managed `AGENTS.md` block replacement, startup validation for write-capable sandboxing, previous-thread preflight invocation, fallback when the previous day's thread is missing, fallback when refresh fails, and a behavioral case where a preference established on day one is projected into day two memory before the first visible turn.
+Finally, add tests and proofs. Cover startup bootstrap idempotence, confirmation that startup does not rewrite `AGENTS.md`, startup validation for write-capable sandboxing, previous-thread preflight invocation, fallback when the previous day's thread is missing, fallback when refresh fails, and a behavioral case where a preference established on day one is projected into day two memory before the first visible turn.
 
 ## Managed Skill Contract
 
@@ -330,7 +330,7 @@ Run all commands from `/home/filepang/.codex/worktrees/3065/39claw`.
 
 7. Record proof artifacts showing:
 
-   - the managed `AGENTS.md` block points Codex at `AGENT_MEMORY/MEMORY.md`
+   - startup leaves any existing `AGENTS.md` untouched
    - startup rejects `read-only` sandbox mode when the daily memory bridge is enabled
    - the first new-day message triggers a refresh turn against the previous day's thread before the visible turn
    - a failed refresh still yields a normal user-visible response
@@ -339,14 +339,14 @@ Run all commands from `/home/filepang/.codex/worktrees/3065/39claw`.
 
 This plan is complete when all of the following are true:
 
-- `daily` mode startup materializes a managed durable-memory skill and a managed `AGENTS.md` block inside the configured workdir without overwriting unrelated user-authored instructions
+- `daily` mode startup materializes a managed durable-memory skill and the `AGENT_MEMORY` directory inside the configured workdir without rewriting `AGENTS.md`
 - startup rejects `read-only` sandbox mode when the daily memory bridge is enabled
 - `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/MEMORY.md` is treated as the primary durable-memory file
 - `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/YYYY-MM-DD.md` is refreshed for the current local day during the first-message preflight when a previous daily thread exists
 - the first visible user turn of a new day starts a fresh Codex thread after the preflight completes
 - if no previous daily thread exists, the bot skips preflight and still starts a fresh thread normally
 - if the preflight refresh fails or times out, the bot still answers the user and does not get stuck in a retry loop inside one request
-- memory guidance in the managed `AGENTS.md` block tells Codex to prefer the latest explicit user instruction over memory when they conflict
+- the durable-memory bridge works without 39claw modifying `AGENTS.md`, and any visible-turn memory-consumption guidance remains user-authored
 - `make test` passes
 - `make lint` passes
 
@@ -354,7 +354,7 @@ Acceptance is behavioral. A contributor should be able to inspect the `AGENT_MEM
 
 ## Idempotence and Recovery
 
-Startup bootstrap must be safe to rerun. Recreating the `AGENT_MEMORY` directory should succeed when it already exists. Rewriting the managed skill files should replace only runtime-owned content. Rewriting the managed `AGENTS.md` block should preserve all content outside the stable markers.
+Startup bootstrap must be safe to rerun. Recreating the `AGENT_MEMORY` directory should succeed when it already exists. Rewriting the managed skill files should replace only runtime-owned content. Startup must not rewrite `AGENTS.md`.
 
 The preflight refresh itself must be safe to retry. If the process crashes after a successful refresh but before today's first visible thread binding is created, the next first-message attempt may run the refresh again. That is acceptable as long as the memory prompt updates files deterministically instead of blindly appending duplicates.
 
@@ -375,14 +375,11 @@ Important expected sequence after this plan:
     -> runtime starts the visible 2026-04-06 daily thread
     -> user receives a normal reply that can rely on the refreshed memory
 
-    Important managed `AGENTS.md` block shape:
+    Important operator responsibility:
 
-    <!-- 39claw:daily-memory start -->
-    Durable memory files are stored under `AGENT_MEMORY/` in the current workspace.
-    Read `AGENT_MEMORY/MEMORY.md` as the primary durable memory file.
-    Read the most relevant `AGENT_MEMORY/YYYY-MM-DD.md` note when bridge context is needed.
-    If memory conflicts with the latest explicit user instruction, follow the latest explicit user instruction.
-    <!-- 39claw:daily-memory end -->
+    If a deployment wants normal visible turns to consult `AGENT_MEMORY/MEMORY.md`
+    or the dated bridge notes, the deployment owner must add that guidance to their
+    own workdir instructions. 39claw does not create or rewrite `AGENTS.md`.
 
 ## Interfaces and Dependencies
 
@@ -395,7 +392,7 @@ At the end of this plan, the repository should expose a focused bootstrap helper
 
     func (b DailyMemoryBootstrap) Ensure(ctx context.Context) error
 
-This helper should create or refresh the managed daily-memory skill files and the managed `AGENTS.md` block inside the configured workdir.
+This helper should create or refresh the managed daily-memory skill files inside the configured workdir without modifying `AGENTS.md`.
 
 The application layer should also expose a daily-memory preflight helper with responsibilities equivalent to:
 
@@ -409,3 +406,4 @@ Revision Note: 2026-04-05 / Codex - Created this active ExecPlan after agreeing 
 Revision Note: 2026-04-05 / Codex - Expanded the plan with the exact runtime-managed skill contract, exact prompt shape, and exact initial memory-file templates so the injected daily-memory skill can be implemented deterministically.
 Revision Note: 2026-04-05 / Codex - Reworked the plan to use `CLAW_CODEX_WORKDIR/AGENT_MEMORY` instead of an external facts directory and to treat write-capable sandboxing as an explicit feature requirement.
 Revision Note: 2026-04-05 / Codex - Updated the living sections after implementation landed, including the final bootstrap, preflight, fallback, and documentation results.
+Revision Note: 2026-04-05 / Codex - Corrected the ownership boundary so `AGENTS.md` remains fully user-authored; runtime-managed work now stops at `AGENT_MEMORY/` and the managed refresh skill.

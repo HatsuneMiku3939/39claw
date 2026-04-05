@@ -11,12 +11,8 @@ import (
 
 const (
 	managedSkillRelativePath = ".agents/skills/39claw-daily-memory-refresh/SKILL.md"
-	agentsFileName           = "AGENTS.md"
 	memoryDirName            = "AGENT_MEMORY"
 	memoryFileName           = "MEMORY.md"
-
-	managedBlockStart = "<!-- 39claw:daily-memory start -->"
-	managedBlockEnd   = "<!-- 39claw:daily-memory end -->"
 
 	directoryMode = 0o755
 	fileMode      = 0o644
@@ -64,10 +60,6 @@ func (b Bootstrap) Ensure(ctx context.Context) error {
 		return fmt.Errorf("write managed skill: %w", err)
 	}
 
-	if err := upsertManagedAgentsBlock(workdir); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -93,64 +85,6 @@ func ensureMemoryFile(memoryDir string) error {
 
 	return nil
 }
-
-func upsertManagedAgentsBlock(workdir string) error {
-	path := filepath.Join(workdir, agentsFileName)
-
-	existing, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("read AGENTS.md: %w", err)
-	}
-
-	updated, err := mergeManagedAgentsBlock(string(existing))
-	if err != nil {
-		return err
-	}
-
-	//nolint:gosec // The startup path validates the workdir and AGENTS.md is a fixed runtime-managed file inside it.
-	if err := os.WriteFile(path, []byte(updated), fileMode); err != nil {
-		return fmt.Errorf("write AGENTS.md: %w", err)
-	}
-
-	return nil
-}
-
-func mergeManagedAgentsBlock(existing string) (string, error) {
-	start := strings.Index(existing, managedBlockStart)
-	end := strings.Index(existing, managedBlockEnd)
-
-	switch {
-	case start == -1 && end == -1:
-		if strings.TrimSpace(existing) == "" {
-			return managedAgentsBlock, nil
-		}
-
-		trimmed := strings.TrimRight(existing, "\n")
-		return trimmed + "\n\n" + managedAgentsBlock, nil
-	case start == -1 || end == -1 || end < start:
-		return "", errors.New("managed daily-memory AGENTS.md block markers are unbalanced")
-	default:
-		end += len(managedBlockEnd)
-		replaced := existing[:start] + strings.TrimRight(managedAgentsBlock, "\n") + existing[end:]
-		return normalizeManagedAgentsSpacing(replaced), nil
-	}
-}
-
-func normalizeManagedAgentsSpacing(content string) string {
-	lines := strings.Split(content, "\n")
-	for len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-
-	return strings.Join(lines, "\n") + "\n"
-}
-
-const managedAgentsBlock = managedBlockStart + "\n" +
-	"Durable memory files are stored under `AGENT_MEMORY/` in the current workspace.\n" +
-	"Read `AGENT_MEMORY/MEMORY.md` as the primary durable memory file.\n" +
-	"Read the most relevant `AGENT_MEMORY/YYYY-MM-DD.md` note when bridge context is needed.\n" +
-	"If memory conflicts with the latest explicit user instruction, follow the latest explicit user instruction.\n" +
-	managedBlockEnd + "\n"
 
 const managedSkillContents = "---\n" +
 	"name: 39claw-daily-memory-refresh\n" +

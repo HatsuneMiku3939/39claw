@@ -2,9 +2,9 @@ package dailymemory
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -42,34 +42,17 @@ func TestBootstrapEnsureCreatesManagedArtifactsIdempotently(t *testing.T) {
 		t.Fatalf("SKILL.md contents = %q, want %q", string(skillContents), managedSkillContents)
 	}
 
-	agentsPath := filepath.Join(workdir, agentsFileName)
-	agentsContents, err := os.ReadFile(agentsPath)
-	if err != nil {
-		t.Fatalf("ReadFile(AGENTS.md) error = %v", err)
-	}
-
-	if string(agentsContents) != managedAgentsBlock {
-		t.Fatalf("AGENTS.md contents = %q, want %q", string(agentsContents), managedAgentsBlock)
+	if _, err := os.Stat(filepath.Join(workdir, "AGENTS.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Stat(AGENTS.md) error = %v, want not exist", err)
 	}
 }
 
-func TestBootstrapEnsureReplacesManagedBlockWithoutOverwritingUserContent(t *testing.T) {
+func TestBootstrapEnsureDoesNotModifyExistingAgentsFile(t *testing.T) {
 	t.Parallel()
 
 	workdir := t.TempDir()
-	agentsPath := filepath.Join(workdir, agentsFileName)
-	existing := strings.Join([]string{
-		"# Team Notes",
-		"",
-		"Keep this instruction.",
-		"",
-		managedBlockStart,
-		"outdated block",
-		managedBlockEnd,
-		"",
-		"Tail note.",
-		"",
-	}, "\n")
+	agentsPath := filepath.Join(workdir, "AGENTS.md")
+	existing := "# Team Notes\n\nKeep this instruction.\n"
 	if err := os.WriteFile(agentsPath, []byte(existing), fileMode); err != nil {
 		t.Fatalf("WriteFile(AGENTS.md) error = %v", err)
 	}
@@ -91,21 +74,8 @@ func TestBootstrapEnsureReplacesManagedBlockWithoutOverwritingUserContent(t *tes
 		t.Fatalf("ReadFile(AGENTS.md) error = %v", err)
 	}
 
-	updatedText := string(updated)
-	if !strings.Contains(updatedText, "# Team Notes") {
-		t.Fatalf("updated AGENTS.md lost prefix content: %q", updatedText)
-	}
-
-	if !strings.Contains(updatedText, "Tail note.") {
-		t.Fatalf("updated AGENTS.md lost suffix content: %q", updatedText)
-	}
-
-	if strings.Count(updatedText, managedBlockStart) != 1 {
-		t.Fatalf("managed block start count = %d, want 1", strings.Count(updatedText, managedBlockStart))
-	}
-
-	if !strings.Contains(updatedText, managedAgentsBlock[:len(managedAgentsBlock)-1]) {
-		t.Fatalf("updated AGENTS.md missing managed block: %q", updatedText)
+	if string(updated) != existing {
+		t.Fatalf("AGENTS.md contents = %q, want %q", string(updated), existing)
 	}
 
 	memoryContents, err := os.ReadFile(memoryPath)

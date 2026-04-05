@@ -78,6 +78,9 @@ Adapts normalized application output into Discord-safe responses.
 8. Application service persists the returned binding
 9. Response presenter formats the result
 10. Discord runtime posts the reply
+
+The runtime-owned part stops at creating and refreshing the memory files themselves.
+Whether Codex consults those files during normal visible turns is controlled by the user-owned instructions already present in the workdir, such as `AGENTS.md`.
 ```
 
 ## Read Next

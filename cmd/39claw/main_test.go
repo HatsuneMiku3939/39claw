@@ -191,7 +191,6 @@ func TestRun(t *testing.T) {
 
 			if tt.wantBootstrap {
 				assertFileExists(t, filepath.Join(env["CLAW_CODEX_WORKDIR"], "AGENT_MEMORY", "MEMORY.md"))
-				assertFileExists(t, filepath.Join(env["CLAW_CODEX_WORKDIR"], "AGENTS.md"))
 				assertFileExists(t, filepath.Join(
 					env["CLAW_CODEX_WORKDIR"],
 					".agents",

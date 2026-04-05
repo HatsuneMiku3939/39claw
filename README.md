@@ -25,7 +25,8 @@ Use `daily` mode when you want a lightweight shared assistant for day-to-day wor
 
 - messages on the same local date share the same conversation context
 - the next local date starts a fresh Codex thread automatically
-- durable preferences and long-lived context can carry forward through runtime-managed files under `AGENT_MEMORY/`
+- durable preferences and long-lived context can be projected into runtime-managed files under `AGENT_MEMORY/`
+- if you want visible turns to consult that memory, add the necessary guidance to your own `AGENTS.md`
 - users do not need to create or switch tasks before talking
 
 ### `task`

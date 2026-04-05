@@ -119,6 +119,7 @@ When a bot instance runs in `task` mode, normal messages without an active task 
 They should return actionable guidance that points the user to `action:task-new`, `action:task-list`, or `action:task-switch` on the configured root command.
 When a bot instance runs in `daily` mode, the first visible turn of a new local day should still start a fresh Codex thread, but 39claw must first run a hidden durable-memory refresh against the previous day's thread when that previous binding exists.
 If that preflight fails or times out, 39claw should log the failure and continue with the visible turn instead of blocking the user.
+39claw must not create or modify user-owned instruction files such as `AGENTS.md`; if a deployment wants visible turns to consult `AGENT_MEMORY`, the deployment must express that through its own checked-in instructions.
 When a bot instance runs in `task` mode, `CLAW_CODEX_WORKDIR` must be a Git repository.
 `task-new` creates task metadata only; the first normal message for a pending or failed task creates the task worktree lazily from `main` or `master`.
 Once the task worktree is ready, Codex runs with the task-specific `worktree_path` as the effective working directory for that turn.
@@ -163,7 +164,7 @@ The expected variables are:
 `CLAW_TIMEZONE` must be set explicitly for each deployment.
 `CLAW_DISCORD_COMMAND_NAME` must be unique per bot instance, normalized to lowercase, and validated conservatively before Discord registration.
 When `CLAW_MODE=task`, `CLAW_CODEX_WORKDIR` must point to a Git repository and acts as the source repository root for task worktree creation.
-When `CLAW_MODE=daily`, startup must materialize the managed durable-memory skill, the managed `AGENTS.md` block, and the `AGENT_MEMORY` directory inside `CLAW_CODEX_WORKDIR`.
+When `CLAW_MODE=daily`, startup must materialize the managed durable-memory skill and the `AGENT_MEMORY` directory inside `CLAW_CODEX_WORKDIR`.
 `CLAW_LOG_LEVEL` defaults to `info` when omitted.
 When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guild for faster development feedback.
 `CLAW_CODEX_SANDBOX_MODE` defaults to `workspace-write` when omitted.
@@ -180,6 +181,7 @@ Checked-in examples such as `.env.example` and `.envrc.example` must use placeho
 The initial implementation should demonstrate the following observable behavior:
 
 - In `daily` mode, the first qualifying mention creates a thread binding, a second same-day mention reuses it, and the first mention on the next local date creates a new binding after the durable-memory preflight refreshes `AGENT_MEMORY` from the previous day's thread when that previous binding exists.
+- In `daily` mode, startup does not create or rewrite `AGENTS.md`.
 - A mention-triggered message with text plus image attachments reaches Codex as multipart input.
 - A mention-triggered message with only one or more usable image attachments is accepted and answered.
 - In `task` mode, a normal mention without an active task returns guidance instead of routing to Codex.

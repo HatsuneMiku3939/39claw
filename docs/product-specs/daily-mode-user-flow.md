@@ -94,7 +94,7 @@ Expected flow:
 3. If no thread exists for the new bucket and a previous-day daily thread exists, 39claw first runs a hidden memory-refresh preflight against that previous thread.
 4. The preflight updates `AGENT_MEMORY/MEMORY.md` plus today's `AGENT_MEMORY/YYYY-MM-DD.md` note.
 5. 39claw creates the new day's visible Codex thread.
-6. The response begins from a fresh thread but may still reflect durable remembered preferences or long-lived context.
+6. The response begins from a fresh thread and may reflect durable remembered preferences or long-lived context when the deployment's own instructions tell Codex to consult the projected memory files.
 
 Expected user perception:
 
@@ -114,6 +114,7 @@ Continuity should be preserved:
 - on the same configured local date
 
 Across different days, same-thread continuity should not be assumed, but durable memory may still be projected forward through the runtime-managed Markdown bridge.
+Whether that projected memory affects normal visible turns depends on the deployment's own instructions rather than on 39claw rewriting user-owned instruction files.
 Changing channels within the same bot instance should not reset the daily context by itself.
 
 ### Response tone
