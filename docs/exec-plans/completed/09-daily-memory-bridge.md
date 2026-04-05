@@ -23,6 +23,7 @@ The user-visible proof should be practical. A user should be able to tell the bo
 - [x] (2026-04-05 02:42Z) Added unit coverage for bootstrap idempotence, startup validation, preflight invocation, timeout/error handling, and daily message-service fallback sequencing.
 - [x] (2026-04-05 02:49Z) Ran `make test` and `make lint` after the implementation landed; both passed.
 - [x] (2026-04-05 03:02Z) Removed runtime-managed `AGENTS.md` edits after clarifying that `AGENTS.md` is user-owned and any memory-consumption guidance must be authored by the user, not by 39claw.
+- [x] (2026-04-05 03:20Z) Verified that the shipped code, tests, and repository docs satisfy the plan's acceptance criteria, then archived the plan because no blocking implementation work remains in `active/`.
 
 ## Surprises & Discoveries
 
@@ -79,11 +80,17 @@ The user-visible proof should be practical. A user should be able to tell the bo
   Rationale: This keeps the per-turn prompt short while still letting the runtime fully control which exact skill instructions are used.
   Date/Author: 2026-04-05 / Codex
 
+- Decision: Archive this ExecPlan and move it to `docs/exec-plans/completed/09-daily-memory-bridge.md`.
+  Rationale: Repository evidence now shows the daily memory bridge code, tests, and product/design documentation are all landed, the plan's required validation has already passed, and no unresolved blocking scope remains to justify keeping the plan under `active/`.
+  Date/Author: 2026-04-05 / Codex
+
 ## Outcomes & Retrospective
 
 The durable daily memory bridge is now implemented. `daily` mode startup creates and refreshes the runtime-managed memory artifacts inside `CLAW_CODEX_WORKDIR`, the first visible turn of a new local day can refresh durable memory from the previous day's thread, and visible replies still proceed when that hidden refresh fails.
 
 Repository-wide validation is complete: `make test` and `make lint` both pass. The main lesson from implementation was that keeping the feature behind the existing application and gateway boundaries made the change much smaller than introducing any new persistence table or Codex-specific orchestration layer, and that user-owned instruction files such as `AGENTS.md` must remain outside runtime-managed writes.
+
+No new blocking work remains for this scope, so the plan no longer belongs in `active/`. The repository already contains the required code paths, tests, and updated architecture/product documents described above. No additional tech-debt entry was needed during archival because the remaining open items in `docs/exec-plans/tech-debt-tracker.md` belong to other completed plans, not to this daily-memory bridge delivery.
 
 ## Context and Orientation
 
@@ -407,3 +414,4 @@ Revision Note: 2026-04-05 / Codex - Expanded the plan with the exact runtime-man
 Revision Note: 2026-04-05 / Codex - Reworked the plan to use `CLAW_CODEX_WORKDIR/AGENT_MEMORY` instead of an external facts directory and to treat write-capable sandboxing as an explicit feature requirement.
 Revision Note: 2026-04-05 / Codex - Updated the living sections after implementation landed, including the final bootstrap, preflight, fallback, and documentation results.
 Revision Note: 2026-04-05 / Codex - Corrected the ownership boundary so `AGENTS.md` remains fully user-authored; runtime-managed work now stops at `AGENT_MEMORY/` and the managed refresh skill.
+Revision Note: 2026-04-05 / Codex - Archived the completed plan after re-verifying the shipped code, tests, and documentation against the acceptance criteria and confirming that no blocking follow-up remained.

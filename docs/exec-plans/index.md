@@ -25,8 +25,6 @@ Plans in this directory should be written and maintained in line with `.agents/P
 
 These plans are intended to be executed in numeric order. Each plan is self-contained, but later plans name the repository state they expect to find and explain how to recover if that state is missing.
 
-- [Add a durable memory bridge to `daily` mode](./active/09-daily-memory-bridge.md)
-
 ## Recently Completed Plans
 
 - [Build the foundation, contracts, and bootstrap path](./completed/01-foundation-and-contracts.md)
@@ -37,3 +35,4 @@ These plans are intended to be executed in numeric order. Each plan is self-cont
 - [Implement Discord image attachment intake for Codex turns](./completed/06-discord-image-input.md)
 - [Replace shared `/help` and `/task` slash commands with one instance-specific root command](./completed/07-instance-specific-root-command.md)
 - [Add task-isolated Git worktrees to `task` mode](./completed/08-task-mode-worktree-isolation.md)
+- [Add a durable memory bridge to `daily` mode](./completed/09-daily-memory-bridge.md)
