@@ -34,9 +34,14 @@ func (g *Gateway) RunTurn(ctx context.Context, threadID string, input app.CodexT
 		return app.RunTurnResult{}, err
 	}
 
-	thread := g.client.StartThread(g.threadOptions)
+	threadOptions := g.threadOptions
+	if strings.TrimSpace(input.WorkingDirectory) != "" {
+		threadOptions.WorkingDirectory = input.WorkingDirectory
+	}
+
+	thread := g.client.StartThread(threadOptions)
 	if threadID != "" {
-		thread = g.client.ResumeThread(threadID, g.threadOptions)
+		thread = g.client.ResumeThread(threadID, threadOptions)
 	}
 
 	turn, err := thread.Run(ctx, codexInput)

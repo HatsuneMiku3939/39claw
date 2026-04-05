@@ -207,7 +207,15 @@ func (s stubThreadStore) GetTask(context.Context, string, string) (app.Task, boo
 	return app.Task{}, false, nil
 }
 
+func (s stubThreadStore) UpdateTask(context.Context, app.Task) error {
+	return nil
+}
+
 func (s stubThreadStore) ListOpenTasks(context.Context, string) ([]app.Task, error) {
+	return nil, nil
+}
+
+func (s stubThreadStore) ListClosedReadyTasks(context.Context) ([]app.Task, error) {
 	return nil, nil
 }
 

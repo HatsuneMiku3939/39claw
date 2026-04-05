@@ -91,6 +91,14 @@ func TestTaskCommandServiceCreateTaskMakesTaskActive(t *testing.T) {
 		t.Fatalf("TaskName = %q, want %q", task.TaskName, "Release work")
 	}
 
+	if task.BranchName != "task/01JABCDEF0123456789TASK000" {
+		t.Fatalf("BranchName = %q, want %q", task.BranchName, "task/01JABCDEF0123456789TASK000")
+	}
+
+	if task.WorktreeStatus != app.TaskWorktreeStatusPending {
+		t.Fatalf("WorktreeStatus = %q, want %q", task.WorktreeStatus, app.TaskWorktreeStatusPending)
+	}
+
 	activeTask, ok, err := store.GetActiveTask(context.Background(), "user-1")
 	if err != nil {
 		t.Fatalf("GetActiveTask() error = %v", err)
@@ -254,9 +262,37 @@ func TestTaskCommandServiceCloseTaskKeepsDifferentActiveTask(t *testing.T) {
 	}
 }
 
+func TestTaskCommandServiceCloseTaskTriggersPruning(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:         "task-1",
+				DiscordUserID:  "user-1",
+				TaskName:       "Release work",
+				Status:         app.TaskStatusOpen,
+				CreatedAt:      time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+				WorktreeStatus: app.TaskWorktreeStatusReady,
+			},
+		},
+	}
+
+	worktrees := &countingTaskWorkspaceManager{}
+	service := newTaskCommandServiceWithWorkspace(t, store, nil, worktrees)
+
+	if _, err := service.CloseTask(context.Background(), "user-1", "task-1"); err != nil {
+		t.Fatalf("CloseTask() error = %v", err)
+	}
+
+	if worktrees.pruneCalls != 1 {
+		t.Fatalf("PruneClosed() call count = %d, want %d", worktrees.pruneCalls, 1)
+	}
+}
+
 func newTaskCommandService(t *testing.T, store app.ThreadStore) *app.DefaultTaskCommandService {
 	t.Helper()
-	return newTaskCommandServiceWithID(t, store, nil)
+	return newTaskCommandServiceWithWorkspace(t, store, nil, nil)
 }
 
 func newTaskCommandServiceWithID(
@@ -265,15 +301,39 @@ func newTaskCommandServiceWithID(
 	newTaskID func() string,
 ) *app.DefaultTaskCommandService {
 	t.Helper()
+	return newTaskCommandServiceWithWorkspace(t, store, newTaskID, nil)
+}
+
+func newTaskCommandServiceWithWorkspace(
+	t *testing.T,
+	store app.ThreadStore,
+	newTaskID func() string,
+	worktrees app.TaskWorkspaceManager,
+) *app.DefaultTaskCommandService {
+	t.Helper()
 
 	service, err := app.NewTaskCommandService(app.TaskCommandServiceDependencies{
-		CommandName: "release",
-		Store:       store,
-		NewTaskID:   newTaskID,
+		CommandName:      "release",
+		Store:            store,
+		WorkspaceManager: worktrees,
+		NewTaskID:        newTaskID,
 	})
 	if err != nil {
 		t.Fatalf("NewTaskCommandService() error = %v", err)
 	}
 
 	return service
+}
+
+type countingTaskWorkspaceManager struct {
+	pruneCalls int
+}
+
+func (*countingTaskWorkspaceManager) EnsureReady(context.Context, app.Task) (app.Task, error) {
+	return app.Task{}, nil
+}
+
+func (m *countingTaskWorkspaceManager) PruneClosed(context.Context) error {
+	m.pruneCalls++
+	return nil
 }

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -280,6 +281,91 @@ func TestLoadFromLookup(t *testing.T) {
 
 			if got.LogLevel != tt.want.LogLevel {
 				t.Fatalf("LogLevel = %q, want %q", got.LogLevel, tt.want.LogLevel)
+			}
+		})
+	}
+}
+
+func TestValidateRuntimePaths(t *testing.T) {
+	t.Parallel()
+
+	taskRepo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(taskRepo, ".git"), 0o755); err != nil {
+		t.Fatalf("Mkdir(.git) error = %v", err)
+	}
+
+	nonRepo := t.TempDir()
+	filePath := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(filePath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		config  Config
+		wantErr string
+	}{
+		{
+			name: "allows daily mode non-git workdir",
+			config: Config{
+				Mode:         ModeDaily,
+				CodexWorkdir: nonRepo,
+			},
+		},
+		{
+			name: "allows task mode git repository root",
+			config: Config{
+				Mode:         ModeTask,
+				CodexWorkdir: taskRepo,
+			},
+		},
+		{
+			name: "rejects missing task mode workdir",
+			config: Config{
+				Mode:         ModeTask,
+				CodexWorkdir: filepath.Join(t.TempDir(), "missing"),
+			},
+			wantErr: "task mode requires CLAW_CODEX_WORKDIR to exist",
+		},
+		{
+			name: "rejects task mode file path",
+			config: Config{
+				Mode:         ModeTask,
+				CodexWorkdir: filePath,
+			},
+			wantErr: "task mode requires CLAW_CODEX_WORKDIR to be a directory",
+		},
+		{
+			name: "rejects task mode non-git directory",
+			config: Config{
+				Mode:         ModeTask,
+				CodexWorkdir: nonRepo,
+			},
+			wantErr: "task mode requires CLAW_CODEX_WORKDIR to be a Git repository root",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateRuntimePaths(tt.config)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateRuntimePaths() error = %v", err)
+				}
+
+				return
+			}
+
+			if err == nil {
+				t.Fatalf("ValidateRuntimePaths() error = nil, want substring %q", tt.wantErr)
+			}
+
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("ValidateRuntimePaths() error = %q, want substring %q", err.Error(), tt.wantErr)
 			}
 		})
 	}

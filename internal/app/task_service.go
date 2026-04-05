@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/oklog/ulid/v2"
@@ -19,14 +20,16 @@ type TaskCommandService interface {
 }
 
 type TaskCommandServiceDependencies struct {
-	CommandName string
-	Store       ThreadStore
-	NewTaskID   func() string
+	CommandName      string
+	Store            ThreadStore
+	WorkspaceManager TaskWorkspaceManager
+	NewTaskID        func() string
 }
 
 type DefaultTaskCommandService struct {
 	commands  commandSurface
 	store     ThreadStore
+	worktrees TaskWorkspaceManager
 	newTaskID func() string
 }
 
@@ -50,6 +53,7 @@ func NewTaskCommandService(deps TaskCommandServiceDependencies) (*DefaultTaskCom
 	return &DefaultTaskCommandService{
 		commands:  newCommandSurface(commandName),
 		store:     deps.Store,
+		worktrees: deps.WorkspaceManager,
 		newTaskID: newTaskID,
 	}, nil
 }
@@ -126,11 +130,14 @@ func (s *DefaultTaskCommandService) CreateTask(ctx context.Context, userID strin
 	}
 
 	task := Task{
-		TaskID:        s.newTaskID(),
-		DiscordUserID: userID,
-		TaskName:      taskName,
-		Status:        TaskStatusOpen,
+		TaskID:         s.newTaskID(),
+		DiscordUserID:  userID,
+		TaskName:       taskName,
+		Status:         TaskStatusOpen,
+		WorktreeStatus: TaskWorktreeStatusPending,
 	}
+
+	task.BranchName = DefaultTaskBranchName(task.TaskID)
 
 	if err := s.store.CreateTask(ctx, task); err != nil {
 		return MessageResponse{}, fmt.Errorf("create task: %w", err)
@@ -235,10 +242,13 @@ func (s *DefaultTaskCommandService) CloseTask(ctx context.Context, userID string
 	}
 
 	if hasActiveTask && activeTask.TaskID == task.TaskID {
+		s.pruneClosedTaskWorktrees(ctx)
 		return taskCommandResponse(
 			fmt.Sprintf("Closed task %s. No active task is selected now.", renderTask(task)),
 		), nil
 	}
+
+	s.pruneClosedTaskWorktrees(ctx)
 
 	nextActiveTaskLine, err := s.renderActiveTaskSuffix(ctx, userID)
 	if err != nil {
@@ -301,5 +311,15 @@ func taskCommandResponse(text string) MessageResponse {
 	return MessageResponse{
 		Text:      text,
 		Ephemeral: true,
+	}
+}
+
+func (s *DefaultTaskCommandService) pruneClosedTaskWorktrees(ctx context.Context) {
+	if s.worktrees == nil {
+		return
+	}
+
+	if err := s.worktrees.PruneClosed(ctx); err != nil {
+		slog.Error("prune closed task worktrees", "error", err)
 	}
 }

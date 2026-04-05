@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"sort"
 	"sync"
 	"testing"
@@ -184,9 +185,10 @@ func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 		Policy: stubThreadPolicy{
 			err: app.ErrNoActiveTask,
 		},
-		Store:       &memoryThreadStore{},
-		Gateway:     &fakeCodexGateway{},
-		Coordinator: thread.NewQueueCoordinator(),
+		Store:            &memoryThreadStore{},
+		WorkspaceManager: &fakeTaskWorkspaceManager{},
+		Gateway:          &fakeCodexGateway{},
+		Coordinator:      thread.NewQueueCoordinator(),
 	})
 	if err != nil {
 		t.Fatalf("NewMessageService() error = %v", err)
@@ -266,6 +268,14 @@ func TestMessageServiceHandleMessageTaskReusesTaskBindingAcrossDays(t *testing.T
 
 	if calls[1].threadID != "thread-task-1" {
 		t.Fatalf("second thread id = %q, want %q", calls[1].threadID, "thread-task-1")
+	}
+
+	if calls[0].workingDirectory != "/tmp/worktrees/task-1" {
+		t.Fatalf("first working directory = %q, want %q", calls[0].workingDirectory, "/tmp/worktrees/task-1")
+	}
+
+	if calls[1].workingDirectory != "/tmp/worktrees/task-1" {
+		t.Fatalf("second working directory = %q, want %q", calls[1].workingDirectory, "/tmp/worktrees/task-1")
 	}
 
 	binding, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1")
@@ -353,10 +363,110 @@ func TestMessageServiceHandleMessageTaskSwitchesThreadsByActiveTask(t *testing.T
 		t.Fatalf("second thread id = %q, want empty", calls[1].threadID)
 	}
 
+	if calls[0].workingDirectory != "/tmp/worktrees/task-1" {
+		t.Fatalf("first working directory = %q, want %q", calls[0].workingDirectory, "/tmp/worktrees/task-1")
+	}
+
+	if calls[1].workingDirectory != "/tmp/worktrees/task-2" {
+		t.Fatalf("second working directory = %q, want %q", calls[1].workingDirectory, "/tmp/worktrees/task-2")
+	}
+
 	for _, key := range []string{"user-1:task-1", "user-1:task-2"} {
 		if _, ok, err := store.GetThreadBinding(context.Background(), "task", key); err != nil || !ok {
 			t.Fatalf("GetThreadBinding(%s) = ok:%v err:%v, want ok:true err:nil", key, ok, err)
 		}
+	}
+}
+
+func TestMessageServiceHandleMessageTaskRetriesFailedWorkspaceSetup(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+	}
+	gateway := &fakeCodexGateway{
+		results: []app.RunTurnResult{
+			{ThreadID: "thread-task-1", ResponseText: "Recovered response"},
+		},
+	}
+	worktrees := &fakeTaskWorkspaceManager{
+		store:     store,
+		failCount: 1,
+	}
+	service := newTaskMessageServiceWithWorktrees(t, store, gateway, nil, worktrees)
+
+	firstResponse, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-1",
+		Content:    "start release",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() first error = %v", err)
+	}
+
+	if firstResponse.Text != "Task workspace setup failed. Please retry after checking the configured repository." {
+		t.Fatalf("first response text = %q", firstResponse.Text)
+	}
+
+	if calls := gateway.Calls(); len(calls) != 0 {
+		t.Fatalf("RunTurn() call count after failed setup = %d, want %d", len(calls), 0)
+	}
+
+	task, ok, err := store.GetTask(context.Background(), "user-1", "task-1")
+	if err != nil {
+		t.Fatalf("GetTask() after failed setup error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("GetTask() after failed setup ok = false, want true")
+	}
+
+	if task.WorktreeStatus != app.TaskWorktreeStatusFailed {
+		t.Fatalf("WorktreeStatus after failed setup = %q, want %q", task.WorktreeStatus, app.TaskWorktreeStatusFailed)
+	}
+
+	secondResponse, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-2",
+		Content:    "retry release",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 1, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() second error = %v", err)
+	}
+
+	if secondResponse.Text != "Recovered response" {
+		t.Fatalf("second response text = %q, want %q", secondResponse.Text, "Recovered response")
+	}
+
+	calls := gateway.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("RunTurn() call count after retry = %d, want %d", len(calls), 1)
+	}
+
+	if calls[0].workingDirectory != "/tmp/worktrees/task-1" {
+		t.Fatalf("working directory after retry = %q, want %q", calls[0].workingDirectory, "/tmp/worktrees/task-1")
+	}
+
+	if worktrees.ensureCount != 2 {
+		t.Fatalf("EnsureReady() count = %d, want %d", worktrees.ensureCount, 2)
 	}
 }
 
@@ -671,6 +781,23 @@ func newTaskMessageService(
 ) *app.DefaultMessageService {
 	t.Helper()
 
+	worktrees := &fakeTaskWorkspaceManager{}
+	if memoryStore, ok := store.(*memoryThreadStore); ok {
+		worktrees.store = memoryStore
+	}
+
+	return newTaskMessageServiceWithWorktrees(t, store, gateway, coordinator, worktrees)
+}
+
+func newTaskMessageServiceWithWorktrees(
+	t *testing.T,
+	store app.ThreadStore,
+	gateway app.CodexGateway,
+	coordinator app.QueueCoordinator,
+	worktrees app.TaskWorkspaceManager,
+) *app.DefaultMessageService {
+	t.Helper()
+
 	tokyo, err := time.LoadLocation("Asia/Tokyo")
 	if err != nil {
 		t.Fatalf("time.LoadLocation() error = %v", err)
@@ -686,12 +813,13 @@ func newTaskMessageService(
 	}
 
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
-		Mode:        config.ModeTask,
-		CommandName: "release",
-		Policy:      policy,
-		Store:       store,
-		Gateway:     gateway,
-		Coordinator: coordinator,
+		Mode:             config.ModeTask,
+		CommandName:      "release",
+		Policy:           policy,
+		Store:            store,
+		WorkspaceManager: worktrees,
+		Gateway:          gateway,
+		Coordinator:      coordinator,
 	})
 	if err != nil {
 		t.Fatalf("NewMessageService() error = %v", err)
@@ -748,8 +876,9 @@ type fakeCodexGateway struct {
 }
 
 type runTurnCall struct {
-	threadID string
-	input    app.CodexTurnInput
+	threadID         string
+	workingDirectory string
+	input            app.CodexTurnInput
 }
 
 func (g *fakeCodexGateway) RunTurn(_ context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
@@ -757,10 +886,12 @@ func (g *fakeCodexGateway) RunTurn(_ context.Context, threadID string, input app
 	defer g.mu.Unlock()
 
 	g.calls = append(g.calls, runTurnCall{
-		threadID: threadID,
+		threadID:         threadID,
+		workingDirectory: input.WorkingDirectory,
 		input: app.CodexTurnInput{
-			Prompt:     input.Prompt,
-			ImagePaths: append([]string(nil), input.ImagePaths...),
+			Prompt:           input.Prompt,
+			ImagePaths:       append([]string(nil), input.ImagePaths...),
+			WorkingDirectory: input.WorkingDirectory,
 		},
 	})
 
@@ -807,10 +938,12 @@ func newBlockingCodexGateway(results ...app.RunTurnResult) *blockingCodexGateway
 func (g *blockingCodexGateway) RunTurn(_ context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
 	g.mu.Lock()
 	g.calls = append(g.calls, runTurnCall{
-		threadID: threadID,
+		threadID:         threadID,
+		workingDirectory: input.WorkingDirectory,
 		input: app.CodexTurnInput{
-			Prompt:     input.Prompt,
-			ImagePaths: append([]string(nil), input.ImagePaths...),
+			Prompt:           input.Prompt,
+			ImagePaths:       append([]string(nil), input.ImagePaths...),
+			WorkingDirectory: input.WorkingDirectory,
 		},
 	})
 
@@ -888,6 +1021,14 @@ func (s *memoryThreadStore) CreateTask(_ context.Context, task app.Task) error {
 		task.Status = app.TaskStatusOpen
 	}
 
+	if task.BranchName == "" {
+		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+	}
+
+	if task.WorktreeStatus == "" {
+		task.WorktreeStatus = app.TaskWorktreeStatusPending
+	}
+
 	if task.CreatedAt.IsZero() {
 		task.CreatedAt = time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC)
 	}
@@ -907,6 +1048,23 @@ func (s *memoryThreadStore) GetTask(_ context.Context, userID string, taskID str
 
 	task, ok := s.tasks[userID+":"+taskID]
 	return task, ok, nil
+}
+
+func (s *memoryThreadStore) UpdateTask(_ context.Context, task app.Task) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.tasks == nil {
+		return sql.ErrNoRows
+	}
+
+	key := task.DiscordUserID + ":" + task.TaskID
+	if _, ok := s.tasks[key]; !ok {
+		return sql.ErrNoRows
+	}
+
+	s.tasks[key] = task
+	return nil
 }
 
 func (s *memoryThreadStore) ListOpenTasks(_ context.Context, userID string) ([]app.Task, error) {
@@ -934,6 +1092,27 @@ func (s *memoryThreadStore) ListOpenTasks(_ context.Context, userID string) ([]a
 	return tasks, nil
 }
 
+func (s *memoryThreadStore) ListClosedReadyTasks(_ context.Context) ([]app.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tasks := make([]app.Task, 0)
+	for _, task := range s.tasks {
+		if task.Status == app.TaskStatusClosed && task.WorktreeStatus == app.TaskWorktreeStatusReady && task.ClosedAt != nil {
+			tasks = append(tasks, task)
+		}
+	}
+
+	sort.Slice(tasks, func(i, j int) bool {
+		if tasks[i].ClosedAt.Equal(*tasks[j].ClosedAt) {
+			return tasks[i].TaskID < tasks[j].TaskID
+		}
+		return tasks[i].ClosedAt.After(*tasks[j].ClosedAt)
+	})
+
+	return tasks, nil
+}
+
 func (s *memoryThreadStore) SetActiveTask(_ context.Context, activeTask app.ActiveTask) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -943,6 +1122,47 @@ func (s *memoryThreadStore) SetActiveTask(_ context.Context, activeTask app.Acti
 	}
 
 	s.activeTasks[activeTask.DiscordUserID] = activeTask
+	return nil
+}
+
+type fakeTaskWorkspaceManager struct {
+	store       *memoryThreadStore
+	ensureCount int
+	failCount   int
+}
+
+func (m *fakeTaskWorkspaceManager) EnsureReady(_ context.Context, task app.Task) (app.Task, error) {
+	m.ensureCount++
+	if m.failCount > 0 {
+		m.failCount--
+		task.WorktreeStatus = app.TaskWorktreeStatusFailed
+		if m.store != nil {
+			_ = m.store.UpdateTask(context.Background(), task)
+		}
+		return app.Task{}, errors.New("workspace setup failed")
+	}
+
+	if task.BranchName == "" {
+		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+	}
+	task.BaseRef = "main"
+	task.WorktreePath = "/tmp/worktrees/" + task.TaskID
+	task.WorktreeStatus = app.TaskWorktreeStatusReady
+	now := time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC)
+	if task.WorktreeCreatedAt == nil {
+		task.WorktreeCreatedAt = &now
+	}
+
+	if m.store != nil {
+		if err := m.store.UpdateTask(context.Background(), task); err != nil {
+			return app.Task{}, err
+		}
+	}
+
+	return task, nil
+}
+
+func (*fakeTaskWorkspaceManager) PruneClosed(context.Context) error {
 	return nil
 }
 

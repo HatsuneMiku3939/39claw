@@ -20,6 +20,19 @@ const (
 	sqliteDirectoryPermsMode = 0o755
 )
 
+var taskColumnDefinitions = []struct {
+	name       string
+	definition string
+}{
+	{name: "branch_name", definition: `TEXT NOT NULL DEFAULT ''`},
+	{name: "base_ref", definition: `TEXT NULL`},
+	{name: "worktree_path", definition: `TEXT NULL`},
+	{name: "worktree_status", definition: `TEXT NOT NULL DEFAULT 'pending'`},
+	{name: "worktree_created_at", definition: `TEXT NULL`},
+	{name: "worktree_pruned_at", definition: `TEXT NULL`},
+	{name: "last_used_at", definition: `TEXT NULL`},
+}
+
 type Store struct {
 	db    *sql.DB
 	clock func() time.Time
@@ -78,9 +91,16 @@ func (s *Store) InitSchema(ctx context.Context) error {
 			discord_user_id TEXT NOT NULL,
 			task_name TEXT NOT NULL,
 			status TEXT NOT NULL,
+			branch_name TEXT NOT NULL DEFAULT '',
+			base_ref TEXT NULL,
+			worktree_path TEXT NULL,
+			worktree_status TEXT NOT NULL DEFAULT 'pending',
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
-			closed_at TEXT NULL
+			closed_at TEXT NULL,
+			worktree_created_at TEXT NULL,
+			worktree_pruned_at TEXT NULL,
+			last_used_at TEXT NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS active_tasks (
 			discord_user_id TEXT PRIMARY KEY,
@@ -93,6 +113,17 @@ func (s *Store) InitSchema(ctx context.Context) error {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("exec schema statement: %w", err)
 		}
+	}
+
+	if err := s.ensureTaskColumns(ctx); err != nil {
+		return err
+	}
+
+	if _, err := s.db.ExecContext(
+		ctx,
+		`UPDATE tasks SET branch_name = 'task/' || task_id WHERE branch_name = ''`,
+	); err != nil {
+		return fmt.Errorf("backfill task branch names: %w", err)
 	}
 
 	return nil
@@ -182,18 +213,34 @@ func (s *Store) CreateTask(ctx context.Context, task app.Task) error {
 		task.Status = app.TaskStatusOpen
 	}
 
+	if task.BranchName == "" {
+		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+	}
+
+	if task.WorktreeStatus == "" {
+		task.WorktreeStatus = app.TaskWorktreeStatusPending
+	}
+
 	_, err := s.db.ExecContext(
 		ctx,
 		`INSERT INTO tasks (
-			task_id, discord_user_id, task_name, status, created_at, updated_at, closed_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			task_id, discord_user_id, task_name, status, branch_name, base_ref, worktree_path,
+			worktree_status, created_at, updated_at, closed_at, worktree_created_at, worktree_pruned_at, last_used_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.TaskID,
 		task.DiscordUserID,
 		task.TaskName,
 		string(task.Status),
+		task.BranchName,
+		nullableString(task.BaseRef),
+		nullableString(task.WorktreePath),
+		string(task.WorktreeStatus),
 		task.CreatedAt.Format(time.RFC3339Nano),
 		task.UpdatedAt.Format(time.RFC3339Nano),
 		nullableTime(task.ClosedAt),
+		nullableTime(task.WorktreeCreatedAt),
+		nullableTime(task.WorktreePrunedAt),
+		nullableTime(task.LastUsedAt),
 	)
 	if err != nil {
 		return fmt.Errorf("create task: %w", err)
@@ -205,7 +252,8 @@ func (s *Store) CreateTask(ctx context.Context, task app.Task) error {
 func (s *Store) GetTask(ctx context.Context, discordUserID string, taskID string) (app.Task, bool, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT task_id, discord_user_id, task_name, status, created_at, updated_at, closed_at
+		`SELECT task_id, discord_user_id, task_name, status, branch_name, base_ref, worktree_path, worktree_status,
+			created_at, updated_at, closed_at, worktree_created_at, worktree_pruned_at, last_used_at
 		FROM tasks WHERE discord_user_id = ? AND task_id = ?`,
 		discordUserID,
 		taskID,
@@ -217,7 +265,8 @@ func (s *Store) GetTask(ctx context.Context, discordUserID string, taskID string
 func (s *Store) ListOpenTasks(ctx context.Context, discordUserID string) ([]app.Task, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT task_id, discord_user_id, task_name, status, created_at, updated_at, closed_at
+		`SELECT task_id, discord_user_id, task_name, status, branch_name, base_ref, worktree_path, worktree_status,
+			created_at, updated_at, closed_at, worktree_created_at, worktree_pruned_at, last_used_at
 		FROM tasks WHERE discord_user_id = ? AND status = ? ORDER BY created_at ASC`,
 		discordUserID,
 		string(app.TaskStatusOpen),
@@ -238,6 +287,92 @@ func (s *Store) ListOpenTasks(ctx context.Context, discordUserID string) ([]app.
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate open tasks: %w", err)
+	}
+
+	return tasks, nil
+}
+
+func (s *Store) UpdateTask(ctx context.Context, task app.Task) error {
+	now := s.clock()
+	if task.UpdatedAt.IsZero() {
+		task.UpdatedAt = now
+	}
+
+	if task.Status == "" {
+		task.Status = app.TaskStatusOpen
+	}
+
+	if task.BranchName == "" {
+		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+	}
+
+	if task.WorktreeStatus == "" {
+		task.WorktreeStatus = app.TaskWorktreeStatusPending
+	}
+
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE tasks
+		SET task_name = ?, status = ?, branch_name = ?, base_ref = ?, worktree_path = ?, worktree_status = ?,
+			updated_at = ?, closed_at = ?, worktree_created_at = ?, worktree_pruned_at = ?, last_used_at = ?
+		WHERE discord_user_id = ? AND task_id = ?`,
+		task.TaskName,
+		string(task.Status),
+		task.BranchName,
+		nullableString(task.BaseRef),
+		nullableString(task.WorktreePath),
+		string(task.WorktreeStatus),
+		task.UpdatedAt.Format(time.RFC3339Nano),
+		nullableTime(task.ClosedAt),
+		nullableTime(task.WorktreeCreatedAt),
+		nullableTime(task.WorktreePrunedAt),
+		nullableTime(task.LastUsedAt),
+		task.DiscordUserID,
+		task.TaskID,
+	)
+	if err != nil {
+		return fmt.Errorf("update task: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update task rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (s *Store) ListClosedReadyTasks(ctx context.Context) ([]app.Task, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT task_id, discord_user_id, task_name, status, branch_name, base_ref, worktree_path, worktree_status,
+			created_at, updated_at, closed_at, worktree_created_at, worktree_pruned_at, last_used_at
+		FROM tasks
+		WHERE status = ? AND worktree_status = ? AND closed_at IS NOT NULL
+		ORDER BY closed_at DESC, task_id ASC`,
+		string(app.TaskStatusClosed),
+		string(app.TaskWorktreeStatusReady),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query closed ready tasks: %w", err)
+	}
+	defer rows.Close()
+
+	tasks := make([]app.Task, 0)
+	for rows.Next() {
+		task, _, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate closed ready tasks: %w", err)
 	}
 
 	return tasks, nil
@@ -364,18 +499,32 @@ func (s *Store) CloseTask(ctx context.Context, discordUserID string, taskID stri
 func scanTask(scanner interface{ Scan(dest ...any) error }) (app.Task, bool, error) {
 	var task app.Task
 	var status string
+	var worktreeStatus string
+	var branchName string
+	var baseRef sql.NullString
+	var worktreePath sql.NullString
 	var createdAt string
 	var updatedAt string
 	var closedAt sql.NullString
+	var worktreeCreatedAt sql.NullString
+	var worktreePrunedAt sql.NullString
+	var lastUsedAt sql.NullString
 
 	err := scanner.Scan(
 		&task.TaskID,
 		&task.DiscordUserID,
 		&task.TaskName,
 		&status,
+		&branchName,
+		&baseRef,
+		&worktreePath,
+		&worktreeStatus,
 		&createdAt,
 		&updatedAt,
 		&closedAt,
+		&worktreeCreatedAt,
+		&worktreePrunedAt,
+		&lastUsedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return app.Task{}, false, nil
@@ -386,6 +535,16 @@ func scanTask(scanner interface{ Scan(dest ...any) error }) (app.Task, bool, err
 	}
 
 	task.Status = app.TaskStatus(status)
+	task.BranchName = branchName
+	if task.BranchName == "" {
+		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+	}
+	task.BaseRef = nullableStringValue(baseRef)
+	task.WorktreePath = nullableStringValue(worktreePath)
+	task.WorktreeStatus = app.TaskWorktreeStatus(worktreeStatus)
+	if task.WorktreeStatus == "" {
+		task.WorktreeStatus = app.TaskWorktreeStatusPending
+	}
 
 	task.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
 	if err != nil {
@@ -405,7 +564,58 @@ func scanTask(scanner interface{ Scan(dest ...any) error }) (app.Task, bool, err
 		task.ClosedAt = &parsedClosedAt
 	}
 
+	if task.WorktreeCreatedAt, err = parseNullableTime(worktreeCreatedAt); err != nil {
+		return app.Task{}, false, fmt.Errorf("parse task worktree_created_at: %w", err)
+	}
+
+	if task.WorktreePrunedAt, err = parseNullableTime(worktreePrunedAt); err != nil {
+		return app.Task{}, false, fmt.Errorf("parse task worktree_pruned_at: %w", err)
+	}
+
+	if task.LastUsedAt, err = parseNullableTime(lastUsedAt); err != nil {
+		return app.Task{}, false, fmt.Errorf("parse task last_used_at: %w", err)
+	}
+
 	return task, true, nil
+}
+
+func (s *Store) ensureTaskColumns(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(tasks)`)
+	if err != nil {
+		return fmt.Errorf("query task table info: %w", err)
+	}
+	defer rows.Close()
+
+	existingColumns := make(map[string]struct{})
+	for rows.Next() {
+		var cid int
+		var name string
+		var columnType string
+		var notNull int
+		var defaultValue sql.NullString
+		var primaryKey int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return fmt.Errorf("scan task table info: %w", err)
+		}
+		existingColumns[name] = struct{}{}
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate task table info: %w", err)
+	}
+
+	for _, column := range taskColumnDefinitions {
+		if _, ok := existingColumns[column.name]; ok {
+			continue
+		}
+
+		statement := fmt.Sprintf(`ALTER TABLE tasks ADD COLUMN %s %s`, column.name, column.definition)
+		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("add tasks.%s column: %w", column.name, err)
+		}
+	}
+
+	return nil
 }
 
 func nullableString(value string) any {
@@ -422,4 +632,25 @@ func nullableTime(value *time.Time) any {
 	}
 
 	return value.Format(time.RFC3339Nano)
+}
+
+func nullableStringValue(value sql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+
+	return value.String
+}
+
+func parseNullableTime(value sql.NullString) (*time.Time, error) {
+	if !value.Valid {
+		return nil, nil
+	}
+
+	parsed, err := time.Parse(time.RFC3339Nano, value.String)
+	if err != nil {
+		return nil, err
+	}
+
+	return &parsed, nil
 }
