@@ -361,6 +361,13 @@ These variables are required in `.env.local`:
 - `CLAW_DATADIR`
 - `CLAW_CODEX_EXECUTABLE`
 
+For Discord deployments, also set:
+
+- `CLAW_CODEX_APPROVAL_POLICY=never`
+
+This is effectively required in 39claw today because the current Codex SDK integration does not expose an API surface for handling interactive approval requests.
+If you set `CLAW_CODEX_APPROVAL_POLICY` to `on-request`, `on-failure`, or `untrusted`, the bot can reach approval-gated work without any supported way for 39claw to complete that approval interaction.
+
 Recommended startup flow:
 
 ```bash
@@ -436,6 +443,7 @@ The first normal message for a new task may spend a moment preparing that task's
   - `true` or `false`
 - `CLAW_CODEX_APPROVAL_POLICY`
   - `never`, `on-request`, `on-failure`, or `untrusted`
+  - for 39claw today, `never` is effectively required because the current Codex SDK integration does not expose an approval-handling API surface
 - `CLAW_CODEX_MODEL_REASONING_EFFORT`
   - `minimal`, `low`, `medium`, `high`, or `xhigh`
 - `CLAW_CODEX_WEB_SEARCH_MODE`
