@@ -133,6 +133,9 @@ Only one Codex turn may run at a time for a given logical thread key.
 If another message arrives for the same logical thread while a turn is running, the bot should accept up to five waiting messages in an in-memory FIFO queue.
 Queued messages should receive an immediate acknowledgment and later receive their final answer as a follow-up reply to the original message.
 If five waiting messages already exist for that logical thread key, the bot should return a retry-later response instead of accepting more queued work.
+During runtime shutdown, 39claw should stop accepting new Discord events first, keep the Discord session open while already-admitted work drains for up to five seconds, and then cancel the shared runtime context if draining does not finish in time.
+When shutdown forces cancellation, deferred queued replies may be dropped instead of being delivered after the runtime has started closing.
+Structured logs should make it obvious whether queued work completed normally, was canceled during shutdown, or had its deferred reply dropped.
 
 ## Configuration Defaults
 

@@ -683,6 +683,73 @@ func TestMessageServiceHandleMessageQueuesBusyTurnAndDeliversDeferredReply(t *te
 	}
 }
 
+func TestMessageServiceWaitForDrainWaitsForDeferredReplyDelivery(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{}
+	gateway := newBlockingCodexGateway(
+		app.RunTurnResult{ThreadID: "thread-1", ResponseText: "First response"},
+		app.RunTurnResult{ThreadID: "thread-1", ResponseText: "Second response"},
+	)
+	service := newDailyMessageService(t, store, gateway, thread.NewQueueCoordinator())
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := service.HandleMessage(context.Background(), app.MessageRequest{
+			MessageID:  "message-1",
+			Content:    "start long turn",
+			Mentioned:  true,
+			ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		}, nil)
+		firstDone <- err
+	}()
+
+	waitForSignal(t, gateway.started, "first codex turn start")
+
+	deliveryStarted := make(chan struct{})
+	allowDelivery := make(chan struct{})
+	_, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		MessageID:  "message-2",
+		Content:    "follow up later",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 1, 0, 0, time.UTC),
+	}, app.DeferredReplySinkFunc(func(ctx context.Context, response app.MessageResponse) error {
+		close(deliveryStarted)
+		<-allowDelivery
+		return nil
+	}))
+	if err != nil {
+		t.Fatalf("HandleMessage() queued error = %v", err)
+	}
+
+	close(gateway.release)
+
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatalf("first HandleMessage() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first response")
+	}
+
+	waitForSignal(t, deliveryStarted, "deferred reply delivery start")
+
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer drainCancel()
+	if err := service.WaitForDrain(drainCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("WaitForDrain() error = %v, want %v", err, context.DeadlineExceeded)
+	}
+
+	close(allowDelivery)
+
+	drainCtx, drainCancel = context.WithTimeout(context.Background(), time.Second)
+	defer drainCancel()
+	if err := service.WaitForDrain(drainCtx); err != nil {
+		t.Fatalf("WaitForDrain() error = %v", err)
+	}
+}
+
 func TestMessageServiceHandleMessageReturnsQueueFullResponse(t *testing.T) {
 	t.Parallel()
 
@@ -822,6 +889,78 @@ func TestMessageServiceHandleMessageFreezesTaskContextForQueuedWork(t *testing.T
 		t.Fatalf("GetThreadBinding(task-2) error = %v", err)
 	} else if ok {
 		t.Fatal("GetThreadBinding(task-2) ok = true, want false")
+	}
+}
+
+func TestMessageServiceHandleMessageQueuedWorkUsesCallerContext(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{}
+	firstRelease := make(chan struct{})
+	gateway := newScriptedCodexGateway(
+		[]app.RunTurnResult{
+			{ThreadID: "thread-1", ResponseText: "First response"},
+			{ThreadID: "thread-1", ResponseText: "Second response"},
+		},
+		[]chan struct{}{firstRelease, nil},
+	)
+	service := newDailyMessageService(t, store, gateway, thread.NewQueueCoordinator())
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := service.HandleMessage(context.Background(), app.MessageRequest{
+			MessageID:  "message-1",
+			Content:    "start long turn",
+			Mentioned:  true,
+			ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		}, nil)
+		firstDone <- err
+	}()
+
+	waitForSignal(t, gateway.started, "first codex turn start")
+
+	queuedCtx, cancelQueued := context.WithCancel(context.Background())
+	delivered := make(chan app.MessageResponse, 1)
+	_, err := service.HandleMessage(queuedCtx, app.MessageRequest{
+		MessageID:  "message-2",
+		Content:    "follow up later",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 1, 0, 0, time.UTC),
+	}, app.DeferredReplySinkFunc(func(ctx context.Context, response app.MessageResponse) error {
+		delivered <- response
+		return nil
+	}))
+	if err != nil {
+		t.Fatalf("HandleMessage() queued error = %v", err)
+	}
+
+	cancelQueued()
+	close(firstRelease)
+
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatalf("first HandleMessage() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first response")
+	}
+
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), time.Second)
+	defer drainCancel()
+	if err := service.WaitForDrain(drainCtx); err != nil {
+		t.Fatalf("WaitForDrain() error = %v", err)
+	}
+
+	select {
+	case response := <-delivered:
+		t.Fatalf("unexpected deferred response = %+v", response)
+	default:
+	}
+
+	calls := gateway.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 2)
 	}
 }
 
@@ -978,6 +1117,15 @@ type fakeCodexGateway struct {
 	sequence *[]string
 }
 
+type scriptedCodexGateway struct {
+	mu        sync.Mutex
+	calls     []runTurnCall
+	results   []app.RunTurnResult
+	blockers  []chan struct{}
+	started   chan struct{}
+	startOnce sync.Once
+}
+
 type runTurnCall struct {
 	threadID         string
 	workingDirectory string
@@ -1085,6 +1233,16 @@ func newBlockingCodexGateway(results ...app.RunTurnResult) *blockingCodexGateway
 	}
 }
 
+func newScriptedCodexGateway(results []app.RunTurnResult, blockers []chan struct{}) *scriptedCodexGateway {
+	clonedResults := append([]app.RunTurnResult(nil), results...)
+	clonedBlockers := append([]chan struct{}(nil), blockers...)
+	return &scriptedCodexGateway{
+		results:  clonedResults,
+		blockers: clonedBlockers,
+		started:  make(chan struct{}),
+	}
+}
+
 func (g *blockingCodexGateway) RunTurn(_ context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
 	g.mu.Lock()
 	g.calls = append(g.calls, runTurnCall{
@@ -1120,6 +1278,59 @@ func (g *blockingCodexGateway) RunTurn(_ context.Context, threadID string, input
 }
 
 func (g *blockingCodexGateway) Calls() []runTurnCall {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	calls := make([]runTurnCall, len(g.calls))
+	copy(calls, g.calls)
+	return calls
+}
+
+func (g *scriptedCodexGateway) RunTurn(ctx context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
+	g.mu.Lock()
+	g.calls = append(g.calls, runTurnCall{
+		threadID:         threadID,
+		workingDirectory: input.WorkingDirectory,
+		input: app.CodexTurnInput{
+			Prompt:           input.Prompt,
+			ImagePaths:       append([]string(nil), input.ImagePaths...),
+			WorkingDirectory: input.WorkingDirectory,
+		},
+	})
+
+	var result app.RunTurnResult
+	if len(g.results) > 0 {
+		result = g.results[0]
+		g.results = g.results[1:]
+	}
+
+	var blocker chan struct{}
+	if len(g.blockers) > 0 {
+		blocker = g.blockers[0]
+		g.blockers = g.blockers[1:]
+	}
+	g.mu.Unlock()
+
+	g.startOnce.Do(func() {
+		close(g.started)
+	})
+
+	if err := ctx.Err(); err != nil {
+		return app.RunTurnResult{}, err
+	}
+
+	if blocker != nil {
+		<-blocker
+	}
+
+	if err := ctx.Err(); err != nil {
+		return app.RunTurnResult{}, err
+	}
+
+	return result, nil
+}
+
+func (g *scriptedCodexGateway) Calls() []runTurnCall {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 

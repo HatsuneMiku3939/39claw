@@ -54,3 +54,7 @@ type QueueCoordinator interface {
 type MessageService interface {
 	HandleMessage(ctx context.Context, request MessageRequest, sink DeferredReplySink) (MessageResponse, error)
 }
+
+type DrainableMessageService interface {
+	WaitForDrain(ctx context.Context) error
+}
