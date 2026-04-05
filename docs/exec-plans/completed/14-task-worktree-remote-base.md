@@ -17,7 +17,7 @@ The user-visible proof is concrete. In `task` mode, if the source repository has
 - [x] (2026-04-05 21:21Z) Added focused tests proving that remote-tracking refs are preferred over local default branches and that task worktree creation still falls back to local `master` when `origin` refresh fails.
 - [x] (2026-04-05 21:21Z) Updated task-mode design and product documentation so the remote-first base-ref behavior is now described consistently.
 - [x] (2026-04-05 21:21Z) Ran `make test` and `make lint` after the implementation landed.
-- [ ] Archive this completed plan from `active/` to `completed/`, update `docs/exec-plans/index.md`, and carry any intentionally deferred follow-up into `docs/exec-plans/tech-debt-tracker.md` if needed.
+- [x] (2026-04-05 21:27Z) Archived this completed plan into `docs/exec-plans/completed/`, updated `docs/exec-plans/index.md`, and confirmed that no additional follow-up needed to be added to `docs/exec-plans/tech-debt-tracker.md`.
 
 ## Surprises & Discoveries
 
@@ -43,9 +43,17 @@ The user-visible proof is concrete. In `task` mode, if the source repository has
   Rationale: A hard fetch requirement would turn transient network or credential issues into avoidable task-mode outages. A best-effort refresh still improves correctness without sacrificing availability.
   Date/Author: 2026-04-06 / Codex
 
+- Decision: Archive this ExecPlan without adding a new tech-debt entry.
+  Rationale: The implementation, tests, and documentation are complete, and no meaningful non-blocking follow-up beyond the already-documented task worktree ergonomics debt was introduced by this remote-base refinement.
+  Date/Author: 2026-04-05 / Codex
+
 ## Outcomes & Retrospective
 
-Implementation is complete and validated locally. The task workspace manager now refreshes `origin` on a best-effort basis, prefers the remote default branch state for first-time worktree creation, and still falls back safely to local `main` or `master` when the remote cannot be used. The remaining work is repository workflow only: archive this finished plan, open the pull request, confirm CI, and merge.
+This plan is now complete and archived. The task workspace manager refreshes `origin` on a best-effort basis, prefers the remote default branch state for first-time worktree creation, and still falls back safely to local `main` or `master` when the remote cannot be used. Automated coverage proves both the remote-first path and the fetch-failure fallback path, and the task-mode design plus product docs now describe the behavior consistently.
+
+The main lesson from this change is that the safest parallel-task baseline is not necessarily the most obvious local branch. Remote-tracking refs carry the shared team state that new isolated tasks should usually inherit. The implementation remained small because base-ref detection was already isolated inside the task workspace manager, so the repository could adopt the safer policy without changing task persistence, thread routing, or user commands.
+
+This plan no longer belongs in `active/` because its acceptance criteria are satisfied, local validation passed, the feature PR merged, and the repository documentation now matches the shipped behavior.
 
 ## Context and Orientation
 
@@ -173,3 +181,5 @@ The implementation should stay within the existing `internal/app` package and co
 Revision Note: 2026-04-06 / Codex - Created this active ExecPlan after deciding to prefer the remote default branch for new task worktrees while keeping a safe local fallback.
 
 Revision Note: 2026-04-05 / Codex - Updated the living sections after implementing remote-first task worktree base-ref detection, adding tests, and recording local validation results.
+
+Revision Note: 2026-04-05 / Codex - Archived this completed ExecPlan after the feature PR merged and the repository state matched the documented acceptance criteria.
