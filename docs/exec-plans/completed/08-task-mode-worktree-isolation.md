@@ -19,6 +19,7 @@ The user-visible proof is practical. In `task` mode, creating two tasks and send
 - [x] (2026-04-05 00:24Z) Implemented lazy worktree creation, automatic retry after failed preparation, and closed-task worktree pruning with branch retention.
 - [x] (2026-04-05 00:24Z) Added unit and integration coverage for startup validation, lazy creation, retry behavior, pruning, and schema migration.
 - [x] (2026-04-05 00:24Z) Ran `make test` and `make lint` after the implementation landed.
+- [x] (2026-04-05 02:04Z) Re-checked the repository state, confirmed the acceptance criteria remain satisfied, and archived this completed plan while recording the remaining operator-facing follow-up in `docs/exec-plans/tech-debt-tracker.md`.
 
 ## Surprises & Discoveries
 
@@ -59,11 +60,17 @@ The user-visible proof is practical. In `task` mode, creating two tasks and send
   Rationale: Many failure causes are transient or operator-fixable, so the product should recover without introducing extra task-repair commands in v1.
   Date/Author: 2026-04-04 / Codex
 
+- Decision: Archive this ExecPlan and track later operator-facing improvements as explicit tech debt instead of keeping the implementation plan active.
+  Rationale: The shipped worktree isolation behavior is complete and validated, while the remaining ideas are optional usability enhancements rather than unfinished core scope.
+  Date/Author: 2026-04-05 / Codex
+
 ## Outcomes & Retrospective
 
 This plan is now implemented in the repository. `task` mode startup rejects non-Git source repositories, task creation reserves branch metadata with `worktree_status=pending`, the first normal task message lazily creates a task-specific worktree under `${CLAW_DATADIR}/worktrees/<task_id>`, and later turns reuse that task-specific working directory and Codex thread binding. Closing tasks now keeps task branches but prunes older closed ready worktrees beyond the configured retention window.
 
 The most important lesson was that the feature touches three kinds of state at once: Discord-visible task workflow, Codex thread continuity, and Git workspace lifecycle. Keeping those aligned required a narrow app-layer worktree manager plus additive store migration rather than folding Git operations into the task command flow directly. The remaining follow-up work is operational rather than architectural: if future product needs want manual cleanup commands or richer worktree status output in Discord, those can build on the now-persistent task worktree metadata without changing the core model again.
+
+This plan now leaves `active/` because the core worktree-isolation behavior, persistence migration, retry path, pruning policy, and repository validation are all already implemented and covered. The document would otherwise imply that contributors still need to land core functionality when the only remaining work is optional product hardening captured as explicit follow-up debt.
 
 ## Context and Orientation
 
@@ -275,3 +282,4 @@ Revision note (2026-04-05 00:24Z): Updated the living sections after implementin
 The persistence layer should support reading and updating those fields without the app layer needing raw SQL knowledge. The Codex execution path should accept a task-specific working directory override while preserving the existing global configuration path for `daily` mode.
 
 Revision Note: 2026-04-04 / Codex - Created this active ExecPlan after the task worktree isolation design was agreed and documented.
+Revision Note: 2026-04-05 / Codex - Archived this completed ExecPlan after reconciling the living-document sections and moving the remaining operator-facing ideas into the tech-debt tracker.

@@ -61,3 +61,24 @@ Keep this entry open until one of the following becomes true:
 - a production or staging issue suggests the live Discord path needs explicit end-to-end confirmation
 
 Until then, treat this as explicit technical debt rather than an implicit missing task. When one of the triggers above is met, run the documented smoke test from `README.md` with a disposable Discord bot token and guild ID, including both normal reply and image-attachment scenarios, then either mark this entry resolved or record any runtime-specific fixes in a follow-up ExecPlan.
+
+### Task worktree operator ergonomics follow-up
+
+- Status: open
+- Date: 2026-04-05
+- Related plan: `docs/exec-plans/completed/08-task-mode-worktree-isolation.md`
+- Owner: Unassigned
+
+### Context
+
+Task-isolated worktrees now exist and the repository validates the core lifecycle correctly, but the shipped v1 surface still keeps worktree lifecycle mostly implicit. Contributors and operators can recover from failed creation through automatic retry, yet there is no dedicated Discord-visible diagnostic or repair affordance for inspecting worktree state, forcing them to rely on logs or the SQLite store when they want to understand why a task workspace is pending, failed, ready, or pruned.
+
+This gap is intentionally deferred because the core scope was isolated task execution, not workspace administration UX. Keeping the follow-up explicit here avoids leaving the completed ExecPlan in `active/` just to remember an optional hardening idea.
+
+### Risk
+
+When task worktree preparation fails or old worktrees are pruned, users may have limited self-service visibility into what happened. That can increase operator support burden and make it slower to distinguish transient setup failures from expected closed-task cleanup behavior.
+
+### Next step
+
+Add the smallest useful operator-facing surface for task worktree state before expanding the workflow further. A safe first increment is to expose each task's current worktree lifecycle state in existing task command responses such as `task-current` and `task-list`, then decide later whether a dedicated repair or cleanup command is still necessary.

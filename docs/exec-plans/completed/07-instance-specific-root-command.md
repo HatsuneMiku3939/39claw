@@ -21,6 +21,7 @@ The user-visible proof is simple. If a bot instance starts with `CLAW_DISCORD_CO
 - [x] (2026-04-04 23:07Z) Updated `README.md`, `docs/product-specs/discord-command-behavior.md`, `docs/product-specs/task-mode-user-flow.md`, and `docs/design-docs/implementation-spec.md` to describe the new command surface.
 - [x] (2026-04-04 23:07Z) Ran `make test` and `make lint` successfully after the implementation landed.
 - [x] (2026-04-04 23:28Z) Manually confirmed in Discord that a guild-scoped bot instance contributes one `/claw` root command entry and that the task-mode smoke flow succeeds end to end.
+- [x] (2026-04-05 02:04Z) Re-checked the repository state, confirmed the acceptance criteria remain satisfied, and archived this completed plan because the implementation, automated validation, and Discord smoke proof are all already present in the repository.
 
 ## Surprises & Discoveries
 
@@ -61,9 +62,15 @@ The user-visible proof is simple. If a bot instance starts with `CLAW_DISCORD_CO
   Rationale: Missing-task and task-state responses are produced below the Discord runtime boundary. Keeping those strings aligned at the source avoids a split-brain UX where slash-command help and task guidance disagree.
   Date/Author: 2026-04-04 / Codex
 
+- Decision: Archive this ExecPlan without additional follow-up tracking.
+  Rationale: The implementation, repository docs, automated validation, and manual Discord smoke proof are complete, and no intentional non-blocking gap remains from this scope.
+  Date/Author: 2026-04-05 / Codex
+
 ## Outcomes & Retrospective
 
 Implementation is complete in code, tests, repository docs, and manual Discord smoke validation. The resulting command surface now scales with the number of installed bot instances instead of scaling with instances multiplied by slash-command variants, and help/task guidance consistently identifies the configured root command for the current deployment. Manual validation in a guild confirmed that one instance contributes one `/claw` root command entry and that the task-mode smoke flow works end to end when guild-scoped registration is used for immediate propagation.
+
+This plan now leaves `active/` because its acceptance criteria are still satisfied in the current repository state and there is no remaining implementation work hidden behind the document. The repository has already absorbed the command-surface migration fully enough that keeping this file active would misrepresent what contributors should pick up next.
 
 ## Context and Orientation
 
@@ -302,3 +309,4 @@ No change in this plan should bypass that app-layer contract or route task contr
 
 Revision Note: 2026-04-04 / Codex - Created this ExecPlan after deciding to replace the shared `/help` and `/task ...` command family with one instance-specific root command in order to avoid Discord command-search explosion in multi-instance deployments.
 Revision Note: 2026-04-05 / Codex - Simplified the plan to use only `CLAW_DISCORD_COMMAND_NAME` after deciding a second display-label setting added complexity without meaningful UX value.
+Revision Note: 2026-04-05 / Codex - Archived this completed ExecPlan after reconciling the living-document sections with the already-landed implementation and validation evidence.
