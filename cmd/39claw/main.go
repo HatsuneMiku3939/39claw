@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -17,9 +18,21 @@ import (
 	runtimediscord "github.com/HatsuneMiku3939/39claw/internal/runtime/discord"
 	sqlitestore "github.com/HatsuneMiku3939/39claw/internal/store/sqlite"
 	"github.com/HatsuneMiku3939/39claw/internal/thread"
+	"github.com/HatsuneMiku3939/39claw/version"
 )
 
-const exitCodeFailure = 1
+const (
+	exitCodeSuccess = 0
+	exitCodeFailure = 1
+	exitCodeUsage   = 2
+)
+
+type cliCommand string
+
+const (
+	cliCommandServe   cliCommand = "serve"
+	cliCommandVersion cliCommand = "version"
+)
 
 type discordRuntime interface {
 	Start(ctx context.Context) error
@@ -35,12 +48,51 @@ var newCodexGateway = func(client *codex.Client, options codex.GatewayOptions) a
 }
 
 func main() {
+	os.Exit(runCLI(os.Args[1:], os.LookupEnv, os.Stdout, os.Stderr))
+}
+
+func runCLI(
+	args []string,
+	lookupEnv func(string) (string, bool),
+	stdout io.Writer,
+	stderr io.Writer,
+) int {
+	command, err := parseCLIArgs(args)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		return exitCodeUsage
+	}
+
+	if command == cliCommandVersion {
+		_, _ = fmt.Fprintln(stdout, version.Version)
+		return exitCodeSuccess
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	err := run(ctx, os.LookupEnv)
+	err = run(ctx, lookupEnv)
 	stop()
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(exitCodeFailure)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		return exitCodeFailure
+	}
+
+	return exitCodeSuccess
+}
+
+func parseCLIArgs(args []string) (cliCommand, error) {
+	if len(args) == 0 {
+		return cliCommandServe, nil
+	}
+
+	switch args[0] {
+	case string(cliCommandVersion):
+		if len(args) > 1 {
+			return "", errors.New("version command does not accept arguments")
+		}
+
+		return cliCommandVersion, nil
+	default:
+		return "", fmt.Errorf("unknown command %q", args[0])
 	}
 }
 

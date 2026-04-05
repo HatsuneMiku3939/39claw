@@ -34,6 +34,7 @@ The expected package direction for v1 is:
 - `internal/thread`
 - `internal/store/sqlite`
 - `internal/codex`
+- `version`
 
 The recommended delivery order is:
 

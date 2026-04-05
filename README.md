@@ -265,12 +265,22 @@ Recommended startup flow:
 cp .env.example .env.local
 cp .envrc.example .envrc
 direnv allow
+go run ./cmd/39claw version
 go run ./cmd/39claw
 ```
 
 39claw stores its SQLite database at `39claw.sqlite` inside `CLAW_DATADIR`.
 
 If `CLAW_DISCORD_GUILD_ID` is set, 39claw registers commands in that guild for faster testing. If it is omitted, commands are registered globally.
+
+### CLI command
+
+39claw currently exposes one local CLI subcommand:
+
+- `go run ./cmd/39claw version`
+  - print the build version string and exit without starting the Discord runtime
+
+Regular startup still uses `go run ./cmd/39claw` with no subcommand.
 
 ### 3. Mention the bot in Discord
 

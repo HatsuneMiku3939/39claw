@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -13,6 +14,86 @@ import (
 	"github.com/HatsuneMiku3939/39claw/internal/config"
 	runtimediscord "github.com/HatsuneMiku3939/39claw/internal/runtime/discord"
 )
+
+func TestParseCLIArgs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		args    []string
+		want    cliCommand
+		wantErr string
+	}{
+		{
+			name: "defaults to serve",
+			want: cliCommandServe,
+		},
+		{
+			name: "supports version command",
+			args: []string{"version"},
+			want: cliCommandVersion,
+		},
+		{
+			name:    "rejects unknown command",
+			args:    []string{"dance"},
+			wantErr: `unknown command "dance"`,
+		},
+		{
+			name:    "rejects extra version arguments",
+			args:    []string{"version", "now"},
+			wantErr: "version command does not accept arguments",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseCLIArgs(tt.args)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("parseCLIArgs() error = nil, want %q", tt.wantErr)
+				}
+
+				if err.Error() != tt.wantErr {
+					t.Fatalf("parseCLIArgs() error = %q, want %q", err.Error(), tt.wantErr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("parseCLIArgs() error = %v", err)
+			}
+
+			if got != tt.want {
+				t.Fatalf("parseCLIArgs() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunCLIVersion(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runCLI([]string{"version"}, os.LookupEnv, &stdout, &stderr)
+	if exitCode != exitCodeSuccess {
+		t.Fatalf("runCLI() exitCode = %d, want %d", exitCode, exitCodeSuccess)
+	}
+
+	if stdout.String() != "dev\n" {
+		t.Fatalf("runCLI() stdout = %q, want %q", stdout.String(), "dev\n")
+	}
+
+	if stderr.Len() != 0 {
+		t.Fatalf("runCLI() stderr = %q, want empty", stderr.String())
+	}
+}
 
 func TestRun(t *testing.T) {
 	originalNewDiscordRuntime := newDiscordRuntime
