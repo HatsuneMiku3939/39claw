@@ -1,18 +1,22 @@
 package app
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type MessageRequest struct {
-	UserID      string
-	ChannelID   string
-	MessageID   string
-	Content     string
-	ImagePaths  []string
-	Cleanup     func()
-	Mentioned   bool
-	CommandName string
-	CommandArgs []string
-	ReceivedAt  time.Time
+	UserID       string
+	ChannelID    string
+	MessageID    string
+	Content      string
+	ImagePaths   []string
+	Cleanup      func()
+	ProgressSink MessageProgressSink
+	Mentioned    bool
+	CommandName  string
+	CommandArgs  []string
+	ReceivedAt   time.Time
 }
 
 type MessageResponse struct {
@@ -82,10 +86,25 @@ type RunTurnResult struct {
 	Usage        *TokenUsage
 }
 
+type MessageProgress struct {
+	Text string
+}
+
+type MessageProgressSink interface {
+	Deliver(ctx context.Context, progress MessageProgress) error
+}
+
+type MessageProgressSinkFunc func(ctx context.Context, progress MessageProgress) error
+
+func (f MessageProgressSinkFunc) Deliver(ctx context.Context, progress MessageProgress) error {
+	return f(ctx, progress)
+}
+
 type CodexTurnInput struct {
 	Prompt           string
 	ImagePaths       []string
 	WorkingDirectory string
+	ProgressSink     MessageProgressSink
 }
 
 type QueueAdmission struct {

@@ -116,3 +116,45 @@ func TestGatewayRunTurn(t *testing.T) {
 		})
 	}
 }
+
+func TestGatewayRunTurnStreamsProgressUpdates(t *testing.T) {
+	t.Parallel()
+
+	client, _ := newTestClient(t, "stream-progress")
+	gateway := NewGateway(client, GatewayOptions{})
+
+	var progress []string
+	result, err := gateway.RunTurn(context.Background(), "", app.CodexTurnInput{
+		Prompt: "hello",
+		ProgressSink: app.MessageProgressSinkFunc(func(_ context.Context, update app.MessageProgress) error {
+			progress = append(progress, update.Text)
+			return nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v", err)
+	}
+
+	if result.ThreadID != "thread_stream" {
+		t.Fatalf("ThreadID = %q, want %q", result.ThreadID, "thread_stream")
+	}
+
+	if result.ResponseText != "Final helper response" {
+		t.Fatalf("ResponseText = %q, want %q", result.ResponseText, "Final helper response")
+	}
+
+	want := []string{
+		"Running command: `go test ./...`",
+		"Partial helper response",
+		"Final helper response",
+	}
+	if len(progress) != len(want) {
+		t.Fatalf("progress length = %d, want %d (%v)", len(progress), len(want), progress)
+	}
+
+	for index := range want {
+		if progress[index] != want[index] {
+			t.Fatalf("progress[%d] = %q, want %q", index, progress[index], want[index])
+		}
+	}
+}

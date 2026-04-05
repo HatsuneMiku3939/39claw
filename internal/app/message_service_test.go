@@ -116,6 +116,45 @@ func TestMessageServiceHandleMessageDailyReusesSameDayBinding(t *testing.T) {
 	}
 }
 
+func TestMessageServiceHandleMessageStreamsImmediateProgress(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{}
+	gateway := &fakeCodexGateway{
+		results: []app.RunTurnResult{
+			{ThreadID: "thread-1", ResponseText: "Final response"},
+		},
+	}
+	service := newDailyMessageService(t, store, gateway, nil)
+
+	var progress []string
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		MessageID: "message-1",
+		Content:   "stream me",
+		Mentioned: true,
+		ProgressSink: app.MessageProgressSinkFunc(func(_ context.Context, update app.MessageProgress) error {
+			progress = append(progress, update.Text)
+			return nil
+		}),
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	if response.Text != "Final response" {
+		t.Fatalf("response text = %q, want %q", response.Text, "Final response")
+	}
+
+	if len(progress) != 1 {
+		t.Fatalf("progress count = %d, want %d", len(progress), 1)
+	}
+
+	if progress[0] != "Thinking..." {
+		t.Fatalf("progress = %q, want %q", progress[0], "Thinking...")
+	}
+}
+
 func TestMessageServiceHandleMessageDailyRollsOverOnNextDay(t *testing.T) {
 	t.Parallel()
 
@@ -623,10 +662,15 @@ func TestMessageServiceHandleMessageQueuesBusyTurnAndDeliversDeferredReply(t *te
 	waitForSignal(t, gateway.started, "first codex turn start")
 
 	delivered := make(chan app.MessageResponse, 1)
+	var progress []string
 	secondResponse, err := service.HandleMessage(context.Background(), app.MessageRequest{
-		MessageID:  "message-2",
-		Content:    "follow up later",
-		Mentioned:  true,
+		MessageID: "message-2",
+		Content:   "follow up later",
+		Mentioned: true,
+		ProgressSink: app.MessageProgressSinkFunc(func(_ context.Context, update app.MessageProgress) error {
+			progress = append(progress, update.Text)
+			return nil
+		}),
 		ReceivedAt: time.Date(2026, time.April, 5, 0, 1, 0, 0, time.UTC),
 	}, app.DeferredReplySinkFunc(func(ctx context.Context, response app.MessageResponse) error {
 		delivered <- response
@@ -642,6 +686,10 @@ func TestMessageServiceHandleMessageQueuesBusyTurnAndDeliversDeferredReply(t *te
 
 	if secondResponse.ReplyToID != "message-2" {
 		t.Fatalf("queued ReplyToID = %q, want %q", secondResponse.ReplyToID, "message-2")
+	}
+
+	if len(progress) != 0 {
+		t.Fatalf("queued progress = %v, want empty", progress)
 	}
 
 	close(gateway.release)

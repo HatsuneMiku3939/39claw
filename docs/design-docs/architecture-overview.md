@@ -44,7 +44,7 @@ Discord Runtime
 
 ### Discord Runtime
 
-Receives Discord inputs and delivers formatted responses.
+Receives Discord inputs, delivers formatted responses, and edits in-flight non-queued replies when streamed Codex progress is available.
 
 ### Message Application Service
 
@@ -65,7 +65,7 @@ The first turn for an idle key runs immediately, up to five additional waiting t
 
 ### Codex Gateway
 
-Owns the direct integration with the Codex SDK or Codex API layer, including the effective working directory for each turn.
+Owns the direct integration with the Codex SDK or Codex API layer, including the effective working directory for each turn and the translation of streamed Codex events into app-facing progress updates.
 
 ### Response Presenter
 
@@ -84,8 +84,9 @@ Adapts normalized application output into Discord-safe responses.
 8. Application service sends the turn through the Codex gateway with the saved thread ID when one exists
 9. If no saved thread exists yet, the first turn creates one and returns its thread ID
 10. Application service persists the returned binding
-11. Response presenter formats the result
-12. Discord runtime posts the final response immediately for non-queued work or later as a deferred reply for queued work
+11. For non-queued work, the runtime may post and edit a placeholder reply while the turn is still running
+12. Response presenter formats the result
+13. Discord runtime posts the final response immediately for non-queued work or later as a deferred reply for queued work
 
 The runtime-owned part stops at creating and refreshing the memory files themselves.
 Whether Codex consults those files during normal visible turns is controlled by the user-owned instructions already present in the workdir, such as `AGENTS.md`.

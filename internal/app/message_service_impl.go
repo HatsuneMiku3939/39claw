@@ -117,8 +117,10 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 
 	executionKey := buildExecutionKey(s.mode, prepared.logicalKey)
 	logger := s.messageLogger(prepared)
+	queuedPrepared := prepared
+	queuedPrepared.input.ProgressSink = nil
 	admission, err := s.coordinator.Admit(executionKey, func() {
-		s.processQueuedMessage(ctx, prepared)
+		s.processQueuedMessage(ctx, queuedPrepared)
 	})
 	if err != nil {
 		if errors.Is(err, ErrExecutionQueueFull) {
@@ -214,8 +216,9 @@ func (s *DefaultMessageService) prepareMessage(
 		replyToID:  request.MessageID,
 		receivedAt: request.ReceivedAt,
 		input: CodexTurnInput{
-			Prompt:     request.Content,
-			ImagePaths: append([]string(nil), request.ImagePaths...),
+			Prompt:       request.Content,
+			ImagePaths:   append([]string(nil), request.ImagePaths...),
+			ProgressSink: request.ProgressSink,
 		},
 		sink:    sink,
 		cleanup: cleanup,
@@ -286,6 +289,14 @@ func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prep
 	logger := s.messageLogger(prepared)
 	turnStartedAt := time.Now()
 	threadResumed := strings.TrimSpace(threadID) != ""
+	if prepared.input.ProgressSink != nil {
+		if err := prepared.input.ProgressSink.Deliver(ctx, MessageProgress{
+			Text: "Thinking...",
+		}); err != nil {
+			ignoreProgressDeliveryError(err)
+		}
+	}
+
 	logger.Info(
 		"codex turn started",
 		"event",
@@ -516,6 +527,10 @@ func runCleanup(cleanup func()) {
 	if cleanup != nil {
 		cleanup()
 	}
+}
+
+func ignoreProgressDeliveryError(err error) {
+	_ = err
 }
 
 func taskIDFromLogicalKey(userID string, logicalKey string) (string, error) {

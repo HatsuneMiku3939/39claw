@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -152,6 +153,76 @@ func TestRuntimeMentionHandlingRepliesToTriggerMessage(t *testing.T) {
 
 	if fakeSession.sentMessages[0].Reference == nil || fakeSession.sentMessages[0].Reference.MessageID != "message-1" {
 		t.Fatal("first sent message missing reply reference")
+	}
+}
+
+func TestRuntimeMentionHandlingStreamsProgressByEditingReply(t *testing.T) {
+	t.Parallel()
+
+	messageService := &fakeMessageService{
+		handle: func(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error) {
+			if request.ProgressSink == nil {
+				t.Fatal("ProgressSink = nil, want non-nil")
+			}
+
+			if err := request.ProgressSink.Deliver(ctx, app.MessageProgress{Text: "Thinking..."}); err != nil {
+				return app.MessageResponse{}, err
+			}
+
+			if err := request.ProgressSink.Deliver(ctx, app.MessageProgress{Text: "Partial streamed response"}); err != nil {
+				return app.MessageResponse{}, err
+			}
+
+			if request.Cleanup != nil {
+				request.Cleanup()
+			}
+
+			return app.MessageResponse{
+				Text:      "Final streamed response",
+				ReplyToID: "message-1",
+			}, nil
+		},
+	}
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "channel-1",
+			Content:   "<@bot-user> hello there",
+			Author:    &discordgo.User{ID: "user-1"},
+			Mentions: []*discordgo.User{
+				{ID: "bot-user"},
+			},
+		},
+	})
+
+	if len(fakeSession.sentMessages) != 1 {
+		t.Fatalf("sent message count = %d, want %d", len(fakeSession.sentMessages), 1)
+	}
+
+	if fakeSession.sentMessages[0].Content != "Thinking..." {
+		t.Fatalf("initial content = %q, want %q", fakeSession.sentMessages[0].Content, "Thinking...")
+	}
+
+	if len(fakeSession.editedMessages) != 2 {
+		t.Fatalf("edited message count = %d, want %d", len(fakeSession.editedMessages), 2)
+	}
+
+	if got := stringPointerValue(fakeSession.editedMessages[0].Content); got != "Partial streamed response" {
+		t.Fatalf("first edit content = %q, want %q", got, "Partial streamed response")
+	}
+
+	if got := stringPointerValue(fakeSession.editedMessages[1].Content); got != "Final streamed response" {
+		t.Fatalf("second edit content = %q, want %q", got, "Final streamed response")
 	}
 }
 
@@ -1048,6 +1119,14 @@ func commandInteractionEvent(commandName string, userID string, action string, t
 	}
 }
 
+func stringPointerValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+
+	return *value
+}
+
 type fakeSession struct {
 	selfUserID string
 
@@ -1062,6 +1141,8 @@ type fakeSession struct {
 	interactionHandlers []func(*discordgo.Session, *discordgo.InteractionCreate)
 
 	sentMessages         []*discordgo.MessageSend
+	editedMessages       []*discordgo.MessageEdit
+	deletedMessageIDs    []string
 	interactionResponses []*discordgo.InteractionResponse
 	interactionEdits     []*discordgo.WebhookEdit
 	followups            []*discordgo.WebhookParams
@@ -1110,7 +1191,27 @@ func (s *fakeSession) ChannelMessageSendComplex(
 	options ...discordgo.RequestOption,
 ) (*discordgo.Message, error) {
 	s.sentMessages = append(s.sentMessages, data)
-	return &discordgo.Message{ID: "sent-message", ChannelID: channelID}, nil
+	return &discordgo.Message{
+		ID:        "sent-message-" + strconv.Itoa(len(s.sentMessages)),
+		ChannelID: channelID,
+	}, nil
+}
+
+func (s *fakeSession) ChannelMessageEditComplex(
+	data *discordgo.MessageEdit,
+	options ...discordgo.RequestOption,
+) (*discordgo.Message, error) {
+	s.editedMessages = append(s.editedMessages, data)
+	return &discordgo.Message{ID: data.ID, ChannelID: data.Channel}, nil
+}
+
+func (s *fakeSession) ChannelMessageDelete(
+	channelID string,
+	messageID string,
+	options ...discordgo.RequestOption,
+) error {
+	s.deletedMessageIDs = append(s.deletedMessageIDs, messageID)
+	return nil
 }
 
 func (s *fakeSession) InteractionRespond(
