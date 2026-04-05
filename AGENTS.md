@@ -114,10 +114,6 @@ For local development:
   - Entry point for bundled external references
 - `docs/references/codex-sdk/README.md`
   - Primary reference for Codex SDK integration, thread handling, and request flow
-- `docs/references/py-pimono/README.md`
-  - Useful for studying boundary-oriented architecture ideas
-- `docs/references/py-pimono/ARCHITECTURE.md`
-  - Useful for studying application-layer separation and orchestration structure
 
 ## Scope Note
 
