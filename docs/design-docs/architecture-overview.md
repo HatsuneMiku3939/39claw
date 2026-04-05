@@ -35,6 +35,7 @@ Discord Runtime
   -> Message Application Service
     -> Thread Policy
     -> Thread Store
+    -> Queue Coordinator
     -> Codex Gateway
   -> Response Presenter
 ```
@@ -47,7 +48,7 @@ Receives Discord inputs and delivers formatted responses.
 
 ### Message Application Service
 
-Processes one user turn end to end by resolving the thread target, delegating to Codex, and returning the normalized result.
+Processes one user turn end to end by resolving the thread target, coordinating same-key queue admission, delegating to Codex, and returning either the final normalized result or an immediate queued acknowledgment.
 
 ### Thread Policy
 
@@ -56,6 +57,11 @@ Converts Discord context into a logical thread key according to the globally con
 ### Thread Store
 
 Persists the local continuity data that lets 39claw resume the correct Codex thread, plus task and task-worktree metadata in `task` mode.
+
+### Queue Coordinator
+
+Serializes work per logical thread key.
+The first turn for an idle key runs immediately, up to five additional waiting turns may queue in memory, and further turns receive a retry-later response until capacity returns.
 
 ### Codex Gateway
 
@@ -70,18 +76,27 @@ Adapts normalized application output into Discord-safe responses.
 ```text
 1. Discord receives a user message
 2. Runtime normalizes the request
-3. Application service asks the thread policy for a thread key
-4. In `daily` mode, the first turn of a new local day may run a hidden preflight refresh against the previous daily thread to update `AGENT_MEMORY`
-5. Thread store checks whether a Codex thread already exists for the visible turn
-6. Application service sends the turn through the Codex gateway with the saved thread ID when one exists
-7. If no saved thread exists yet, the first turn creates one and returns its thread ID
-8. Application service persists the returned binding
-9. Response presenter formats the result
-10. Discord runtime posts the reply
+3. Application service resolves the logical thread key and any frozen routing context needed for later queued execution
+4. Queue coordinator decides whether the turn runs immediately, waits in the same-key queue, or is rejected because five waiting turns already exist
+5. If the turn was queued, the runtime immediately posts a queued acknowledgment reply
+6. When the turn starts running, `daily` mode may first run a hidden preflight refresh against the previous daily thread to update `AGENT_MEMORY`
+7. Thread store checks whether a Codex thread already exists for the visible turn
+8. Application service sends the turn through the Codex gateway with the saved thread ID when one exists
+9. If no saved thread exists yet, the first turn creates one and returns its thread ID
+10. Application service persists the returned binding
+11. Response presenter formats the result
+12. Discord runtime posts the final response immediately for non-queued work or later as a deferred reply for queued work
 
 The runtime-owned part stops at creating and refreshing the memory files themselves.
 Whether Codex consults those files during normal visible turns is controlled by the user-owned instructions already present in the workdir, such as `AGENTS.md`.
 ```
+
+## Concurrency Model
+
+- Different logical thread keys may still make progress in parallel.
+- Work for the same logical thread key is serialized through the queue coordinator.
+- The waiting queue is intentionally in memory only, so queued turns are lost if the process exits before they run.
+- The short overview here stays subordinate to `ARCHITECTURE.md`, which remains the authoritative source for the full request flow and shutdown behavior.
 
 ## Read Next
 
