@@ -80,6 +80,8 @@ The message service is responsible for:
 
 SQLite is the required v1 storage backend.
 
+Schema evolution should use embedded, versioned, up-only SQLite migrations tracked through a dedicated `schema_migrations` table rather than relying on ad hoc startup-only column checks inside store CRUD code.
+
 The storage model uses four tables:
 
 - `thread_bindings`
