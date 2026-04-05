@@ -115,12 +115,13 @@ Expected flow:
 1. The user creates or switches to a task that has no ready task worktree yet.
 2. The user sends a normal message to continue that task.
 3. 39claw detects that the task worktree is still pending or previously failed.
-4. 39claw prepares the task-specific Git worktree under the bot data directory.
+4. 39claw refreshes `origin` metadata on a best-effort basis when the source repository has an `origin` remote, then prepares the task-specific Git worktree under the bot data directory from the shared remote default branch when available.
 5. After workspace preparation succeeds, 39claw runs the Codex turn in that task worktree.
 
 Expected user perception:
 
 - “The bot prepared this task's workspace when I first used it.”
+- “New tasks start from the shared team baseline instead of some random local-only commit.”
 - “Later turns for this task should continue in the same isolated workspace.”
 
 ### Scenario: A message is queued for the active task and the user switches tasks before it runs
