@@ -407,6 +407,7 @@ internal/store/sqlite
 internal/codex
 internal/config
 internal/observe
+version
 ```
 
 Suggested responsibilities:
@@ -428,7 +429,9 @@ Suggested responsibilities:
 - `internal/config`
   - configuration loading and validation
 - `internal/observe`
-  - logging and observability support
+  - logging and operational observability helpers
+- `version`
+  - build version metadata shared by executable entrypoints
 
 ## 12. Relationship to Design Docs
 
