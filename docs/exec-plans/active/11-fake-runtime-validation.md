@@ -6,7 +6,7 @@ This document must be maintained in accordance with `.agents/PLANS.md`.
 
 ## Purpose / Big Picture
 
-After this plan, a contributor should be able to prove the most important runtime-facing behavior without a live Discord server. They should be able to run a focused automated suite that drives fake runtime inputs, observes adapter-visible outputs, and confirms that 39claw still replies to qualifying mentions, acknowledges queued work, delivers deferred replies later, and handles command-style inputs at the application boundary.
+After this plan, a contributor should be able to prove the most important runtime-facing behavior without a live Discord server. They should be able to run a focused automated suite that drives fake runtime inputs, observes adapter-visible outputs, and confirms that 39claw still replies to qualifying mentions, streams in-place progress edits for immediate turns, acknowledges queued work, delivers deferred replies later, and handles command-style inputs at the application boundary.
 
 This change matters because the repository's main confidence story should no longer depend on broad live Discord smoke checks. The result should be a reusable fake-runtime testing shape that stays useful if a future Slack or Telegram runtime is added, while keeping the current production architecture thin and Discord-specific details out of the application layer.
 
@@ -15,9 +15,10 @@ This change matters because the repository's main confidence story should no lon
 - [x] (2026-04-05 19:15Z) Reviewed `.agents/PLANS.md`, the current runtime and application tests, and the validation-strategy docs updated for issue `#57`.
 - [x] (2026-04-05 19:15Z) Confirmed the current repository state: Discord runtime tests already use package-local fake sessions, and application tests already use in-memory stores and fake gateways, but there is no reusable fake-runtime harness or shared contract-style suite.
 - [x] (2026-04-05 19:15Z) Created this ExecPlan under `docs/exec-plans/active/` and restored the missing `active/` directory so issue `#58` has a tracked execution plan.
+- [x] (2026-04-05 19:40Z) Re-read the current runtime and app contracts after the streamed immediate-reply change and updated this ExecPlan so the fake-runtime scope explicitly covers best-effort progress delivery through `MessageProgressSink` and Discord message edits.
 - [ ] Introduce a reusable test-support package for runtime-facing fake inputs and observed deliveries.
 - [ ] Refactor or replace the current Discord package-local fake session helpers so the new contract-style tests can drive runtime events and capture outputs through one consistent harness.
-- [ ] Add at least one end-to-end-style Discord adapter suite that uses the fake runtime boundary to prove observable behavior for normal messages, queued acknowledgments, deferred replies, and one command-style interaction.
+- [ ] Add at least one end-to-end-style Discord adapter suite that uses the fake runtime boundary to prove observable behavior for normal messages, streamed immediate-reply edits, queued acknowledgments, deferred replies, and one command-style interaction.
 - [ ] Update repository documentation so contributors know the fake-runtime suite is the preferred validation layer before optional live Discord hardening.
 - [ ] Run `make test` and `make lint`, then record proof and any follow-up gaps in this plan.
 
@@ -34,6 +35,9 @@ This change matters because the repository's main confidence story should no lon
 
 - Observation: The current validation gap is not "no tests exist." The real gap is that the existing tests are difficult to reuse as a runtime-neutral pattern because the doubles and assertions are tightly coupled to one package's private test helpers.
   Evidence: `internal/runtime/discord/runtime_test.go`
+
+- Observation: A neighboring runtime change widened the app/runtime boundary by adding `app.MessageProgressSink` for best-effort streamed updates on immediate turns, and the Discord session seam now includes message-edit and message-delete operations.
+  Evidence: `internal/app/types.go`, `internal/app/message_service_impl.go`, `internal/runtime/discord/runtime.go`, `internal/runtime/discord/session.go`, `internal/runtime/discord/live_message.go`
 
 ## Decision Log
 
@@ -53,46 +57,53 @@ This change matters because the repository's main confidence story should no lon
   Rationale: `runtime_test.go` and `message_service_test.go` already encode valuable behavior. The safest path is to extract stable helpers, convert the key adapter-level cases to the new harness, and leave narrowly unit-scoped tests in place when they still add value.
   Date/Author: 2026-04-05 / Codex
 
+- Decision: Treat streamed immediate-reply edits as part of the runtime-visible contract that the fake-runtime suite must cover, but keep those edits best-effort and separate from queued deferred-delivery guarantees.
+  Rationale: The production runtime now edits an in-flight Discord reply when `Codex` emits progress or partial assistant text on immediate turns. That behavior is user-visible and should be validated, but it is intentionally weaker than the queued-message contract because progress delivery failures do not fail the Codex turn.
+  Date/Author: 2026-04-05 / Codex
+
 ## Outcomes & Retrospective
 
-Implementation has not started yet. The intended outcome is a repository where contributors can validate key runtime behavior through a fake runtime harness first, then use optional live Discord hardening only for the narrow external-platform remainder documented in `docs/exec-plans/tech-debt-tracker.md`.
+Implementation of this ExecPlan has not started yet. The intended outcome is a repository where contributors can validate key runtime behavior through a fake runtime harness first, then use optional live Discord hardening only for the narrow external-platform remainder documented in `docs/exec-plans/tech-debt-tracker.md`.
 
-The plan will be complete when the repository contains a reusable fake-runtime test-support package, at least one Discord contract-style suite built on that package, updated documentation, and passing repository checks.
+The plan will be complete when the repository contains a reusable fake-runtime test-support package, at least one Discord contract-style suite built on that package, explicit coverage for streamed immediate-reply edits as well as queued deferred replies, updated documentation, and passing repository checks.
 
 ## Context and Orientation
 
-39claw is a thin gateway between Discord and Codex. The production message path starts in `internal/runtime/discord/runtime.go`, where the runtime receives Discord events, maps them into normalized application requests, calls the application layer, and presents the returned response back to Discord. The application boundary is defined in `internal/app/message_service.go` and `internal/app/types.go`. A normal message becomes an `app.MessageRequest`; the application returns an immediate `app.MessageResponse`; and queued work can later use `app.DeferredReplySink` to publish a follow-up reply.
+39claw is a thin gateway between Discord and Codex. The production message path starts in `internal/runtime/discord/runtime.go`, where the runtime receives Discord events, maps them into normalized application requests, calls the application layer, and presents the returned response back to Discord. The application boundary is defined in `internal/app/message_service.go` and `internal/app/types.go`. A normal message becomes an `app.MessageRequest`; the application returns an immediate `app.MessageResponse`; queued work can later use `app.DeferredReplySink` to publish a follow-up reply; and immediate turns may now use `app.MessageProgressSink` to push best-effort streamed progress into the runtime before the final response is ready.
 
 In this repository, a "fake runtime" means a test harness that simulates platform-facing events and captures the runtime-visible outputs without connecting to a real Discord deployment. It is not a second production runtime and it is not a broad interface that every future runtime must implement in production code. It is a test-support shape that lets tests express scenarios such as "a qualifying mention arrives," "a command interaction arrives," and "a deferred reply is delivered later," then assert what the adapter presented externally.
 
 The key current files are:
 
 - `internal/runtime/discord/runtime.go`
-  - owns Discord session startup, event handlers, response presentation, and shutdown draining
+  - owns Discord session startup, event handlers, response presentation, streamed immediate-reply edits, and shutdown draining
 - `internal/runtime/discord/session.go`
-  - defines the narrow `session` interface that production and test sessions both satisfy
+  - defines the narrow `session` interface that production and test sessions both satisfy, including message send, edit, and delete operations
+- `internal/runtime/discord/live_message.go`
+  - keeps one in-flight Discord reply synchronized with streamed progress text by sending, editing, and trimming message chunks
 - `internal/runtime/discord/runtime_test.go`
-  - already contains a package-local fake session plus adapter-level tests, but the helpers are not reusable outside this file
+  - already contains a package-local fake session plus adapter-level tests, including streamed-reply edit assertions, but the helpers are not reusable outside this file
 - `internal/runtime/discord/message_mapper.go` and `internal/runtime/discord/interaction_mapper.go`
   - normalize Discord events into `app.MessageRequest` and task-command requests
 - `internal/app/message_service.go`
-  - defines `MessageService`, `DeferredReplySink`, and the queue-related boundary
+  - defines `MessageService`, `DeferredReplySink`, `MessageProgressSink`, and the queue-related boundary
 - `internal/app/message_service_impl.go`
-  - implements logical-key resolution, queue admission, deferred delivery handoff, and Codex turn orchestration
+  - implements logical-key resolution, queue admission, best-effort progress delivery for immediate turns, deferred delivery handoff, and Codex turn orchestration
 - `internal/app/task_service.go`
   - implements command-style task control and help behavior behind the runtime
 - `internal/thread/queue.go`
   - owns capped in-memory queue admission for same-key work
 
-The repository already has focused automated tests for the application layer and Discord runtime. What it does not have is a single reusable harness that can express runtime-facing contract scenarios and make those scenarios easy to repeat for future runtimes.
+The repository already has focused automated tests for the application layer and Discord runtime. What it does not have is a single reusable harness that can express runtime-facing contract scenarios, including streamed immediate-reply edits, and make those scenarios easy to repeat for future runtimes.
 
 ## Starting State
 
 Start this plan only after confirming the repository still matches these assumptions:
 
 - the production runtime is still `internal/runtime/discord`
-- the app/runtime boundary still flows through `app.MessageRequest`, `app.MessageResponse`, and `app.DeferredReplySink`
+- the app/runtime boundary still flows through `app.MessageRequest`, `app.MessageResponse`, `app.DeferredReplySink`, and `app.MessageProgressSink`
 - `internal/runtime/discord/runtime_test.go` still contains working fake-session-based adapter tests
+- the Discord runtime still publishes immediate-turn progress by editing one in-flight reply through the `session` interface
 - `internal/app/message_service_test.go` still provides in-memory store and gateway doubles that can support end-to-end-style tests without a real Codex backend
 - `make test` and `make lint` pass before the new harness work begins
 
@@ -111,6 +122,7 @@ This plan assumes and fixes the following boundaries:
 - runtime-agnostic validation stops at the app/runtime boundary
 - production code must stay thin and should not gain a speculative cross-platform runtime interface
 - adapter-level fake tests may use Discord-specific event values internally, but the reusable test-support package should describe observed behavior in transport-neutral terms
+- streamed immediate-turn progress is part of the visible runtime contract, but its delivery remains best-effort rather than a hard application guarantee
 - optional live Discord hardening remains a separate concern and is not part of this implementation plan
 
 ## Milestone 1: Create a reusable runtime-harness vocabulary
@@ -121,11 +133,11 @@ Create a new package under `internal/testutil/runtimeharness`. Keep it test-supp
 
 - a normal-message fixture that carries user ID, channel ID, message ID, mention state, text payload, and optional attachment metadata
 - a command-intent fixture that carries user ID, channel ID, command name, action name, and any task-related arguments
-- an observed-delivery record that captures the visible outcome: channel ID, reply target, text payload, whether the delivery was immediate or deferred, and whether the response was ephemeral
+- an observed-delivery record that captures the visible outcome: channel ID, reply target, text payload, whether the delivery was immediate, streamed-edit, or deferred, and whether the response was ephemeral
 
 Keep these types plain and boring. They exist so tests can describe scenarios consistently. Do not add a production dependency from `internal/app` or `internal/runtime/discord` to this package.
 
-Add reusable assertion helpers here as well. For example, provide helpers that verify "one immediate reply rooted to message X," "one queued acknowledgment followed by one deferred reply," or "one ephemeral interaction response." The helpers should compare only runtime-visible behavior and avoid asserting implementation trivia such as specific helper function names or internal log wording.
+Add reusable assertion helpers here as well. For example, provide helpers that verify "one immediate reply rooted to message X," "one streamed immediate reply that evolves through edits," "one queued acknowledgment followed by one deferred reply," or "one ephemeral interaction response." The helpers should compare only runtime-visible behavior and avoid asserting implementation trivia such as specific helper function names or internal log wording.
 
 ## Milestone 2: Adapt the Discord tests to the reusable harness
 
@@ -144,9 +156,10 @@ Next, add a new contract-style test file in `internal/runtime/discord`, for exam
 The minimum scenarios to cover are:
 
 1. A qualifying normal mention produces one reply to the triggering message.
-2. A queued normal mention produces one immediate queued acknowledgment and later one deferred reply to the original message.
-3. A command-style interaction produces the correct visible presentation, including the ephemeral flag where applicable.
-4. One representative attachment-aware message flow proves that attachment metadata and reply semantics can be driven through the fake runtime path without a live Discord server.
+2. A qualifying immediate turn that emits progress produces one reply that is updated in place as progress or partial assistant text arrives.
+3. A queued normal mention produces one immediate queued acknowledgment and later one deferred reply to the original message.
+4. A command-style interaction produces the correct visible presentation, including the ephemeral flag where applicable.
+5. One representative attachment-aware message flow proves that attachment metadata and reply semantics can be driven through the fake runtime path without a live Discord server.
 
 For the queueing scenario, prefer wiring the real `app.DefaultMessageService`, the real `thread.QueueCoordinator`, an in-memory thread store double, and a fake Codex gateway that can block and release on command. That gives one real vertical slice that covers runtime event handling, app-level queue admission, and deferred delivery without a live Discord deployment.
 
@@ -177,11 +190,11 @@ Do not create a brand-new design note unless implementation discovers something 
 
 ## Plan of Work
 
-Begin by creating `internal/testutil/runtimeharness` with a small transport-neutral vocabulary for runtime events and deliveries. Keep the package purpose narrow: it should only help tests describe and assert behavior at the app/runtime boundary.
+Begin by creating `internal/testutil/runtimeharness` with a small transport-neutral vocabulary for runtime events and deliveries. Keep the package purpose narrow: it should only help tests describe and assert behavior at the app/runtime boundary, including immediate reply edits and deferred follow-up replies.
 
 Next, inspect the current fake helpers in `internal/runtime/discord/runtime_test.go` and decide which ones should become stable shared test utilities. A likely shape is to keep the low-level fake Discord session in the Discord test package, but add conversion helpers that transform recorded Discord-specific outputs into `runtimeharness` observations.
 
-Then add one new contract-style test file in `internal/runtime/discord` that uses the shared harness vocabulary. For at least one queueing scenario, wire the real application service and queue coordinator so the test proves observable queue behavior through the runtime boundary. For the other required scenarios, choose the thinnest dependencies that still make the visible behavior meaningful.
+Then add one new contract-style test file in `internal/runtime/discord` that uses the shared harness vocabulary. For at least one queueing scenario, wire the real application service and queue coordinator so the test proves observable queue behavior through the runtime boundary. For at least one immediate-turn scenario, wire a fake Codex gateway or scripted message service that emits progress updates so the harness proves the reply-edit behavior through the same runtime boundary. For the other required scenarios, choose the thinnest dependencies that still make the visible behavior meaningful.
 
 After the new suite is stable, trim duplicated setup from existing runtime tests where it improves readability. Leave small unit tests in place when they still explain isolated rules better than a vertical slice would.
 
@@ -200,9 +213,9 @@ Run all commands from `/home/filepang/playground/39claw`.
 
     go test ./internal/testutil/runtimeharness -v
 
-3. Build or refactor the Discord fake-session helpers until they support the new contract suite cleanly.
+3. Build or refactor the Discord fake-session helpers until they support the new contract suite cleanly, including reply edits and any chunk-trimming deletes.
 
-    go test ./internal/runtime/discord -run 'TestRuntimeStart|TestRuntimeMention|TestRuntimeDeferred' -v
+    go test ./internal/runtime/discord -run 'TestRuntimeStart|TestRuntimeMention|TestRuntimeDeferred|TestRuntime.*Stream' -v
 
 4. Add the new contract-style suite and run only the new scenarios while iterating.
 
@@ -226,7 +239,7 @@ This plan is complete when all of the following are true:
 - the repository contains a reusable fake-runtime test-support package under a stable path such as `internal/testutil/runtimeharness`
 - the new package defines transport-neutral inputs or observations for runtime-facing behavior instead of exposing Discord SDK types directly
 - at least one Discord adapter suite drives fake runtime events through the real `Runtime` startup path and verifies observable outputs through the shared harness vocabulary
-- the suite proves a normal mention reply flow, a queued-acknowledgment-plus-deferred-reply flow, and one command-style interaction flow
+- the suite proves a normal mention reply flow, a streamed immediate-reply edit flow, a queued-acknowledgment-plus-deferred-reply flow, and one command-style interaction flow
 - at least one queueing test uses the real app-layer queue admission path rather than a runtime-only stub so the suite behaves like an end-to-end slice
 - existing focused runtime unit tests still pass, with duplicated setup reduced where practical
 - repository docs mention the fake-runtime validation path as the preferred automated layer before optional live Discord hardening
@@ -242,6 +255,14 @@ The most important human-readable proof is this automated scenario:
 5. Observe one later deferred reply to that same second message.
 
 That proof must happen entirely inside automated tests without a live Discord deployment.
+
+An additional human-readable proof should cover the new immediate-turn streaming contract:
+
+1. Start the real Discord runtime in a test with a fake session.
+2. Dispatch one qualifying message whose dependency emits progress and then a final response.
+3. Observe one initial reply message.
+4. Observe that same reply being edited in place as progress or partial assistant text arrives.
+5. Observe the final edit settle on the completed assistant response.
 
 ## Idempotence and Recovery
 
@@ -260,15 +281,21 @@ Current code facts that motivate this plan:
           Deliver(ctx context.Context, response MessageResponse) error
       }
 
+    internal/app/types.go:
+      type MessageProgressSink interface {
+          Deliver(ctx context.Context, progress MessageProgress) error
+      }
+
     internal/runtime/discord/session.go:
-      Runtime startup and event handling already depend on a narrow session interface.
+      Runtime startup and event handling already depend on a narrow session interface with send, edit, and delete operations.
 
     internal/runtime/discord/runtime_test.go:
-      already contains fake-session-driven scenarios for mentions, queued replies, shutdown drain, and attachment downloads.
+      already contains fake-session-driven scenarios for mentions, streamed reply edits, queued replies, shutdown drain, and attachment downloads.
 
 Helpful target test names:
 
     TestRuntimeContractNormalMentionReply
+    TestRuntimeContractStreamedImmediateReplyEdits
     TestRuntimeContractQueuedAcknowledgementAndDeferredReply
     TestRuntimeContractHelpCommandUsesEphemeralPresentation
     TestRuntimeContractAttachmentAwareMessageFlow
@@ -312,11 +339,14 @@ At the end of this plan, the new test-support package should expose stable names
         Text      string
         Ephemeral bool
         Deferred  bool
+        Edited    bool
     }
 
     func RequireReplyTo(t *testing.T, deliveries []Delivery, replyToID string)
+    func RequireStreamedEditFlow(t *testing.T, deliveries []Delivery, replyToID string)
     func RequireQueuedFlow(t *testing.T, deliveries []Delivery, replyToID string, ackText string, finalText string)
 
 These names are examples, not mandatory exact spelling, but the final package must provide the same capabilities. The production runtime must continue to depend only on `internal/app`, `internal/config`, `discordgo`, and its existing collaborators. The new harness must not become a production dependency.
 
 Revision Note: 2026-04-05 / Codex - Created this ExecPlan for issue `#58` after documenting the validation strategy in issue `#57`, creating the missing `docs/exec-plans/active/` directory, and confirming that the repository already has package-local fake runtime helpers that can be promoted into a reusable harness.
+Revision Note: 2026-04-05 19:40Z / Codex - Updated this ExecPlan after the streamed immediate Discord reply change landed on the working branch. The plan now treats `MessageProgressSink` and in-place reply edits as part of the runtime-visible behavior that the future fake-runtime harness must validate.
