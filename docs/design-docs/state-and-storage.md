@@ -48,6 +48,22 @@ user -> active_task_id
 
 This allows ordinary messages to be routed without forcing the user to repeat the task identifier in every message.
 
+### 3. Task Worktree Metadata
+
+This state is only required for `task` mode.
+
+Each task needs enough metadata to create and later manage an isolated Git worktree.
+
+That includes:
+
+- reserved branch name
+- detected base ref
+- worktree path
+- worktree lifecycle state
+- creation, prune, and last-used timestamps
+
+This metadata lets 39claw decide whether a task needs lazy worktree creation, whether a closed task is eligible for pruning, and which working directory Codex should use for the next turn.
+
 ## Storage Direction for v1
 
 SQLite is the preferred v1 storage backend.
@@ -61,9 +77,10 @@ Reasons:
 
 ## Schema Direction
 
-The exact schema is not fixed yet, but the current concept points toward:
+The current concept points toward:
 
 - `thread_bindings`
+- `tasks`
 - `active_tasks`
 
 The design should favor explicit structured columns over packing all data into a single opaque key string, unless implementation simplicity proves more valuable.
@@ -75,5 +92,6 @@ The following are not currently required:
 - full local transcript storage for every message
 - analytics-oriented event warehousing
 - cross-instance distributed coordination
+- pruning or deleting task branches automatically
 
 The initial storage model should stay focused on continuity and thread routing.

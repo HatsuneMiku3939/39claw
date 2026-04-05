@@ -19,7 +19,7 @@ Discord runtime -> application service -> thread policy -> SQLite store -> Codex
 The bot runs with one global configuration per instance:
 
 - one thread mode
-- one working directory
+- one source working directory
 - one timezone
 
 v1 does not introduce a local agent loop or local tool orchestration.
@@ -82,7 +82,7 @@ The storage model uses three tables:
   - stores `mode`, `logical_thread_key`, `codex_thread_id`, nullable `task_id`, `created_at`, and `updated_at`
   - enforces one binding per `(mode, logical_thread_key)`
 - `tasks`
-  - stores `task_id`, `discord_user_id`, `task_name`, `status`, `created_at`, `updated_at`, and nullable `closed_at`
+  - stores `task_id`, `discord_user_id`, `task_name`, `status`, `branch_name`, nullable `base_ref`, nullable `worktree_path`, `worktree_status`, `created_at`, `updated_at`, nullable `closed_at`, nullable `worktree_created_at`, nullable `worktree_pruned_at`, and nullable `last_used_at`
   - uses ULID strings for `task_id`
   - allows duplicate task names for the same user
 - `active_tasks`
@@ -90,6 +90,7 @@ The storage model uses three tables:
   - enforces one active task per Discord user within a bot instance
 
 Task status is `open` or `closed`.
+Task worktree status is `pending`, `ready`, `failed`, or `pruned`.
 Closing a task marks it `closed` and removes its `active_tasks` mapping when that task is currently active.
 `action:task-list` should show open tasks and clearly mark the active task for the requesting user.
 
@@ -112,6 +113,10 @@ When a bot instance runs in `task` mode, the root command should expose `action:
 
 When a bot instance runs in `task` mode, normal messages without an active task must not be routed to Codex.
 They should return actionable guidance that points the user to `action:task-new`, `action:task-list`, or `action:task-switch` on the configured root command.
+When a bot instance runs in `task` mode, `CLAW_CODEX_WORKDIR` must be a Git repository.
+`task-new` creates task metadata only; the first normal message for a pending or failed task creates the task worktree lazily from `main` or `master`.
+Once the task worktree is ready, Codex runs with the task-specific `worktree_path` as the effective working directory for that turn.
+Closed tasks keep their task branches, but only the fifteen most recently closed ready tasks keep their worktrees; older closed ready worktrees are force-pruned.
 
 Unsupported non-mention chatter is ignored.
 Mention-only posts that contain no text and no usable image attachments are also ignored.
@@ -151,6 +156,7 @@ The expected variables are:
 `CLAW_MODE` accepts `daily` or `task`.
 `CLAW_TIMEZONE` must be set explicitly for each deployment.
 `CLAW_DISCORD_COMMAND_NAME` must be unique per bot instance, normalized to lowercase, and validated conservatively before Discord registration.
+When `CLAW_MODE=task`, `CLAW_CODEX_WORKDIR` must point to a Git repository and acts as the source repository root for task worktree creation.
 `CLAW_LOG_LEVEL` defaults to `info` when omitted.
 When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guild for faster development feedback.
 `CLAW_CODEX_SANDBOX_MODE` defaults to `workspace-write` when omitted.
@@ -171,8 +177,10 @@ The initial implementation should demonstrate the following observable behavior:
 - In `task` mode, a normal mention without an active task returns guidance instead of routing to Codex.
 - `/<instance-command> action:task-current` shows the active task for the requesting user.
 - `/<instance-command> action:task-new task_name:<name>` creates a task and sets it active for the requesting user.
+- The first normal message for a new task creates a task worktree lazily under `${CLAW_DATADIR}/worktrees/<task_id>` and then runs Codex inside that worktree.
 - `/<instance-command> action:task-switch task_id:<id>` changes the routing target for subsequent normal messages.
 - `/<instance-command> action:task-close task_id:<id>` closes the task and clears active state when the closed task was active.
+- Closed-task worktree retention keeps only the fifteen most recently closed ready worktrees and never deletes the task branches.
 - Existing `daily` and `task` bindings survive process restart through SQLite-backed state.
 - Non-mention chatter is ignored, unsupported non-image-only mention posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.
 - Simultaneous requests for the same logical thread do not execute overlapping Codex turns.

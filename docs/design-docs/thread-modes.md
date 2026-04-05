@@ -57,6 +57,7 @@ Costs:
 
 `task` mode is designed for longer-running, explicit work streams.
 The user should be able to keep context attached to a named task instead of a date bucket.
+Each task should also map to an isolated Git worktree instead of sharing one mutable checkout.
 
 ### Thread Key Concept
 
@@ -73,9 +74,13 @@ thread_key = user + task_id
 
 ### Behavior
 
+- the configured `CLAW_CODEX_WORKDIR` must be a Git repository
 - a current task must exist before normal messages can be routed
-- messages are sent to the Codex thread associated with the active task
+- `task-new` creates task metadata immediately but defers worktree creation
+- the first normal message for a task creates the task worktree lazily when needed
+- messages are sent to the Codex thread associated with the active task and use that task's worktree once it exists
 - changing tasks changes the target logical thread
+- closed-task worktrees are retained only for the fifteen most recently closed ready tasks
 
 ### UX Requirements
 
@@ -99,11 +104,14 @@ Benefits:
 
 - strong control over context boundaries
 - better fit for issue-based or project-based workflows
+- task switching changes both conversation context and filesystem workspace
 
 Costs:
 
 - more operational and UX complexity
 - requires explicit task lifecycle management
+- requires Git-only startup validation for `task` mode
+- requires worktree creation, retry, and pruning behavior
 
 ## Why Both Modes Exist
 

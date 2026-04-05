@@ -32,6 +32,7 @@ Use `daily` mode when you want a lightweight shared assistant for day-to-day wor
 Use `task` mode when you want durable work streams that continue across multiple days.
 
 - each user works through an explicit active task
+- each task eventually runs in its own task-specific Git worktree
 - `/<instance-command> action:task-*` controls which task is active
 - normal conversation does not run until a task is selected
 
@@ -88,6 +89,7 @@ Before you start, make sure you have:
 - the `codex` executable available on the machine that runs 39claw
 - a writable SQLite file path
 - a working directory that Codex should operate in
+- a Git repository workdir if you plan to use `task` mode
 - Go installed if you plan to run from source
 
 ## Local Secret Workflow
@@ -221,6 +223,9 @@ Pick one:
 
 - `CLAW_MODE=daily`
 - `CLAW_MODE=task`
+
+If you choose `task`, `CLAW_CODEX_WORKDIR` must point to a Git repository.
+39claw treats that repository as the source repository for task-specific worktrees stored under `CLAW_DATADIR`.
 
 ### 2. Set the required environment variables
 
