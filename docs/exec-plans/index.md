@@ -25,6 +25,8 @@ Plans in this directory should be written and maintained in line with `.agents/P
 
 These plans are intended to be executed in numeric order. Each plan is self-contained, but later plans name the repository state they expect to find and explain how to recover if that state is missing.
 
+- [Build fake runtime validation infrastructure for adapter-level tests](./active/11-fake-runtime-validation.md)
+
 ## Recently Completed Plans
 
 - [Add first-stage tag-driven release automation](./completed/10-first-stage-release-automation.md)

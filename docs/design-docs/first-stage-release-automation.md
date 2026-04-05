@@ -63,7 +63,7 @@ It is also shipping a behavior contract defined across:
 - `docs/design-docs`
 - `docs/product-specs`
 
-For that reason, the repository adds `docs/operations/RELEASE_RUNBOOK.md` and documents manual smoke expectations alongside automated checks.
+For that reason, the repository adds `docs/operations/RELEASE_RUNBOOK.md` and documents targeted Discord hardening expectations alongside automated checks. Automated coverage remains the primary gate, while live Discord confirmation stays a narrower optional layer for external-platform behavior.
 
 ## Release Scope
 

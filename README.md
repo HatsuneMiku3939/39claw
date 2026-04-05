@@ -474,7 +474,8 @@ Most message-path events also carry routing context such as `component`, `mode`,
 
 ## Smoke Test Checklist
 
-After startup, confirm the basics:
+Use this checklist when you want optional live Discord hardening beyond the normal automated suites.
+It is most useful for real-platform behaviors such as hosted attachments, command registration, permissions, and final reply delivery:
 
 - mention the bot and confirm the reply targets the original message
 - mention the bot with text plus an image and confirm the request is handled

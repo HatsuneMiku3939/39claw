@@ -7,7 +7,7 @@ This is intentionally a conservative first stage:
 
 - releases are created from explicit Git tags
 - GitHub Actions creates a draft release instead of auto-publishing it
-- the release candidate gate mixes automated checks with explicit maintainer judgment
+- the release candidate gate mixes automated checks with explicit maintainer judgment plus targeted live-platform hardening when risk warrants it
 - automatic version calculation is intentionally out of scope
 
 ## Release Candidate Gate
@@ -26,14 +26,17 @@ Do not create or push a release tag until all of the following are true:
    - `ARCHITECTURE.md`
    - relevant files under `docs/design-docs`
    - relevant files under `docs/product-specs`
-4. Core runtime smoke paths have been exercised manually against a real or test Discord bot deployment:
-   - mention-driven reply flow works
-   - slash command help still works
-   - `task` mode can create and switch tasks when enabled
-   - image attachment handling still works when applicable
-5. `go run ./cmd/39claw version` returns a sensible value locally and the release config still injects `version.Version`.
-6. The `HOMEBREW_TAP_GITHUB_TOKEN` GitHub Actions secret is configured with write access to `HatsuneMiku3939/homebrew-tap`.
-7. No ad hoc release-only edits are waiting outside version control.
+4. Automated validation remains the primary quality gate for runtime behavior:
+   - rely on the repository's automated suites for queueing, routing, normalization, and deferred-delivery behavior
+   - do not use broad manual Discord smoke as a substitute for missing automated coverage
+5. When the release touches Discord-specific external-platform risk, targeted Discord hardening paths have been exercised manually against a real or test deployment:
+   - mention-driven reply flow after message-routing or presenter changes
+   - slash-command help or task controls after command-surface changes
+   - image attachment handling after attachment-mapping or download changes
+   - any other Discord-specific behavior implicated by a recent incident or release risk
+6. `go run ./cmd/39claw version` returns a sensible value locally and the release config still injects `version.Version`.
+7. The `HOMEBREW_TAP_GITHUB_TOKEN` GitHub Actions secret is configured with write access to `HatsuneMiku3939/homebrew-tap`.
+8. No ad hoc release-only edits are waiting outside version control.
 
 If any gate fails, fix the repository state first and rerun the failed checks before tagging.
 
@@ -58,6 +61,18 @@ What these commands prove:
 - `make release-snapshot` verifies that GoReleaser can build release artifacts locally without a real tag
 
 `make release-snapshot` leaves local artifacts under `dist/`. That is expected for validation.
+
+## Discord Hardening Triggers
+
+Manual Discord validation is optional hardening, not the primary release gate.
+Run it when one or more of the following is true:
+
+- the release changes slash-command registration, command parsing, or interaction presentation
+- the release changes mention intake, reply targeting, chunking, or other Discord-presenter behavior
+- the release changes attachment download behavior or other Discord-hosted asset handling
+- a staging or production issue suggests real Discord behavior needs confirmation before tagging
+
+When none of those triggers apply, rely on the automated validation layers instead of forcing a broad live Discord pass.
 
 ## Tagging a Release
 
