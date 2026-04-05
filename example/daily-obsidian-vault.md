@@ -12,6 +12,7 @@ This example assumes:
 
 - your vault is not a Git repository
 - you want Codex sandboxing to stay at `workspace-write`
+- you want convenience-first behavior for web-backed knowledge-base questions
 - you will use `CLAW_CODEX_SKIP_GIT_REPO_CHECK=true`
 - you installed `39claw` already through one of the packaged installation paths in [README.md](../README.md)
 
@@ -86,6 +87,8 @@ CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex
 
 CLAW_CODEX_SANDBOX_MODE=workspace-write
 CLAW_CODEX_SKIP_GIT_REPO_CHECK=true
+CLAW_CODEX_WEB_SEARCH_MODE=live
+CLAW_CODEX_NETWORK_ACCESS=true
 CLAW_CODEX_APPROVAL_POLICY=never
 CLAW_LOG_FORMAT=text
 ```
@@ -96,6 +99,11 @@ Why these values matter:
 2. `CLAW_CODEX_WORKDIR` points at the vault where Codex will operate.
 3. `CLAW_CODEX_SANDBOX_MODE=workspace-write` allows 39claw to manage `AGENT_MEMORY/` in the vault.
 4. `CLAW_CODEX_SKIP_GIT_REPO_CHECK=true` matches the non-Git vault setup.
+5. `CLAW_CODEX_WEB_SEARCH_MODE=live` lets the bot look up fresh web information when that helps the answer.
+6. `CLAW_CODEX_NETWORK_ACCESS=true` lets the bot open links and use web-backed tooling during the turn.
+7. `CLAW_CODEX_APPROVAL_POLICY=never` keeps the daily knowledge-base flow smooth instead of stopping for extra approval prompts.
+
+This is a convenience-first preset. If the vault contains sensitive material and you want a more conservative setup, reduce or disable web access before using the bot more broadly.
 
 ## Step 4: Load the environment safely
 

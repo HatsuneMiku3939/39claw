@@ -10,9 +10,10 @@ This is the right fit when you want:
 
 This example assumes:
 
-- your source repository already exists locally
+- you can clone the source repository locally before starting 39claw
 - `CLAW_CODEX_WORKDIR` points at that repository root
 - task worktrees will be created under the 39claw data directory
+- you want a convenience-first autonomous development preset
 - you installed `39claw` already through one of the packaged installation paths in [README.md](../README.md)
 
 ## Before You Start
@@ -23,8 +24,9 @@ Prepare these items first:
 2. a working `codex` installation on the machine that will run 39claw
 3. a Discord bot token for this specific `task` instance
 4. a Discord test guild ID if you want faster slash-command registration during setup
-5. a local Git repository, for example `/Users/you/src/project-alpha`
+5. a GitHub repository URL or another clone URL, for example `https://github.com/your-org/project-alpha.git`
 6. a writable local data directory for 39claw state and task worktrees
+7. a local parent directory where you want to clone the repository
 
 If `39claw` is not installed yet, stop here and finish one of these first:
 
@@ -37,7 +39,24 @@ If `codex` is not installed yet, use the `Codex Installation Guide` in [README.m
 
 If you do not have a Discord bot token yet, use the `Discord Setup Guide` in [README.md](../README.md) to create the bot application, enable the required intent, and copy the bot token.
 
-## Step 1: Confirm the repository is a Git root
+## Step 1: Clone the repository locally
+
+In this example, the source repository will live at:
+
+```text
+/Users/you/src/project-alpha
+```
+
+Clone it from GitHub:
+
+```bash
+mkdir -p /Users/you/src
+git clone https://github.com/your-org/project-alpha.git /Users/you/src/project-alpha
+```
+
+If the repository is private, use the clone URL that matches your normal Git authentication flow, such as an SSH URL.
+
+## Step 2: Confirm the repository is a Git root
 
 Check that the chosen workdir is the repository root:
 
@@ -49,7 +68,7 @@ test -e .git && echo "git root ok"
 
 If `.git` is missing at that exact path, point `CLAW_CODEX_WORKDIR` at the real repository root before continuing.
 
-## Step 2: Create the local data directory
+## Step 3: Create the local data directory
 
 ```bash
 mkdir -p /Users/you/.local/share/39claw-dev
@@ -60,7 +79,7 @@ mkdir -p /Users/you/.local/share/39claw-dev
 1. the SQLite database at `/Users/you/.local/share/39claw-dev/39claw.sqlite`
 2. task worktrees under `/Users/you/.local/share/39claw-dev/worktrees/`
 
-## Step 3: Create the environment file
+## Step 4: Create the environment file
 
 Copy the repository example and then replace the placeholders:
 
@@ -85,7 +104,9 @@ CLAW_CODEX_WORKDIR=/Users/you/src/project-alpha
 CLAW_DATADIR=/Users/you/.local/share/39claw-dev
 CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex
 
-CLAW_CODEX_SANDBOX_MODE=workspace-write
+CLAW_CODEX_SANDBOX_MODE=danger-full-access
+CLAW_CODEX_WEB_SEARCH_MODE=live
+CLAW_CODEX_NETWORK_ACCESS=true
 CLAW_CODEX_APPROVAL_POLICY=never
 CLAW_LOG_FORMAT=text
 ```
@@ -95,8 +116,14 @@ Why these values matter:
 1. `CLAW_MODE=task` enables task creation, switching, and task-specific threads.
 2. `CLAW_CODEX_WORKDIR` is the source repository root, not the final execution path for every turn.
 3. Each new active task can create its own worktree under `CLAW_DATADIR/worktrees/`.
+4. `CLAW_CODEX_SANDBOX_MODE=danger-full-access` gives Codex the widest local write access for autonomous repository work.
+5. `CLAW_CODEX_WEB_SEARCH_MODE=live` lets the bot look up fresh web information when implementation work needs it.
+6. `CLAW_CODEX_NETWORK_ACCESS=true` lets the bot open links and use network-backed tooling during a task.
+7. `CLAW_CODEX_APPROVAL_POLICY=never` avoids approval interruptions during autonomous development flows.
 
-## Step 4: Load the environment safely
+This is an intentionally aggressive autonomous-development preset. Master, this can be risky: Codex can modify files broadly and use the network during task execution, so use it only when that level of autonomy matches your repository and trust model.
+
+## Step 5: Load the environment safely
 
 If you use `direnv`, start with:
 
@@ -130,7 +157,7 @@ This keeps secrets out of:
 2. shell history
 3. inline one-shot commands like `CLAW_DISCORD_TOKEN=... 39claw`
 
-## Step 5: Confirm the installed binary works
+## Step 6: Confirm the installed binary works
 
 Run:
 
@@ -140,7 +167,7 @@ Run:
 
 You should see a version string such as `dev` or a release version.
 
-## Step 6: Start the task-mode bot
+## Step 7: Start the task-mode bot
 
 Run:
 
@@ -148,7 +175,7 @@ Run:
 39claw
 ```
 
-If you are not using `direnv`, make sure you already loaded `.env.local` in the current shell during Step 4 before running this command.
+If you are not using `direnv`, make sure you already loaded `.env.local` in the current shell during Step 5 before running this command.
 
 On startup, 39claw should:
 
@@ -156,7 +183,7 @@ On startup, 39claw should:
 2. register the `/dev` command
 3. validate that `/Users/you/src/project-alpha` is a Git repository root
 
-## Step 7: Create the first task in Discord
+## Step 8: Create the first task in Discord
 
 In your Discord test channel:
 
@@ -167,7 +194,7 @@ In your Discord test channel:
 
 The first normal message for that task may take a moment longer because 39claw can create the task worktree before Codex starts.
 
-## Step 8: Confirm the worktree was created
+## Step 9: Confirm the worktree was created
 
 After the first normal task message, inspect the data directory:
 
@@ -177,7 +204,7 @@ find /Users/you/.local/share/39claw-dev/worktrees -maxdepth 2 -type d | sort
 
 You should see a task-specific directory under `worktrees/`.
 
-## Step 9: Smoke-test task switching
+## Step 10: Smoke-test task switching
 
 In Discord:
 
@@ -192,7 +219,7 @@ Expected result:
 2. each task can keep its own isolated worktree
 3. normal conversation does not run until an active task exists
 
-## Step 10: Know the common failure cases
+## Step 11: Know the common failure cases
 
 If startup fails, check these first:
 
@@ -200,8 +227,9 @@ If startup fails, check these first:
 2. `CLAW_CODEX_WORKDIR` must be the root of a Git repository.
 3. `CLAW_DISCORD_COMMAND_NAME` must contain only lowercase letters, digits, or hyphens.
 4. `CLAW_DISCORD_TOKEN` must belong to the bot application you invited to the server.
+5. `danger-full-access` and network-enabled execution should match your security expectations before you leave the bot running unattended.
 
-## Step 11: Move from test to real use
+## Step 12: Move from test to real use
 
 After the test guild is working:
 
