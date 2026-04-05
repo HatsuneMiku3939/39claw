@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,6 +76,134 @@ func TestGitTaskWorkspaceManagerEnsureReadyCreatesWorktree(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(wantPath, ".git")); err != nil {
 		t.Fatalf("worktree .git stat error = %v", err)
+	}
+}
+
+func TestGitTaskWorkspaceManagerEnsureReadyPrefersRemoteDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required for worktree integration tests")
+	}
+
+	sourceRepo := createRemoteBackedGitRepository(t, "master")
+	writeFile(t, filepath.Join(sourceRepo, "local-only.txt"), "local only\n")
+	runGit(t, sourceRepo, "add", "local-only.txt")
+	runGit(t, sourceRepo, "commit", "-m", "local only commit")
+
+	localHead := gitOutput(t, sourceRepo, "rev-parse", "HEAD")
+	remoteHead := gitOutput(t, sourceRepo, "rev-parse", "origin/master")
+	if localHead == remoteHead {
+		t.Fatal("local HEAD unexpectedly matches origin/master")
+	}
+
+	dataDir := t.TempDir()
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-remote": {
+				TaskID:         "task-remote",
+				DiscordUserID:  "user-1",
+				TaskName:       "Remote base",
+				Status:         app.TaskStatusOpen,
+				BranchName:     app.DefaultTaskBranchName("task-remote"),
+				WorktreeStatus: app.TaskWorktreeStatusPending,
+				CreatedAt:      time.Date(2026, time.April, 6, 0, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+
+	manager, err := app.NewTaskWorkspaceManager(app.TaskWorkspaceManagerDependencies{
+		Store:            store,
+		SourceRepository: sourceRepo,
+		DataDir:          dataDir,
+		GitExecutable:    "git",
+		Clock: func() time.Time {
+			return time.Date(2026, time.April, 6, 1, 0, 0, 0, time.UTC)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewTaskWorkspaceManager() error = %v", err)
+	}
+
+	task, ok, err := store.GetTask(context.Background(), "user-1", "task-remote")
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetTask() ok = false, want true")
+	}
+
+	readyTask, err := manager.EnsureReady(context.Background(), task)
+	if err != nil {
+		t.Fatalf("EnsureReady() error = %v", err)
+	}
+
+	if readyTask.BaseRef != "origin/master" {
+		t.Fatalf("BaseRef = %q, want %q", readyTask.BaseRef, "origin/master")
+	}
+
+	worktreeHead := gitOutput(t, readyTask.WorktreePath, "rev-parse", "HEAD")
+	if worktreeHead != remoteHead {
+		t.Fatalf("worktree HEAD = %q, want %q", worktreeHead, remoteHead)
+	}
+	if worktreeHead == localHead {
+		t.Fatal("worktree HEAD unexpectedly matched local-only source HEAD")
+	}
+}
+
+func TestGitTaskWorkspaceManagerEnsureReadyFallsBackToLocalBranchWhenFetchFails(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required for worktree integration tests")
+	}
+
+	sourceRepo := createGitRepository(t, "master")
+	runGit(t, sourceRepo, "remote", "add", "origin", filepath.Join(t.TempDir(), "missing-remote.git"))
+
+	dataDir := t.TempDir()
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-local-fallback": {
+				TaskID:         "task-local-fallback",
+				DiscordUserID:  "user-1",
+				TaskName:       "Local fallback",
+				Status:         app.TaskStatusOpen,
+				BranchName:     app.DefaultTaskBranchName("task-local-fallback"),
+				WorktreeStatus: app.TaskWorktreeStatusPending,
+				CreatedAt:      time.Date(2026, time.April, 6, 0, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+
+	manager, err := app.NewTaskWorkspaceManager(app.TaskWorkspaceManagerDependencies{
+		Store:            store,
+		SourceRepository: sourceRepo,
+		DataDir:          dataDir,
+		GitExecutable:    "git",
+		Clock: func() time.Time {
+			return time.Date(2026, time.April, 6, 1, 0, 0, 0, time.UTC)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewTaskWorkspaceManager() error = %v", err)
+	}
+
+	task, ok, err := store.GetTask(context.Background(), "user-1", "task-local-fallback")
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetTask() ok = false, want true")
+	}
+
+	readyTask, err := manager.EnsureReady(context.Background(), task)
+	if err != nil {
+		t.Fatalf("EnsureReady() error = %v", err)
+	}
+
+	if readyTask.BaseRef != "master" {
+		t.Fatalf("BaseRef = %q, want %q", readyTask.BaseRef, "master")
 	}
 }
 
@@ -169,6 +298,26 @@ func TestGitTaskWorkspaceManagerPruneClosedRemovesOldReadyWorktrees(t *testing.T
 	}
 }
 
+func createRemoteBackedGitRepository(t *testing.T, branch string) string {
+	t.Helper()
+
+	root := t.TempDir()
+	remote := filepath.Join(root, "remote.git")
+	source := filepath.Join(root, "source")
+
+	runGit(t, root, "init", "--bare", "-b", branch, remote)
+	runGit(t, root, "clone", remote, source)
+	runGit(t, source, "config", "user.email", "codex@example.com")
+	runGit(t, source, "config", "user.name", "Codex")
+
+	writeFile(t, filepath.Join(source, "README.md"), "hello\n")
+	runGit(t, source, "add", "README.md")
+	runGit(t, source, "commit", "-m", "initial commit")
+	runGit(t, source, "push", "-u", "origin", branch)
+
+	return source
+}
+
 func createGitRepository(t *testing.T, branch string) string {
 	t.Helper()
 
@@ -187,6 +336,27 @@ func createGitRepository(t *testing.T, branch string) string {
 	runGit(t, repo, "commit", "-m", "initial commit")
 
 	return repo
+}
+
+func writeFile(t *testing.T, path string, contents string) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+}
+
+func gitOutput(t *testing.T, workdir string, args ...string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = workdir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v error = %v\n%s", args, err, output)
+	}
+
+	return strings.TrimSpace(string(output))
 }
 
 func runGit(t *testing.T, workdir string, args ...string) {

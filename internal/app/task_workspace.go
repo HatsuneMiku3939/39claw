@@ -109,6 +109,7 @@ func (m *GitTaskWorkspaceManager) EnsureReady(ctx context.Context, task Task) (T
 
 	baseRef := task.BaseRef
 	if baseRef == "" {
+		m.refreshOrigin(ctx)
 		detectedBaseRef, err := m.detectBaseRef(ctx)
 		if err != nil {
 			return Task{}, m.markTaskWorktreeFailed(ctx, task, "", err)
@@ -208,13 +209,21 @@ func (m *GitTaskWorkspaceManager) PruneClosed(ctx context.Context) error {
 }
 
 func (m *GitTaskWorkspaceManager) detectBaseRef(ctx context.Context) (string, error) {
-	for _, ref := range []string{"main", "master"} {
-		if _, err := m.runGit(ctx, "rev-parse", "--verify", "--quiet", ref+"^{commit}"); err == nil {
+	if ref, ok := m.originHeadRef(ctx); ok {
+		return ref, nil
+	}
+
+	for _, ref := range []string{"origin/main", "origin/master", "main", "master"} {
+		exists, err := m.refExists(ctx, ref)
+		if err != nil {
+			return "", err
+		}
+		if exists {
 			return ref, nil
 		}
 	}
 
-	return "", errors.New("detect task worktree base ref: expected local branch main or master")
+	return "", errors.New("detect task worktree base ref: expected origin/HEAD, origin/main, origin/master, main, or master")
 }
 
 func (m *GitTaskWorkspaceManager) branchExists(ctx context.Context, branchName string) (bool, error) {
@@ -229,6 +238,63 @@ func (m *GitTaskWorkspaceManager) branchExists(ctx context.Context, branchName s
 	}
 
 	return false, fmt.Errorf("check branch existence: %w", err)
+}
+
+func (m *GitTaskWorkspaceManager) refreshOrigin(ctx context.Context) {
+	exists, err := m.remoteExists(ctx, "origin")
+	if err != nil {
+		m.logger.Warn("check git remote before task worktree fetch", "remote", "origin", "error", err)
+		return
+	}
+	if !exists {
+		return
+	}
+
+	if _, err := m.runGit(ctx, "fetch", "origin", "--prune"); err != nil {
+		m.logger.Warn("refresh git remote before task worktree base ref detection", "remote", "origin", "error", err)
+	}
+}
+
+func (m *GitTaskWorkspaceManager) remoteExists(ctx context.Context, remoteName string) (bool, error) {
+	_, err := m.runGit(ctx, "remote", "get-url", remoteName)
+	if err == nil {
+		return true, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("check remote existence: %w", err)
+}
+
+func (m *GitTaskWorkspaceManager) originHeadRef(ctx context.Context) (string, bool) {
+	ref, err := m.runGit(ctx, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+	if err != nil || strings.TrimSpace(ref) == "" {
+		return "", false
+	}
+
+	exists, verifyErr := m.refExists(ctx, ref)
+	if verifyErr != nil || !exists {
+		return "", false
+	}
+
+	return ref, true
+}
+
+func (m *GitTaskWorkspaceManager) refExists(ctx context.Context, ref string) (bool, error) {
+	_, err := m.runGit(ctx, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+	if err == nil {
+		return true, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("check ref existence %q: %w", ref, err)
 }
 
 func (m *GitTaskWorkspaceManager) prepareWorktreePath(ctx context.Context, worktreePath string) error {

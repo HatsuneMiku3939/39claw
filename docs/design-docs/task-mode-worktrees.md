@@ -25,7 +25,9 @@ This turns `task` mode into an execution-oriented workflow instead of a long-liv
 - Each task owns one task-specific branch name.
 - Each task may also own one task-specific Git worktree created from that source repository.
 - Worktrees are created lazily on the first normal message that needs to run Codex for the task.
-- The base ref for worktree creation is detected automatically by checking `main` first and `master` second.
+- The base ref for worktree creation is detected automatically by preferring the remote default branch state.
+- When the source repository has an `origin` remote, worktree preparation should try `git fetch origin --prune` as a best-effort refresh before resolving the base ref.
+- Base-ref resolution should prefer `origin/HEAD`, then `origin/main`, then `origin/master`, and only then fall back to local `main` or `master`.
 - Closing a task does not delete its branch.
 - Closed-task worktrees are treated as disposable cache-like workspaces.
 - The system keeps the most recent fifteen closed-task worktrees and prunes older closed-task worktrees with forced removal.
@@ -86,11 +88,12 @@ The first normal message sent to an active task with `worktree_status=pending` o
 The preparation flow is:
 
 1. load the active task record
-2. detect the base ref by checking for `main`, then `master`, in the source repository
-3. create the task worktree under `${CLAW_DATADIR}/worktrees/<task_id>`
-4. create or attach the reserved task branch for that worktree
-5. persist `base_ref`, `worktree_path`, `worktree_created_at`, and `worktree_status=ready`
-6. run Codex with the task-specific worktree path as the working directory
+2. refresh `origin` metadata with a best-effort `git fetch origin --prune` when the source repository has an `origin` remote
+3. detect the base ref by preferring `origin/HEAD`, then `origin/main`, then `origin/master`, and only then falling back to local `main` or `master`
+4. create the task worktree under `${CLAW_DATADIR}/worktrees/<task_id>`
+5. create or attach the reserved task branch for that worktree
+6. persist `base_ref`, `worktree_path`, `worktree_created_at`, and `worktree_status=ready`
+7. run Codex with the task-specific worktree path as the working directory
 
 If any step fails, Codex must not run for that turn.
 
@@ -139,6 +142,8 @@ Lazy worktree creation failure is handled at normal-message time:
 - the task remains `open`
 - the task moves to `worktree_status=failed`
 - the next normal message retries worktree preparation automatically
+
+If the best-effort `git fetch origin --prune` step fails, the system should log the refresh failure but still continue base-ref detection using any already-available remote-tracking refs and then the local fallback branches.
 
 Pruning failure must not reopen or invalidate the closed task.
 If pruning fails, the system should keep the task in `closed + ready`, log the failure, and try again during a later cleanup opportunity.

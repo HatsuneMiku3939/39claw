@@ -131,7 +131,8 @@ If that preflight fails or times out, 39claw should log the failure and continue
 If `action:clear` is invoked while the current active daily generation still has in-flight or queued work, 39claw should reject the clear request with an ephemeral retry-later response instead of rotating immediately.
 39claw must not create or modify user-owned instruction files such as `AGENTS.md`; if a deployment wants visible turns to consult `AGENT_MEMORY`, the deployment must express that through its own checked-in instructions.
 When a bot instance runs in `task` mode, `CLAW_CODEX_WORKDIR` must be a Git repository.
-`task-new` creates task metadata only; the first normal message for a pending or failed task creates the task worktree lazily from `main` or `master`.
+`task-new` creates task metadata only; the first normal message for a pending or failed task creates the task worktree lazily from the remote default branch when possible by trying `origin/HEAD`, then `origin/main`, then `origin/master`, and only then falling back to local `main` or `master`.
+If the source repository has an `origin` remote, 39claw should try `git fetch origin --prune` before detecting that base ref, but a fetch failure should not block task execution by itself.
 Once the task worktree is ready, Codex runs with the task-specific `worktree_path` as the effective working directory for that turn.
 Closed tasks keep their task branches, but only the fifteen most recently closed ready tasks keep their worktrees; older closed ready worktrees are force-pruned.
 
