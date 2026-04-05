@@ -1,0 +1,78 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: __BINARY_NAME__
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./__CMD_PATH__/
+    binary: __BINARY_NAME__
+    ldflags:
+      - -s -w -X __MODULE_PATH__/version.Version={{ .Version }}
+
+archives:
+  - id: release-archives
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ title .Os }}_{{ if eq .Arch \"amd64\" }}x86_64{{ else }}{{ .Arch }}{{ end }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+      - goos: darwin
+        formats: [zip]
+    files:
+      - README*
+      - LICENSE*
+
+# Delete this section if the project does not publish Linux packages.
+nfpms:
+  - id: linux-packages
+    package_name: __LINUX_PACKAGE_NAME__
+    ids:
+      - __BINARY_NAME__
+    formats:
+      - deb
+      - rpm
+    file_name_template: "{{ .ConventionalFileName }}"
+    homepage: "https://github.com/__REPO_OWNER__/__REPO_NAME__"
+    description: "__PROJECT_DESCRIPTION__"
+
+# Delete this section if the project does not publish a Homebrew cask.
+homebrew_casks:
+  - name: __BINARY_NAME__
+    ids:
+      - release-archives
+    binaries:
+      - __BINARY_NAME__
+    directory: Casks
+    homepage: "https://github.com/__REPO_OWNER__/__REPO_NAME__"
+    description: "__PROJECT_DESCRIPTION__"
+    url:
+      verified: "github.com/__REPO_OWNER__/__REPO_NAME__/"
+    repository:
+      owner: __HOMEBREW_TAP_OWNER__
+      name: __HOMEBREW_TAP_REPO__
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: github-actions[bot]
+      email: 41898282+github-actions[bot]@users.noreply.github.com
+    commit_msg_template: "Brew cask update for {{ .ProjectName }} version {{ .Tag }}"
+
+release:
+  draft: true
+  replace_existing_draft: true
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).

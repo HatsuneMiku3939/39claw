@@ -1,0 +1,17 @@
+release-config:
+  name: Release Config
+  runs-on: ubuntu-latest
+  permissions:
+    contents: read
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+    - name: Validate GoReleaser configuration
+      uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552
+      with:
+        version: "latest"
+        args: check

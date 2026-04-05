@@ -43,6 +43,7 @@ When code changes affect architecture, runtime flow, thread behavior, persistenc
 
 - update `ARCHITECTURE.md`
 - update the relevant files under `docs/design-docs`
+- update the relevant files under `docs/operations` when operator procedures or release/runtime runbooks change
 - update the relevant files under `docs/product-specs` when user-facing behavior or workflow expectations change
 - update this file if contributor guidance changes
 
@@ -81,6 +82,11 @@ For local development:
   - Entry point for the repository documentation set
 - `docs/exec-plans/index.md`
   - Entry point for living execution plans and deferred follow-up notes
+
+### Operations docs
+
+- `docs/operations/RELEASE_RUNBOOK.md`
+  - Operator-facing release readiness, tagging, and post-release verification guide
 
 ### Design notes
 

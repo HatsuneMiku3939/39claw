@@ -18,6 +18,7 @@ The project direction is intentionally small and opinionated:
 - [Core Beliefs](./core-beliefs.md) - explains the project principles behind the design
 - [Architecture Overview](./architecture-overview.md) - provides a short onboarding-oriented map of the system shape, queue coordinator, and queued request flow
 - [Implementation Spec](./implementation-spec.md) - fixes the concrete v1 implementation defaults that sit between the architecture and product specs
+- [First-Stage Release Automation](./first-stage-release-automation.md) - explains how the reusable Go release skill is adapted into 39claw's minimal draft-release flow
 - [Thread Modes](./thread-modes.md) - explains the mode model, behavior, and tradeoffs
 - [State and Storage](./state-and-storage.md) - explains persistence requirements and storage boundaries
 - [Task Mode Worktrees](./task-mode-worktrees.md) - defines task-isolated Git worktrees, lazy creation, and closed-task pruning

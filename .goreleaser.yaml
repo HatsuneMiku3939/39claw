@@ -1,0 +1,94 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: 39claw
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/39claw
+    binary: 39claw
+    ldflags:
+      - -s -w -X github.com/HatsuneMiku3939/39claw/version.Version={{ .Version }}
+
+archives:
+  - id: release-archives
+    ids:
+      - 39claw
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ title .Os }}_{{ if eq .Arch \"amd64\" }}x86_64{{ else }}{{ .Arch }}{{ end }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+      - goos: darwin
+        formats: [zip]
+    files:
+      - README*
+      - LICENSE*
+
+nfpms:
+  - id: linux-packages
+    package_name: 39claw
+    ids:
+      - 39claw
+    formats:
+      - deb
+      - rpm
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: HatsuneMiku3939
+    homepage: "https://github.com/HatsuneMiku3939/39claw"
+    maintainer: "HatsuneMiku3939"
+    description: "Discord bot that connects Discord conversations to Codex"
+    bindir: /usr/bin
+    contents:
+      - src: ./README.md
+        dst: /usr/share/doc/39claw/README.md
+
+changelog:
+  use: github-native
+
+homebrew_casks:
+  - name: 39claw
+    ids:
+      - release-archives
+    binaries:
+      - 39claw
+    directory: Casks
+    homepage: "https://github.com/HatsuneMiku3939/39claw"
+    description: "Discord bot that connects Discord conversations to Codex"
+    url:
+      verified: "github.com/HatsuneMiku3939/39claw/"
+    repository:
+      owner: HatsuneMiku3939
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: github-actions[bot]
+      email: 41898282+github-actions[bot]@users.noreply.github.com
+    commit_msg_template: "Brew cask update for {{ .ProjectName }} version {{ .Tag }}"
+    caveats: |-
+      This cask installs an unsigned binary.
+
+      If macOS blocks execution, remove the quarantine attribute manually:
+        xattr -dr com.apple.quarantine "$(brew --prefix)/Caskroom/39claw/{{ .Version }}/39claw"
+
+      Review the binary and command before bypassing Gatekeeper.
+
+release:
+  draft: true
+  replace_existing_draft: true
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).

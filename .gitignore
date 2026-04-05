@@ -4,3 +4,4 @@
 .env.*.local
 .envrc
 .tools
+dist/

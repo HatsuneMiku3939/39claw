@@ -27,6 +27,7 @@ These plans are intended to be executed in numeric order. Each plan is self-cont
 
 ## Recently Completed Plans
 
+- [Add first-stage tag-driven release automation](./completed/10-first-stage-release-automation.md)
 - [Build the foundation, contracts, and bootstrap path](./completed/01-foundation-and-contracts.md)
 - [Implement `daily` mode routing and persistence](./completed/02-daily-mode-routing.md)
 - [Implement `task` mode task workflow and command orchestration](./completed/03-task-mode-workflow.md)
