@@ -1,9 +1,12 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"sort"
 	"sync"
 	"testing"
@@ -776,6 +779,114 @@ func TestMessageServiceHandleMessageReturnsQueueFullResponse(t *testing.T) {
 	}
 }
 
+func TestMessageServiceHandleMessageLogsExecuteNowAndTurnUsage(t *testing.T) {
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+
+	service := newDailyMessageServiceWithLogger(
+		t,
+		&memoryThreadStore{},
+		&fakeCodexGateway{
+			results: []app.RunTurnResult{
+				{
+					ThreadID:     "thread-1",
+					ResponseText: "Done",
+					Usage: &app.TokenUsage{
+						InputTokens:       10,
+						CachedInputTokens: 2,
+						OutputTokens:      4,
+					},
+				},
+			},
+		},
+		noopDailyMemoryRefresher{},
+		nil,
+		logger,
+	)
+
+	_, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:      "user-1",
+		ChannelID:   "channel-1",
+		MessageID:   "message-1",
+		Content:     "hello there",
+		Mentioned:   true,
+		ReceivedAt:  time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		ImagePaths:  []string{"/tmp/image.png"},
+		CommandName: "release",
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	entries := parseJSONLogEntries(t, logBuffer.Bytes())
+
+	queueAdmission := findLogEntry(t, entries, "queue_admission")
+	if queueAdmission["outcome"] != "execute_now" {
+		t.Fatalf("queue admission outcome = %v, want %q", queueAdmission["outcome"], "execute_now")
+	}
+
+	turnStarted := findLogEntry(t, entries, "codex_turn_started")
+	if turnStarted["thread_resumed"] != false {
+		t.Fatalf("thread_resumed = %v, want %v", turnStarted["thread_resumed"], false)
+	}
+
+	if turnStarted["image_count"] != float64(1) {
+		t.Fatalf("image_count = %v, want %v", turnStarted["image_count"], 1)
+	}
+
+	turnFinished := findLogEntry(t, entries, "codex_turn_finished")
+	if turnFinished["outcome"] != "success" {
+		t.Fatalf("turn outcome = %v, want %q", turnFinished["outcome"], "success")
+	}
+
+	if turnFinished["thread_id"] != "thread-1" {
+		t.Fatalf("thread_id = %v, want %q", turnFinished["thread_id"], "thread-1")
+	}
+
+	if turnFinished["input_tokens"] != float64(10) {
+		t.Fatalf("input_tokens = %v, want %v", turnFinished["input_tokens"], 10)
+	}
+
+	if turnFinished["cached_input_tokens"] != float64(2) {
+		t.Fatalf("cached_input_tokens = %v, want %v", turnFinished["cached_input_tokens"], 2)
+	}
+
+	if turnFinished["output_tokens"] != float64(4) {
+		t.Fatalf("output_tokens = %v, want %v", turnFinished["output_tokens"], 4)
+	}
+}
+
+func TestMessageServiceHandleMessageLogsQueueFullAdmission(t *testing.T) {
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+
+	service := newDailyMessageServiceWithLogger(
+		t,
+		&memoryThreadStore{},
+		&fakeCodexGateway{},
+		noopDailyMemoryRefresher{},
+		&stubQueueCoordinator{err: app.ErrExecutionQueueFull},
+		logger,
+	)
+
+	_, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		ChannelID:  "channel-1",
+		MessageID:  "message-6",
+		Content:    "hello",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	entries := parseJSONLogEntries(t, logBuffer.Bytes())
+	queueAdmission := findLogEntry(t, entries, "queue_admission")
+	if queueAdmission["outcome"] != "queue_full" {
+		t.Fatalf("queue admission outcome = %v, want %q", queueAdmission["outcome"], "queue_full")
+	}
+}
+
 func TestMessageServiceHandleMessageFreezesTaskContextForQueuedWork(t *testing.T) {
 	t.Parallel()
 
@@ -972,7 +1083,7 @@ func newDailyMessageService(
 ) *app.DefaultMessageService {
 	t.Helper()
 
-	return newDailyMessageServiceWithRefresher(t, store, gateway, noopDailyMemoryRefresher{}, coordinator)
+	return newDailyMessageServiceWithLogger(t, store, gateway, noopDailyMemoryRefresher{}, coordinator, nil)
 }
 
 func newDailyMessageServiceWithRefresher(
@@ -981,6 +1092,19 @@ func newDailyMessageServiceWithRefresher(
 	gateway app.CodexGateway,
 	refresher app.DailyMemoryRefresher,
 	coordinator app.QueueCoordinator,
+) *app.DefaultMessageService {
+	t.Helper()
+
+	return newDailyMessageServiceWithLogger(t, store, gateway, refresher, coordinator, nil)
+}
+
+func newDailyMessageServiceWithLogger(
+	t *testing.T,
+	store app.ThreadStore,
+	gateway app.CodexGateway,
+	refresher app.DailyMemoryRefresher,
+	coordinator app.QueueCoordinator,
+	logger *slog.Logger,
 ) *app.DefaultMessageService {
 	t.Helper()
 
@@ -1001,6 +1125,7 @@ func newDailyMessageServiceWithRefresher(
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
 		Mode:        config.ModeDaily,
 		CommandName: "release",
+		Logger:      logger,
 		Policy:      policy,
 		Store:       store,
 		DailyMemory: refresher,
@@ -1077,6 +1202,40 @@ func waitForSignal(t *testing.T, ch <-chan struct{}, name string) {
 	case <-time.After(time.Second):
 		t.Fatalf("timed out waiting for %s", name)
 	}
+}
+
+func parseJSONLogEntries(t *testing.T, output []byte) []map[string]any {
+	t.Helper()
+
+	lines := bytes.Split(bytes.TrimSpace(output), []byte("\n"))
+	entries := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		entry := map[string]any{}
+		if err := json.Unmarshal(line, &entry); err != nil {
+			t.Fatalf("json.Unmarshal() error = %v", err)
+		}
+
+		entries = append(entries, entry)
+	}
+
+	return entries
+}
+
+func findLogEntry(t *testing.T, entries []map[string]any, event string) map[string]any {
+	t.Helper()
+
+	for _, entry := range entries {
+		if entry["event"] == event {
+			return entry
+		}
+	}
+
+	t.Fatalf("log event %q not found in %v", event, entries)
+	return nil
 }
 
 type stubThreadPolicy struct {

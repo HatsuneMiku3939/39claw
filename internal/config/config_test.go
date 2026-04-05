@@ -38,6 +38,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_CODEX_WEB_SEARCH_MODE":        "cached",
 				"CLAW_CODEX_NETWORK_ACCESS":         "false",
 				"CLAW_LOG_LEVEL":                    "debug",
+				"CLAW_LOG_FORMAT":                   "text",
 			},
 			want: Config{
 				Mode:                       ModeTask,
@@ -60,6 +61,7 @@ func TestLoadFromLookup(t *testing.T) {
 				CodexWebSearchMode:         "cached",
 				CodexNetworkAccess:         boolPtr(false),
 				LogLevel:                   "debug",
+				LogFormat:                  "text",
 			},
 		},
 		{
@@ -83,6 +85,7 @@ func TestLoadFromLookup(t *testing.T) {
 				CodexExecutable:    "codex",
 				CodexWorkdir:       "/workspace/project",
 				LogLevel:           "info",
+				LogFormat:          "json",
 			},
 		},
 		{
@@ -281,6 +284,10 @@ func TestLoadFromLookup(t *testing.T) {
 
 			if got.LogLevel != tt.want.LogLevel {
 				t.Fatalf("LogLevel = %q, want %q", got.LogLevel, tt.want.LogLevel)
+			}
+
+			if got.LogFormat != tt.want.LogFormat {
+				t.Fatalf("LogFormat = %q, want %q", got.LogFormat, tt.want.LogFormat)
 			}
 		})
 	}

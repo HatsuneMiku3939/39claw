@@ -136,6 +136,8 @@ If five waiting messages already exist for that logical thread key, the bot shou
 During runtime shutdown, 39claw should stop accepting new Discord events first, keep the Discord session open while already-admitted work drains for up to five seconds, and then cancel the shared runtime context if draining does not finish in time.
 When shutdown forces cancellation, deferred queued replies may be dropped instead of being delivered after the runtime has started closing.
 Structured logs should make it obvious whether queued work completed normally, was canceled during shutdown, or had its deferred reply dropped.
+The default runtime log format should be JSON so operators can search and aggregate queue, latency, deferred-delivery, and token-usage events without a separate metrics system.
+The minimum high-value events are `queue_admission`, `codex_turn_started`, `codex_turn_finished`, `queued_turn_started`, `queued_turn_finished`, and `deferred_reply_delivery`.
 
 ## Configuration Defaults
 
@@ -161,9 +163,10 @@ The expected variables are:
 - `CLAW_CODEX_WEB_SEARCH_MODE`
 - `CLAW_CODEX_NETWORK_ACCESS`
 - `CLAW_LOG_LEVEL`
+- `CLAW_LOG_FORMAT`
 
 `CLAW_MODE`, `CLAW_TIMEZONE`, `CLAW_DISCORD_TOKEN`, `CLAW_DISCORD_COMMAND_NAME`, `CLAW_CODEX_WORKDIR`, `CLAW_DATADIR`, and `CLAW_CODEX_EXECUTABLE` are required.
-`CLAW_DISCORD_GUILD_ID`, `CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, `CLAW_CODEX_MODEL`, `CLAW_CODEX_SANDBOX_MODE`, `CLAW_CODEX_ADDITIONAL_DIRECTORIES`, `CLAW_CODEX_SKIP_GIT_REPO_CHECK`, `CLAW_CODEX_APPROVAL_POLICY`, `CLAW_CODEX_MODEL_REASONING_EFFORT`, `CLAW_CODEX_WEB_SEARCH_MODE`, `CLAW_CODEX_NETWORK_ACCESS`, and `CLAW_LOG_LEVEL` are optional.
+`CLAW_DISCORD_GUILD_ID`, `CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, `CLAW_CODEX_MODEL`, `CLAW_CODEX_SANDBOX_MODE`, `CLAW_CODEX_ADDITIONAL_DIRECTORIES`, `CLAW_CODEX_SKIP_GIT_REPO_CHECK`, `CLAW_CODEX_APPROVAL_POLICY`, `CLAW_CODEX_MODEL_REASONING_EFFORT`, `CLAW_CODEX_WEB_SEARCH_MODE`, `CLAW_CODEX_NETWORK_ACCESS`, `CLAW_LOG_LEVEL`, and `CLAW_LOG_FORMAT` are optional.
 `CLAW_MODE` accepts `daily` or `task`.
 `CLAW_TIMEZONE` must be set explicitly for each deployment.
 `CLAW_DISCORD_COMMAND_NAME` must be unique per bot instance, normalized to lowercase, and validated conservatively before Discord registration.
@@ -175,6 +178,7 @@ When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guil
 `daily` mode does not support `read-only` sandboxing because the durable-memory bridge must write inside `CLAW_CODEX_WORKDIR`.
 `CLAW_CODEX_APPROVAL_POLICY` defaults to `never` when omitted.
 `CLAW_CODEX_WEB_SEARCH_MODE` defaults to `live` when omitted.
+`CLAW_LOG_FORMAT` defaults to `json` when omitted and may be set to `text` for local debugging.
 `CLAW_CODEX_ADDITIONAL_DIRECTORIES` uses the OS path-list separator such as `:` on Unix systems.
 `CLAW_DATADIR` points to a directory, and the SQLite database file is always stored as `39claw.sqlite` inside that directory.
 For local development, the safe-default workflow is an ignored `.env.local` file loaded through an ignored `.envrc`.

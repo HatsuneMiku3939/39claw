@@ -322,6 +322,24 @@ Runtime shutdown should follow a bounded graceful-drain policy.
 - If the drain window expires, the runtime cancels the shared runtime context for outstanding work and drops any deferred replies that can no longer be delivered predictably.
 - Logs must clearly distinguish queued work that completed, was canceled during shutdown, or was dropped because shutdown forced delivery to stop.
 
+### 8.3 Observability
+
+Runtime observability should start with structured logs.
+JSON is the preferred default format so queue behavior, Codex turn latency, deferred delivery health, and token usage can be queried without a dedicated metrics pipeline.
+
+The minimum high-value events are:
+
+- `queue_admission`
+  - capture `execute_now`, `queued`, and `queue_full` outcomes, plus queue position when queued
+- `codex_turn_started`
+  - capture whether an existing thread was resumed and the basic input shape
+- `codex_turn_finished`
+  - capture success or failure, latency, thread identity, and token usage when available
+- `queued_turn_started` and `queued_turn_finished`
+  - capture queue wait time and whether shutdown or delivery problems interrupted the queued path
+- `deferred_reply_delivery`
+  - capture success, normal failure, or shutdown-driven drop outcomes
+
 ## 9. Persistence Model
 
 ### 9.1 Required state

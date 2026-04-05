@@ -268,8 +268,18 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 	}
 
 	deferredSink := app.DeferredReplySinkFunc(func(ctx context.Context, response app.MessageResponse) error {
+		logAttrs := []any{
+			"event", "deferred_reply_delivery",
+			"channel_id", request.ChannelID,
+			"message_id", request.MessageID,
+			"reply_to_id", response.ReplyToID,
+		}
+
 		if err := ctx.Err(); err != nil {
-			r.logger.Warn("drop deferred message response during shutdown", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
+			r.logger.Warn(
+				"deferred reply delivery dropped during shutdown",
+				append(logAttrs, "outcome", "dropped_on_shutdown", "error", err)...,
+			)
 			return err
 		}
 
@@ -279,15 +289,25 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 
 		if currentSession == nil {
 			err := errors.New("discord runtime is not running")
-			r.logger.Error("present deferred message response", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
+			r.logger.Error(
+				"deferred reply delivery failed",
+				append(logAttrs, "outcome", "failure", "error", err)...,
+			)
 			return err
 		}
 
 		if err := r.presentMessageResponse(currentSession, request.ChannelID, response); err != nil {
-			r.logger.Error("present deferred message response", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
+			r.logger.Error(
+				"deferred reply delivery failed",
+				append(logAttrs, "outcome", "failure", "error", err)...,
+			)
 			return err
 		}
 
+		r.logger.Info(
+			"deferred reply delivery succeeded",
+			append(logAttrs, "outcome", "success")...,
+		)
 		return nil
 	})
 

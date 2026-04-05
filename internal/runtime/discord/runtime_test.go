@@ -1,7 +1,9 @@
 package discord
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -270,6 +272,88 @@ func TestRuntimeMentionHandlingPresentsQueuedAcknowledgementAndDeferredReply(t *
 
 	if fakeSession.sentMessages[1].Reference == nil || fakeSession.sentMessages[1].Reference.MessageID != "message-1" {
 		t.Fatal("deferred sent message missing reply reference")
+	}
+}
+
+func TestRuntimeDeferredReplyDeliveryLogsStructuredSuccess(t *testing.T) {
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+
+	delivered := make(chan struct{})
+	messageService := &fakeMessageService{
+		handle: func(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error) {
+			go func() {
+				_ = sink.Deliver(context.Background(), app.MessageResponse{
+					Text:      "Final queued response",
+					ReplyToID: request.MessageID,
+				})
+				close(delivered)
+			}()
+
+			return app.MessageResponse{
+				Text:      "A response is already running for this conversation. Your message has been queued at position 1.",
+				ReplyToID: request.MessageID,
+			}, nil
+		},
+	}
+
+	fakeSession := newFakeSession("bot-user")
+	runtime, err := NewRuntime(Dependencies{
+		Config: config.Config{
+			Mode:               config.ModeDaily,
+			TimezoneName:       "Asia/Tokyo",
+			DiscordToken:       "discord-token",
+			DiscordCommandName: "release",
+		},
+		Logger:      logger,
+		Message:     messageService,
+		TaskCommand: &fakeTaskCommandService{},
+		HTTPClient:  http.DefaultClient,
+		SessionFactory: func(token string) (session, error) {
+			return fakeSession, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "channel-1",
+			Content:   "<@bot-user> queue me",
+			Author:    &discordgo.User{ID: "user-1"},
+			Mentions: []*discordgo.User{
+				{ID: "bot-user"},
+			},
+		},
+	})
+
+	select {
+	case <-delivered:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for deferred runtime delivery")
+	}
+
+	entries := parseRuntimeJSONLogEntries(t, logBuffer.Bytes())
+	deferredReply := findRuntimeLogEntry(t, entries, "deferred_reply_delivery")
+	if deferredReply["outcome"] != "success" {
+		t.Fatalf("outcome = %v, want %q", deferredReply["outcome"], "success")
+	}
+
+	if deferredReply["channel_id"] != "channel-1" {
+		t.Fatalf("channel_id = %v, want %q", deferredReply["channel_id"], "channel-1")
+	}
+
+	if deferredReply["message_id"] != "message-1" {
+		t.Fatalf("message_id = %v, want %q", deferredReply["message_id"], "message-1")
 	}
 }
 
@@ -886,6 +970,40 @@ func newTestRuntimeWithTimeout(
 	}
 
 	return runtime
+}
+
+func parseRuntimeJSONLogEntries(t *testing.T, output []byte) []map[string]any {
+	t.Helper()
+
+	lines := bytes.Split(bytes.TrimSpace(output), []byte("\n"))
+	entries := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		entry := map[string]any{}
+		if err := json.Unmarshal(line, &entry); err != nil {
+			t.Fatalf("json.Unmarshal() error = %v", err)
+		}
+
+		entries = append(entries, entry)
+	}
+
+	return entries
+}
+
+func findRuntimeLogEntry(t *testing.T, entries []map[string]any, event string) map[string]any {
+	t.Helper()
+
+	for _, entry := range entries {
+		if entry["event"] == event {
+			return entry
+		}
+	}
+
+	t.Fatalf("log event %q not found in %v", event, entries)
+	return nil
 }
 
 func commandInteractionEvent(commandName string, userID string, action string, taskName string, taskID string) *discordgo.InteractionCreate {
