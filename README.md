@@ -120,7 +120,8 @@ go build -o ./bin/39claw ./cmd/39claw
 
 Use `daily` mode when you want a lightweight shared assistant for day-to-day work.
 
-- messages on the same local date share the same conversation context
+- messages route through one active shared generation per local date
+- `/<instance-command> action:clear` can rotate the current day's shared generation to a fresh thread when the current one is idle
 - the next local date starts a fresh Codex thread automatically
 - durable preferences and long-lived context can be projected into runtime-managed files under `AGENT_MEMORY/`
 - if you want visible turns to consult that memory, add the necessary guidance to your own `AGENTS.md`
@@ -134,7 +135,7 @@ If you want visible turns to consult the projected memory files, add guidance li
 If `AGENT_MEMORY/` exists in the current workspace, consult its durable memory files when they are relevant to the user's request.
 
 - Read `AGENT_MEMORY/MEMORY.md` as the primary durable memory file.
-- Read the most relevant dated note in `AGENT_MEMORY/YYYY-MM-DD.md` when bridge context is useful.
+- Read the most relevant dated note in `AGENT_MEMORY/YYYY-MM-DD.<generation>.md` when bridge context is useful.
 - Prefer the latest explicit user instruction when it conflicts with stored memory.
 - Treat `AGENT_MEMORY/` as durable context only. Do not treat it as a source of temporary TODO items or transient chat history.
 ```
@@ -167,6 +168,11 @@ For every instance:
 - `/<instance-command> action:help`
   - show the supported command surface for the current bot instance
 
+In `daily` mode, the same root command also supports:
+
+- `/<instance-command> action:clear`
+  - rotate the shared same-day daily session to a fresh generation when the current one is idle
+
 In `task` mode, the same root command also supports:
 
 - `/<instance-command> action:task-current`
@@ -179,8 +185,6 @@ In `task` mode, the same root command also supports:
   - switch the active task
 - `/<instance-command> action:task-close task_id:<id>`
   - close a task
-
-In `daily` mode, the root command exposes only `action:help`.
 
 ### Busy conversations
 

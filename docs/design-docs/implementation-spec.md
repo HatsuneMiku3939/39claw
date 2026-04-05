@@ -61,6 +61,8 @@ The following internal contracts should be treated as stable v1 design targets e
   - returns a normalized final response plus the thread ID that should be persisted
 - `TaskCommandService`
   - implements the `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, and `action:task-close` workflow behind the configured root command
+- `DailyCommandService`
+  - implements the `action:clear` workflow behind the configured root command when the bot instance runs in `daily` mode
 
 The application layer should depend on these responsibilities rather than on Discord SDK details or raw SQL.
 
@@ -68,9 +70,9 @@ The concrete v1 message path lives in the application layer rather than in the D
 The message service is responsible for:
 
 - ignoring unsupported non-mention chatter
-- resolving the logical thread key
+- resolving the logical thread bucket and any active daily generation metadata
 - rejecting overlapping turns for the same logical thread key
-- running the daily durable-memory preflight before the first visible turn of a new local day when the previous day's thread binding exists
+- running the daily durable-memory preflight before the first visible turn of a new daily generation when the previous generation's thread binding exists
 - loading and upserting SQLite thread bindings
 - calling the Codex gateway and returning a normalized reply payload
 
@@ -78,11 +80,14 @@ The message service is responsible for:
 
 SQLite is the required v1 storage backend.
 
-The storage model uses three tables:
+The storage model uses four tables:
 
 - `thread_bindings`
   - stores `mode`, `logical_thread_key`, `codex_thread_id`, nullable `task_id`, `created_at`, and `updated_at`
   - enforces one binding per `(mode, logical_thread_key)`
+- `daily_sessions`
+  - stores `local_date`, `generation`, `logical_thread_key`, nullable `previous_logical_thread_key`, `activation_reason`, `is_active`, `created_at`, and `updated_at`
+  - enforces one active row per `local_date`
 - `tasks`
   - stores `task_id`, `discord_user_id`, `task_name`, `status`, `branch_name`, nullable `base_ref`, nullable `worktree_path`, `worktree_status`, `created_at`, `updated_at`, nullable `closed_at`, nullable `worktree_created_at`, nullable `worktree_pruned_at`, and nullable `last_used_at`
   - uses ULID strings for `task_id`
@@ -98,11 +103,11 @@ Closing a task marks it `closed` and removes its `active_tasks` mapping when tha
 
 The logical thread key defaults are:
 
-- `daily`: configured local date formatted as `YYYY-MM-DD`
+- `daily`: configured local date formatted as `YYYY-MM-DD` for the outer bucket, with the active visible thread key normalized to `YYYY-MM-DD#<generation>`
 - `task`: `discord_user_id + task_id`
 
 When the bot runs in `daily` mode, 39claw also manages a durable memory projection inside `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY`.
-`MEMORY.md` is the primary durable-memory file, and `YYYY-MM-DD.md` stores the bridge note created during the first-message preflight for a new local day.
+`MEMORY.md` is the primary durable-memory file, and `YYYY-MM-DD.<generation>.md` stores the bridge note created during the first-message preflight for a new daily generation.
 
 ## Discord Behavior Defaults
 
@@ -114,12 +119,14 @@ Each bot instance should expose one slash-command surface whose root name comes 
 That root command should always expose `action:help`.
 Task-control command responses are ephemeral by default.
 When a bot instance runs in `daily` mode, task actions must return a clear not-available response instead of pretending the command worked.
+When a bot instance runs in `daily` mode, the root command should also expose `action:clear`.
 When a bot instance runs in `task` mode, the root command should expose `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, and `action:task-close`.
 
 When a bot instance runs in `task` mode, normal messages without an active task must not be routed to Codex.
 They should return actionable guidance that points the user to `action:task-new`, `action:task-list`, or `action:task-switch` on the configured root command.
-When a bot instance runs in `daily` mode, the first visible turn of a new local day should still start a fresh Codex thread, but 39claw must first run a hidden durable-memory refresh against the previous day's thread when that previous binding exists.
+When a bot instance runs in `daily` mode, the first visible turn of a new daily generation should still start a fresh Codex thread, but 39claw must first run a hidden durable-memory refresh against the previous recorded generation's thread when that previous binding exists.
 If that preflight fails or times out, 39claw should log the failure and continue with the visible turn instead of blocking the user.
+If `action:clear` is invoked while the current active daily generation still has in-flight or queued work, 39claw should reject the clear request with an ephemeral retry-later response instead of rotating immediately.
 39claw must not create or modify user-owned instruction files such as `AGENTS.md`; if a deployment wants visible turns to consult `AGENT_MEMORY`, the deployment must express that through its own checked-in instructions.
 When a bot instance runs in `task` mode, `CLAW_CODEX_WORKDIR` must be a Git repository.
 `task-new` creates task metadata only; the first normal message for a pending or failed task creates the task worktree lazily from `main` or `master`.
@@ -207,7 +214,8 @@ The repository should treat validation as three layers:
 The initial implementation should demonstrate the following observable behavior.
 Most of these outcomes should be proven through automated contract coverage plus fake runtime tests, while the narrow live-platform remainder should be handled as optional hardening:
 
-- In `daily` mode, the first qualifying mention creates a thread binding, a second same-day mention reuses it, and the first mention on the next local date creates a new binding after the durable-memory preflight refreshes `AGENT_MEMORY` from the previous day's thread when that previous binding exists.
+- In `daily` mode, the first qualifying mention creates generation `#1`, a second same-day mention reuses the active generation, and the first mention on the next local date creates a fresh `#1` generation after the durable-memory preflight refreshes `AGENT_MEMORY` from the last active prior-day generation when that previous binding exists.
+- In `daily` mode, `/<instance-command> action:clear` rotates the shared same-day generation only when the current generation is idle, and the next mention creates or resumes a fresh same-day binding after the durable-memory preflight refreshes `AGENT_MEMORY` from the previous recorded generation when that previous binding exists.
 - In `daily` mode, startup does not create or rewrite `AGENTS.md`.
 - A mention-triggered message with text plus image attachments reaches Codex as multipart input.
 - A mention-triggered message with only one or more usable image attachments is accepted and answered.

@@ -22,7 +22,7 @@ Each bot instance is configured against a repository-shaped working directory, a
 This leads to two distinct mode families on the same foundation:
 
 - `daily`
-  - knowledge-oriented interaction against repository instructions and documentation, with fresh daily threads plus a runtime-managed durable-memory bridge under `AGENT_MEMORY/`
+  - knowledge-oriented interaction against repository instructions and documentation, with one active shared generation per local day plus a runtime-managed durable-memory bridge under `AGENT_MEMORY/`
 - `task`
   - execution-oriented interaction against a Git work repository where each task eventually runs inside its own task-specific worktree
 
@@ -52,7 +52,8 @@ Processes one user turn end to end by resolving the thread target, coordinating 
 
 ### Thread Policy
 
-Converts Discord context into a logical thread key according to the globally configured mode.
+Converts Discord context into a logical thread bucket according to the globally configured mode.
+In `daily` mode, the policy still resolves only the local date and the application layer expands that bucket into the active generation key.
 
 ### Thread Store
 
@@ -79,8 +80,8 @@ Adapts normalized application output into Discord-safe responses.
 3. Application service resolves the logical thread key and any frozen routing context needed for later queued execution
 4. Queue coordinator decides whether the turn runs immediately, waits in the same-key queue, or is rejected because five waiting turns already exist
 5. If the turn was queued, the runtime immediately posts a queued acknowledgment reply
-6. When the turn starts running, `daily` mode may first run a hidden preflight refresh against the previous daily thread to update `AGENT_MEMORY`
-7. Thread store checks whether a Codex thread already exists for the visible turn
+6. When the turn starts running, `daily` mode may first resolve or create the active same-day generation and then run a hidden preflight refresh against the previous recorded daily generation to update `AGENT_MEMORY`
+7. Thread store checks whether a Codex thread already exists for the visible generation key
 8. Application service sends the turn through the Codex gateway with the saved thread ID when one exists
 9. If no saved thread exists yet, the first turn creates one and returns its thread ID
 10. Application service persists the returned binding

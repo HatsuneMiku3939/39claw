@@ -221,16 +221,20 @@ Purpose:
 Logical key concept:
 
 ```text
-thread_key = local_date
+daily_bucket = local_date
+active_thread_key = local_date + "#" + generation
 ```
 
 Behavior:
 
-- incoming messages automatically resolve to today's bucket
-- if a thread exists for that key, resume it by passing the saved thread ID into the next turn
-- otherwise run the first turn without a saved thread ID and persist the returned thread ID
-- when the date changes, the logical bucket changes automatically and the next visible turn starts a fresh Codex thread for the new key
-- before that first visible new-day turn, 39claw resumes the previous daily thread once and runs a runtime-managed durable-memory refresh into `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/MEMORY.md` plus `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/YYYY-MM-DD.md`
+- incoming messages automatically resolve to today's daily bucket
+- each daily bucket has exactly one active shared generation at a time
+- if a thread exists for the active generation key, resume it by passing the saved thread ID into the next turn
+- otherwise run the first turn without a saved thread ID and persist the returned thread ID for that generation
+- `/<instance-command> action:clear` rotates the active shared same-day generation to a fresh logical thread key
+- when the date changes, the active generation resets to `#1` for the new bucket and the next visible turn starts a fresh Codex thread for that new key
+- before the first visible turn of a new generation, 39claw resumes the previous recorded daily generation once and runs a runtime-managed durable-memory refresh into `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/MEMORY.md` plus `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/YYYY-MM-DD.<generation>.md`
+- `action:clear` is rejected while the current active generation still has in-flight or queued work
 - Codex answers by following repository guidance and consulting the documentation in that repository
 
 Properties:
@@ -238,7 +242,8 @@ Properties:
 - no explicit thread command is required for normal usage
 - simple and low-friction
 - best for shared, conversation-oriented assistant flows
-- same-day continuity comes from the remote Codex thread
+- same-day continuity comes from the currently active shared generation
+- users can explicitly reset the shared same-day thread without waiting for the next day
 - cross-day durable memory can be projected into Markdown files inside the workdir without 39claw modifying user-owned `AGENTS.md`
 - whether normal visible turns consult those memory files is controlled by the user-owned instructions in the workdir
 
@@ -246,6 +251,7 @@ Tradeoffs:
 
 - long-running work still crosses a fresh remote-thread boundary at the start of a new day
 - unrelated same-day conversations may influence one another inside the shared daily context
+- `action:clear` rotates the shared daily context for the whole bot instance rather than for one user
 - timezone must be an explicit configuration concern
 - the durable-memory bridge requires a write-capable Codex sandbox because 39claw must update files inside `CLAW_CODEX_WORKDIR`
 
