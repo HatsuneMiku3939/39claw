@@ -29,6 +29,19 @@ Use `daily` mode when you want a lightweight shared assistant for day-to-day wor
 - if you want visible turns to consult that memory, add the necessary guidance to your own `AGENTS.md`
 - users do not need to create or switch tasks before talking
 
+If you want visible turns to consult the projected memory files, add guidance like this to your own `AGENTS.md`:
+
+```md
+# Daily Memory Guidance
+
+If `AGENT_MEMORY/` exists in the current workspace, consult its durable memory files when they are relevant to the user's request.
+
+- Read `AGENT_MEMORY/MEMORY.md` as the primary durable memory file.
+- Read the most relevant dated note in `AGENT_MEMORY/YYYY-MM-DD.md` when bridge context is useful.
+- Prefer the latest explicit user instruction when it conflicts with stored memory.
+- Treat `AGENT_MEMORY/` as durable context only. Do not treat it as a source of temporary TODO items or transient chat history.
+```
+
 ### `task`
 
 Use `task` mode when you want durable work streams that continue across multiple days.
