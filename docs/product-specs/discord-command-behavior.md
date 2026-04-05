@@ -213,6 +213,9 @@ Examples:
 - short summaries before large technical output
 - avoidance of excessively noisy raw dumps when a summary would be clearer
 
+When responses reference local workspace files, the Discord-facing text should avoid exposing the configured absolute `CLAW_CODEX_WORKDIR`.
+Workspace-local file references should be rewritten into readable workspace-relative paths, and percent-encoded path segments should be decoded before they are shown to users.
+
 ### Error messages
 
 Error responses should be:

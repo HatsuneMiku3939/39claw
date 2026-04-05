@@ -153,6 +153,50 @@ func TestRuntimeMentionHandlingRepliesToTriggerMessage(t *testing.T) {
 	}
 }
 
+func TestRuntimeMentionHandlingSanitizesWorkspacePathsForDiscord(t *testing.T) {
+	t.Parallel()
+
+	messageService := &fakeMessageService{
+		response: app.MessageResponse{
+			Text: "[디펜더봇 평가-머지-릴리즈 자동화](" +
+				"/home/filepang/Documents/filepang/1%20Project/direnv-action/%EB%94%94%ED%8E%9C%EB%8D%94%EB%B4%87%20%ED%8F%89%EA%B0%80-%EB%A8%B8%EC%A7%80-%EB%A6%B4%EB%A6%AC%EC%A6%88%20%EC%9E%90%EB%8F%99%ED%99%94.md" +
+				")",
+			ReplyToID: "message-1",
+		},
+	}
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+	runtime.config.CodexWorkdir = "/home/filepang/Documents/filepang"
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "channel-1",
+			Content:   "<@bot-user> sanitize this",
+			Author:    &discordgo.User{ID: "user-1"},
+			Mentions: []*discordgo.User{
+				{ID: "bot-user"},
+			},
+		},
+	})
+
+	if len(fakeSession.sentMessages) != 1 {
+		t.Fatalf("sent message count = %d, want %d", len(fakeSession.sentMessages), 1)
+	}
+
+	want := "디펜더봇 평가-머지-릴리즈 자동화 (`workspace/1 Project/direnv-action/디펜더봇 평가-머지-릴리즈 자동화.md`)"
+	if fakeSession.sentMessages[0].Content != want {
+		t.Fatalf("sent content = %q, want %q", fakeSession.sentMessages[0].Content, want)
+	}
+}
+
 func TestRuntimeMentionHandlingPresentsQueuedAcknowledgementAndDeferredReply(t *testing.T) {
 	t.Parallel()
 

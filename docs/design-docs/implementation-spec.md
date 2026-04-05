@@ -128,6 +128,7 @@ Closed tasks keep their task branches, but only the fifteen most recently closed
 Unsupported non-mention chatter is ignored.
 Mention-only posts that contain no text and no usable image attachments are also ignored.
 Long responses are chunked into Discord-safe messages while preserving code fences when practical.
+Before a response is sent to Discord, local workspace file references should be rewritten so the absolute `CLAW_CODEX_WORKDIR` path is not exposed, and percent-encoded path segments should be decoded for display.
 Only one Codex turn may run at a time for a given logical thread key.
 If another message arrives for the same logical thread while a turn is running, the bot should accept up to five waiting messages in an in-memory FIFO queue.
 Queued messages should receive an immediate acknowledgment and later receive their final answer as a follow-up reply to the original message.

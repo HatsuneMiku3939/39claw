@@ -178,7 +178,7 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 		}
 
 		r.logger.Error("prepare image attachments", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
-		if err := presentMessage(discordSession, request.ChannelID, app.MessageResponse{
+		if err := r.presentMessageResponse(discordSession, request.ChannelID, app.MessageResponse{
 			Text:      imageDownloadErrorMessage,
 			ReplyToID: request.MessageID,
 		}); err != nil {
@@ -208,7 +208,7 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 			return err
 		}
 
-		if err := presentMessage(currentSession, request.ChannelID, response); err != nil {
+		if err := r.presentMessageResponse(currentSession, request.ChannelID, response); err != nil {
 			r.logger.Error("present deferred message response", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
 			return err
 		}
@@ -225,7 +225,7 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 		}
 	}
 
-	if err := presentMessage(discordSession, request.ChannelID, response); err != nil {
+	if err := r.presentMessageResponse(discordSession, request.ChannelID, response); err != nil {
 		r.logger.Error("present message response", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
 	}
 }
@@ -253,9 +253,23 @@ func (r *Runtime) handleInteractionCreate(_ *discordgo.Session, event *discordgo
 		}
 	}
 
-	if err := presentInteraction(discordSession, event.Interaction, response); err != nil {
+	if err := r.presentInteractionResponse(discordSession, event.Interaction, response); err != nil {
 		r.logger.Error("present interaction response", "error", err, "command", request.Name, "user_id", request.UserID)
 	}
+}
+
+func (r *Runtime) presentMessageResponse(discordSession session, channelID string, response app.MessageResponse) error {
+	response.Text = formatDiscordResponseText(response.Text, r.config.CodexWorkdir)
+	return presentMessage(discordSession, channelID, response)
+}
+
+func (r *Runtime) presentInteractionResponse(
+	discordSession session,
+	interaction *discordgo.Interaction,
+	response app.MessageResponse,
+) error {
+	response.Text = formatDiscordResponseText(response.Text, r.config.CodexWorkdir)
+	return presentInteraction(discordSession, interaction, response)
 }
 
 func (r *Runtime) routeCommand(ctx context.Context, request commandRequest) (app.MessageResponse, error) {
