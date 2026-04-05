@@ -40,6 +40,7 @@ type Config struct {
 	CodexWebSearchMode         string
 	CodexNetworkAccess         *bool
 	LogLevel                   string
+	LogFormat                  string
 }
 
 var discordCommandNamePattern = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
@@ -64,6 +65,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		"CLAW_CODEX_API_KEY",
 		"CLAW_DISCORD_GUILD_ID",
 		"CLAW_LOG_LEVEL",
+		"CLAW_LOG_FORMAT",
 		"CLAW_CODEX_MODEL",
 		"CLAW_CODEX_SANDBOX_MODE",
 		"CLAW_CODEX_ADDITIONAL_DIRECTORIES",
@@ -111,6 +113,11 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		logLevel = "info"
 	}
 
+	logFormat := values["CLAW_LOG_FORMAT"]
+	if logFormat == "" {
+		logFormat = "json"
+	}
+
 	skipGitRepoCheck, err := loadOptionalBool(values, "CLAW_CODEX_SKIP_GIT_REPO_CHECK")
 	if err != nil {
 		return Config{}, err
@@ -143,6 +150,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		CodexWebSearchMode:         values["CLAW_CODEX_WEB_SEARCH_MODE"],
 		CodexNetworkAccess:         networkAccess,
 		LogLevel:                   logLevel,
+		LogFormat:                  logFormat,
 	}, nil
 }
 

@@ -308,6 +308,8 @@ The first normal message for a new task may spend a moment preparing that task's
   - register slash commands in one guild for faster iteration
 - `CLAW_LOG_LEVEL`
   - logging level, default `info`
+- `CLAW_LOG_FORMAT`
+  - log format, `json` by default, or `text`
 - `CLAW_CODEX_MODEL`
   - choose a Codex model
 - `CLAW_CODEX_BASE_URL`
@@ -328,6 +330,27 @@ The first normal message for a new task may spend a moment preparing that task's
   - `disabled`, `cached`, or `live`
 - `CLAW_CODEX_NETWORK_ACCESS`
   - `true` or `false`
+
+## Observability
+
+39claw emits structured logs through `log/slog`.
+The default output format is JSON so logs can be indexed directly by common log backends.
+Set `CLAW_LOG_FORMAT=text` only when human-readable local debugging is more important than machine parsing.
+
+High-value runtime events include:
+
+- `queue_admission`
+  - fields include `outcome=execute_now|queued|queue_full`, plus `queue_position` when queued
+- `codex_turn_started`
+  - fields include `thread_resumed`, `prompt_char_count`, `image_count`, and `working_directory_set`
+- `codex_turn_finished`
+  - fields include `outcome`, `latency_ms`, `thread_id`, and token usage fields when Codex reports them
+- `queued_turn_started` and `queued_turn_finished`
+  - fields include `queue_wait_ms` and whether shutdown or reply delivery interrupted the queued flow
+- `deferred_reply_delivery`
+  - fields include `outcome=success|failure|dropped_on_shutdown`
+
+Most message-path events also carry routing context such as `component`, `mode`, `logical_key`, `channel_id`, `reply_to_id`, `user_id`, and `task_id` when available.
 
 ## Smoke Test Checklist
 

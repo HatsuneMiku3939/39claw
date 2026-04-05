@@ -54,7 +54,7 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		return err
 	}
 
-	logger, err := observe.NewLogger(cfg.LogLevel)
+	logger, err := observe.NewLogger(cfg.LogLevel, cfg.LogFormat)
 	if err != nil {
 		return err
 	}
