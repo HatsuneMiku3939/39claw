@@ -52,7 +52,7 @@ Until one maintainer performs the first live tagged release, the project still l
 
 Follow `docs/operations/RELEASE_RUNBOOK.md` from a clean, up-to-date `master` checkout and perform the first live tagged release, starting with a small version such as `v0.1.0`. After the draft GitHub Release is created successfully and the attached archives are verified, mark this entry resolved or replace it with any concrete follow-up discovered during the first live run.
 
-### Discord runtime smoke test follow-up
+### Runtime validation strategy and narrow live Discord hardening follow-up
 
 - Status: open
 - Date: 2026-04-05
@@ -61,27 +61,34 @@ Follow `docs/operations/RELEASE_RUNBOOK.md` from a clean, up-to-date `master` ch
 
 ### Context
 
-The Discord runtime implementation has landed and the delivery plans have been archived, but the final manual smoke test against a disposable Discord server was not run before archival because disposable bot credentials were not available in the implementation environment.
+The Discord runtime implementation has landed and the delivery plans have been archived, but the remaining validation debt should no longer be described as broad missing live Discord smoke coverage.
 
-This gap now covers both the general runtime flow and the live validation of Discord-hosted image attachments. Automated tests prove the image download, cleanup, multipart-input forwarding, and deferred reply behavior, but they do not prove the final live Discord path with real attachment hosting and reply delivery.
+The repository already has meaningful automated validation for message mapping, command routing, chunking, image download handling, multipart-input forwarding, queueing, and deferred reply behavior. The stronger long-term direction is to keep expanding that confidence through runtime-agnostic behavioral contracts plus adapter-level fake runtime coverage that can later be reused by future runtimes such as Slack or Telegram.
 
-This follow-up remains intentionally open. For now, the repository accepts a documented gap instead of trying to automate disposable Discord bot provisioning or full live-server validation inside the normal development workflow.
+The live Discord gap should therefore be treated as narrow hardening work around behaviors that automated tests and fake runtimes cannot fully prove, such as real command-registration propagation, hosted attachment fetches, permission or intent quirks, and final reply delivery behavior in a real Discord deployment.
+
+This follow-up remains intentionally open. For now, the repository accepts a documented gap instead of trying to automate disposable Discord bot provisioning or broad live-server validation inside the normal development workflow.
 
 ### Risk
 
-Automated tests prove message mapping, command routing, chunking, presentation behavior, image download handling, and multipart-input forwarding, but they cannot prove that live Discord registration, hosted attachment fetches, and reply flow behave exactly as expected in a real server.
+If this debt keeps a Discord-smoke-centric framing, contributors may over-invest in platform-specific manual checks while under-investing in reusable automated coverage at the application and runtime-adapter boundaries.
 
-Because the gap is documented rather than closed, contributors may incorrectly assume that the live Discord path has already been validated end to end. Any real-server integration regression would therefore be discovered later than a fully automated or regularly executed smoke test would allow.
+Automated tests still cannot prove that real Discord registration, hosted attachment fetches, permission settings, and final reply delivery behave exactly as expected in a live deployment. If those narrow external-platform risks are left implicit, contributors may either assume too much confidence or run ad hoc live checks without a clear trigger.
 
 ### Next step
 
-Keep this entry open until one of the following becomes true:
+Treat this entry as a two-part follow-up:
 
-- a sustainable disposable-bot workflow is available for repeatable live smoke testing
-- a release-hardening pass decides that manual real-server validation is now worth the setup cost
-- a production or staging issue suggests the live Discord path needs explicit end-to-end confirmation
+- continue documenting runtime-agnostic validation boundaries so contributors invest in automated contract and fake-runtime coverage first
+- add adapter-level fake runtime tests for key orchestration flows so most confidence no longer depends on live Discord confirmation
 
-Until then, treat this as explicit technical debt rather than an implicit missing task. When one of the triggers above is met, run the documented smoke test from `README.md` with a disposable Discord bot token and guild ID, including both normal reply and image-attachment scenarios, then either mark this entry resolved or record any runtime-specific fixes in a follow-up ExecPlan.
+Keep the live Discord check as optional hardening until one of the following becomes true:
+
+- a release-hardening pass decides that Discord-specific external behavior now warrants manual confirmation
+- a sustainable disposable-bot workflow is available for repeatable targeted live checks
+- a production or staging issue suggests the real Discord path needs explicit end-to-end confirmation
+
+When one of those triggers is met, run the documented Discord checklist from `README.md` with a disposable bot token and guild ID, focusing on the narrow live-platform remainder such as reply delivery, hosted attachments, and command-registration behavior. Then either mark this entry resolved or record any runtime-specific fixes in a follow-up ExecPlan.
 
 ### Task worktree operator ergonomics follow-up
 

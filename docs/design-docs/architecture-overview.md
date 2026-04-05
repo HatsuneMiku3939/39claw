@@ -98,6 +98,17 @@ Whether Codex consults those files during normal visible turns is controlled by 
 - The waiting queue is intentionally in memory only, so queued turns are lost if the process exits before they run.
 - The short overview here stays subordinate to `ARCHITECTURE.md`, which remains the authoritative source for the full request flow and shutdown behavior.
 
+## Validation View
+
+The shipping runtime is currently Discord, but the validation strategy should already separate reusable product behavior from Discord-specific external-platform hardening.
+
+- automated coverage should be the primary source of confidence
+  - cover message qualification, ignored-message rules, logical-thread resolution handoff, queue admission, queued acknowledgments, deferred reply handoff, command normalization, and normalized response expectations at the app/runtime boundary
+- adapter-level fake runtime tests should drive representative runtime events and capture the visible outputs without requiring a live Discord deployment
+- live Discord smoke remains a narrow optional hardening layer for command-registration propagation, hosted attachment fetches, permission quirks, and final delivery edge cases
+
+This keeps the current Discord implementation practical while making the validation shape easier to reuse if future runtimes such as Slack or Telegram are introduced later.
+
 ## Read Next
 
 - root `ARCHITECTURE.md`

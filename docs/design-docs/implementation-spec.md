@@ -185,9 +185,27 @@ When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guil
 For local development, the safe-default workflow is an ignored `.env.local` file loaded through an ignored `.envrc`.
 Checked-in examples such as `.env.example` and `.envrc.example` must use placeholders only and must not contain live credentials.
 
+## Validation Strategy Defaults
+
+The primary validation story should be reusable automated coverage rather than broad Discord-only live smoke testing.
+Even though v1 ships only a Discord runtime, validation should already be organized so future runtimes such as Slack or Telegram can reuse the same categories.
+
+The repository should treat validation as three layers:
+
+- runtime-agnostic behavior contracts
+  - cover the application and runtime boundary behaviors that should remain stable regardless of the current chat platform
+  - include qualifying message intake, ignored-message conditions, logical-thread handoff, queue admission outcomes, queued acknowledgment behavior, deferred reply delivery handoff, command-intent normalization, and normalized response expectations at the app/runtime boundary
+- adapter-level fake runtime coverage
+  - simulate platform inputs and capture runtime-visible outputs without depending on a live Discord deployment
+  - cover representative normal-message events, command-style intents, attachment metadata inputs, reply targets, payload text, visibility hints, and deferred-delivery timing semantics
+- live-platform hardening
+  - stay narrow and optional instead of acting as the primary quality gate
+  - focus on external-platform behaviors such as real command-registration propagation, hosted attachment fetches, permission or intent quirks, and final delivery edge cases
+
 ## Validation Targets
 
-The initial implementation should demonstrate the following observable behavior:
+The initial implementation should demonstrate the following observable behavior.
+Most of these outcomes should be proven through automated contract coverage plus fake runtime tests, while the narrow live-platform remainder should be handled as optional hardening:
 
 - In `daily` mode, the first qualifying mention creates a thread binding, a second same-day mention reuses it, and the first mention on the next local date creates a new binding after the durable-memory preflight refreshes `AGENT_MEMORY` from the previous day's thread when that previous binding exists.
 - In `daily` mode, startup does not create or rewrite `AGENTS.md`.
@@ -204,3 +222,10 @@ The initial implementation should demonstrate the following observable behavior:
 - Non-mention chatter is ignored, unsupported non-image-only mention posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.
 - Simultaneous requests for the same logical thread do not execute overlapping Codex turns.
 - Simultaneous requests for the same logical thread receive queued acknowledgments and later deferred replies until the waiting queue reaches five items.
+
+Live Discord hardening remains useful only for the smaller set of behaviors that require the real platform, such as:
+
+- command-registration propagation in Discord
+- hosted attachment fetch behavior with real Discord-hosted files
+- permission or intent configuration quirks in a deployed bot
+- final message delivery edge cases that a fake runtime cannot reproduce faithfully
