@@ -27,6 +27,7 @@ These plans are intended to be executed in numeric order. Each plan is self-cont
 
 - [Replace shared `/help` and `/task` slash commands with one instance-specific root command](./active/07-instance-specific-root-command.md)
 - [Add task-isolated Git worktrees to `task` mode](./active/08-task-mode-worktree-isolation.md)
+- [Add a durable memory bridge to `daily` mode](./active/09-daily-memory-bridge.md)
 
 ## Recently Completed Plans
 
