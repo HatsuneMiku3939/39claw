@@ -22,7 +22,7 @@ Each bot instance is configured against a repository-shaped working directory, a
 This leads to two distinct mode families on the same foundation:
 
 - `daily`
-  - knowledge-oriented interaction against repository instructions and documentation
+  - knowledge-oriented interaction against repository instructions and documentation, with fresh daily threads plus a runtime-managed durable-memory bridge under `AGENT_MEMORY/`
 - `task`
   - execution-oriented interaction against a Git work repository where each task eventually runs inside its own task-specific worktree
 
@@ -71,12 +71,16 @@ Adapts normalized application output into Discord-safe responses.
 1. Discord receives a user message
 2. Runtime normalizes the request
 3. Application service asks the thread policy for a thread key
-4. Thread store checks whether a Codex thread already exists
-5. Application service sends the turn through the Codex gateway with the saved thread ID when one exists
-6. If no saved thread exists yet, the first turn creates one and returns its thread ID
-7. Application service persists the returned binding
-8. Response presenter formats the result
-9. Discord runtime posts the reply
+4. In `daily` mode, the first turn of a new local day may run a hidden preflight refresh against the previous daily thread to update `AGENT_MEMORY`
+5. Thread store checks whether a Codex thread already exists for the visible turn
+6. Application service sends the turn through the Codex gateway with the saved thread ID when one exists
+7. If no saved thread exists yet, the first turn creates one and returns its thread ID
+8. Application service persists the returned binding
+9. Response presenter formats the result
+10. Discord runtime posts the reply
+
+The runtime-owned part stops at creating and refreshing the memory files themselves.
+Whether Codex consults those files during normal visible turns is controlled by the user-owned instructions already present in the workdir, such as `AGENTS.md`.
 ```
 
 ## Read Next

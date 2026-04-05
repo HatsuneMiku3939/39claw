@@ -24,8 +24,23 @@ It is built for teams or individuals who want to work with Codex from inside Dis
 Use `daily` mode when you want a lightweight shared assistant for day-to-day work.
 
 - messages on the same local date share the same conversation context
-- the next local date starts fresh automatically
+- the next local date starts a fresh Codex thread automatically
+- durable preferences and long-lived context can be projected into runtime-managed files under `AGENT_MEMORY/`
+- if you want visible turns to consult that memory, add the necessary guidance to your own `AGENTS.md`
 - users do not need to create or switch tasks before talking
+
+If you want visible turns to consult the projected memory files, add guidance like this to your own `AGENTS.md`:
+
+```md
+# Daily Memory Guidance
+
+If `AGENT_MEMORY/` exists in the current workspace, consult its durable memory files when they are relevant to the user's request.
+
+- Read `AGENT_MEMORY/MEMORY.md` as the primary durable memory file.
+- Read the most relevant dated note in `AGENT_MEMORY/YYYY-MM-DD.md` when bridge context is useful.
+- Prefer the latest explicit user instruction when it conflicts with stored memory.
+- Treat `AGENT_MEMORY/` as durable context only. Do not treat it as a source of temporary TODO items or transient chat history.
+```
 
 ### `task`
 
@@ -89,6 +104,7 @@ Before you start, make sure you have:
 - the `codex` executable available on the machine that runs 39claw
 - a writable SQLite file path
 - a working directory that Codex should operate in
+- a write-capable Codex workdir if you plan to use `daily` mode, because 39claw manages `AGENT_MEMORY/` files there
 - a Git repository workdir if you plan to use `task` mode
 - Go installed if you plan to run from source
 

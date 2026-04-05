@@ -29,12 +29,15 @@ thread_key = local_date
 - if a Codex thread is already bound to that key, 39claw resumes it
 - if no binding exists, 39claw creates a new Codex thread
 - when the date changes, a new logical thread is used automatically
+- before the first visible turn for that new day, 39claw may resume the previous day's Codex thread once to refresh durable Markdown memory under `AGENT_MEMORY/`
+- the visible turn for the new day still starts a fresh Codex thread even when durable memory is carried forward
 
 ### UX Properties
 
 - no explicit thread command is required for normal use
 - continuity exists within the same day
-- context resets naturally across days
+- the remote thread resets naturally across days
+- durable preferences or long-lived context can still carry forward through runtime-managed memory files
 
 ### Tradeoffs
 
@@ -47,9 +50,10 @@ Benefits:
 
 Costs:
 
-- long-running work may be split across calendar boundaries
+- long-running work may still be split across remote thread boundaries
 - unrelated same-day conversations may share context
 - the definition of "day" depends on a configured timezone
+- the durable-memory bridge depends on a write-capable Codex sandbox and managed files inside the configured workdir
 
 ## Mode B: `task`
 

@@ -176,6 +176,95 @@ func TestMessageServiceHandleMessageDailyRollsOverOnNextDay(t *testing.T) {
 	}
 }
 
+func TestMessageServiceHandleMessageDailyRefreshesBeforeVisibleTurn(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		bindings: map[string]app.ThreadBinding{
+			"daily:2026-04-05": {
+				Mode:             "daily",
+				LogicalThreadKey: "2026-04-05",
+				CodexThreadID:    "thread-previous",
+			},
+		},
+	}
+
+	sequence := make([]string, 0, 2)
+	refresher := &fakeDailyMemoryRefresher{sequence: &sequence}
+	gateway := &fakeCodexGateway{
+		sequence: &sequence,
+		results: []app.RunTurnResult{
+			{ThreadID: "thread-new", ResponseText: "Fresh day"},
+		},
+	}
+
+	service := newDailyMessageServiceWithRefresher(t, store, gateway, refresher, nil)
+
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		MessageID:  "message-1",
+		Content:    "hello again",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 15, 1, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	if response.Text != "Fresh day" {
+		t.Fatalf("response text = %q, want %q", response.Text, "Fresh day")
+	}
+
+	if got, want := sequence, []string{"refresh", "turn"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("sequence = %v, want %v", got, want)
+	}
+
+	calls := refresher.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("RefreshBeforeFirstDailyTurn() call count = %d, want 1", len(calls))
+	}
+
+	if calls[0].logicalKey != "2026-04-06" {
+		t.Fatalf("refresher logical key = %q, want %q", calls[0].logicalKey, "2026-04-06")
+	}
+}
+
+func TestMessageServiceHandleMessageDailyContinuesWhenRefreshFails(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{}
+	sequence := make([]string, 0, 2)
+	refresher := &fakeDailyMemoryRefresher{
+		err:      errors.New("refresh failed"),
+		sequence: &sequence,
+	}
+	gateway := &fakeCodexGateway{
+		sequence: &sequence,
+		results: []app.RunTurnResult{
+			{ThreadID: "thread-1", ResponseText: "Visible response"},
+		},
+	}
+
+	service := newDailyMessageServiceWithRefresher(t, store, gateway, refresher, nil)
+
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		MessageID:  "message-1",
+		Content:    "still answer me",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	if response.Text != "Visible response" {
+		t.Fatalf("response text = %q, want %q", response.Text, "Visible response")
+	}
+
+	if got, want := sequence, []string{"refresh", "turn"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("sequence = %v, want %v", got, want)
+	}
+}
+
 func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 	t.Parallel()
 
@@ -744,6 +833,18 @@ func newDailyMessageService(
 ) *app.DefaultMessageService {
 	t.Helper()
 
+	return newDailyMessageServiceWithRefresher(t, store, gateway, noopDailyMemoryRefresher{}, coordinator)
+}
+
+func newDailyMessageServiceWithRefresher(
+	t *testing.T,
+	store app.ThreadStore,
+	gateway app.CodexGateway,
+	refresher app.DailyMemoryRefresher,
+	coordinator app.QueueCoordinator,
+) *app.DefaultMessageService {
+	t.Helper()
+
 	tokyo, err := time.LoadLocation("Asia/Tokyo")
 	if err != nil {
 		t.Fatalf("time.LoadLocation() error = %v", err)
@@ -763,6 +864,7 @@ func newDailyMessageService(
 		CommandName: "release",
 		Policy:      policy,
 		Store:       store,
+		DailyMemory: refresher,
 		Gateway:     gateway,
 		Coordinator: coordinator,
 	})
@@ -869,10 +971,11 @@ func (c *stubQueueCoordinator) Complete(string) (func(), bool) {
 }
 
 type fakeCodexGateway struct {
-	mu      sync.Mutex
-	calls   []runTurnCall
-	results []app.RunTurnResult
-	err     error
+	mu       sync.Mutex
+	calls    []runTurnCall
+	results  []app.RunTurnResult
+	err      error
+	sequence *[]string
 }
 
 type runTurnCall struct {
@@ -894,6 +997,10 @@ func (g *fakeCodexGateway) RunTurn(_ context.Context, threadID string, input app
 			WorkingDirectory: input.WorkingDirectory,
 		},
 	})
+
+	if g.sequence != nil {
+		*g.sequence = append(*g.sequence, "turn")
+	}
 
 	if g.err != nil {
 		return app.RunTurnResult{}, g.err
@@ -925,6 +1032,49 @@ type blockingCodexGateway struct {
 	started   chan struct{}
 	release   chan struct{}
 	startOnce sync.Once
+}
+
+type noopDailyMemoryRefresher struct{}
+
+func (noopDailyMemoryRefresher) RefreshBeforeFirstDailyTurn(context.Context, string, time.Time) error {
+	return nil
+}
+
+type dailyMemoryCall struct {
+	logicalKey string
+	receivedAt time.Time
+}
+
+type fakeDailyMemoryRefresher struct {
+	mu       sync.Mutex
+	calls    []dailyMemoryCall
+	err      error
+	sequence *[]string
+}
+
+func (r *fakeDailyMemoryRefresher) RefreshBeforeFirstDailyTurn(_ context.Context, logicalKey string, receivedAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.calls = append(r.calls, dailyMemoryCall{
+		logicalKey: logicalKey,
+		receivedAt: receivedAt,
+	})
+
+	if r.sequence != nil {
+		*r.sequence = append(*r.sequence, "refresh")
+	}
+
+	return r.err
+}
+
+func (r *fakeDailyMemoryRefresher) Calls() []dailyMemoryCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	calls := make([]dailyMemoryCall, len(r.calls))
+	copy(calls, r.calls)
+	return calls
 }
 
 func newBlockingCodexGateway(results ...app.RunTurnResult) *blockingCodexGateway {

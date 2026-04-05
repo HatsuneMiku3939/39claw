@@ -1,6 +1,9 @@
 package app
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type ThreadPolicy interface {
 	ResolveMessageKey(ctx context.Context, request MessageRequest) (string, error)
@@ -14,6 +17,10 @@ type DeferredReplySinkFunc func(ctx context.Context, response MessageResponse) e
 
 func (f DeferredReplySinkFunc) Deliver(ctx context.Context, response MessageResponse) error {
 	return f(ctx, response)
+}
+
+type DailyMemoryRefresher interface {
+	RefreshBeforeFirstDailyTurn(ctx context.Context, logicalKey string, receivedAt time.Time) error
 }
 
 type ThreadStore interface {

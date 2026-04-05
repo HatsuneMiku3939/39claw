@@ -18,7 +18,7 @@ At a product level, this mode should feel like talking to a living knowledge bas
 In `daily` mode, the bot should feel like:
 
 - a shared conversation that continues during the current day
-- a fresh start on a new day
+- a fresh remote thread on a new day without losing durable preferences or other long-lived context
 - a tool that does not require explicit setup for normal use
 
 ## Core Experience Rules
@@ -31,10 +31,10 @@ The user should be able to send a message without first creating a task, selecti
 
 Messages handled on the same local date should feel like they continue the same line of work unless the product explicitly says otherwise.
 
-### 3. Day boundaries should reset context cleanly
+### 3. Day boundaries should reset the thread cleanly without discarding durable memory
 
-When the relevant local date changes, the user should experience a fresh conversation context.
-This should feel predictable rather than surprising.
+When the relevant local date changes, the user should experience a fresh conversation thread.
+That reset should feel predictable rather than surprising, while durable facts that matter on future days may still carry forward through the runtime-managed memory bridge.
 
 ### 4. The bot should avoid over-explaining thread mechanics
 
@@ -91,13 +91,15 @@ Expected flow:
 
 1. The user sends a message after the local date has changed.
 2. 39claw resolves a new daily bucket automatically.
-3. If no thread exists for the new bucket, 39claw creates a new one.
-4. The response begins from a fresh context unless the user supplies previous context again.
+3. If no thread exists for the new bucket and a previous-day daily thread exists, 39claw first runs a hidden memory-refresh preflight against that previous thread.
+4. The preflight updates `AGENT_MEMORY/MEMORY.md` plus today's `AGENT_MEMORY/YYYY-MM-DD.md` note.
+5. 39claw creates the new day's visible Codex thread.
+6. The response begins from a fresh thread and may reflect durable remembered preferences or long-lived context when the deployment's own instructions tell Codex to consult the projected memory files.
 
 Expected user perception:
 
 - “Today feels like a fresh session.”
-- “The reset is expected and understandable.”
+- “I still do not have to restate durable preferences every morning.”
 
 ## UX Requirements
 
@@ -111,7 +113,8 @@ Continuity should be preserved:
 
 - on the same configured local date
 
-Continuity should not be assumed across different days unless the product later adds an explicit bridging workflow.
+Across different days, same-thread continuity should not be assumed, but durable memory may still be projected forward through the runtime-managed Markdown bridge.
+Whether that projected memory affects normal visible turns depends on the deployment's own instructions rather than on 39claw rewriting user-owned instruction files.
 Changing channels within the same bot instance should not reset the daily context by itself.
 
 ### Response tone
@@ -131,6 +134,8 @@ If the bot cannot resolve or create the required thread, it should:
 - explain that it could not continue the conversation
 - avoid leaking unnecessary internal detail
 - tell the user whether retrying is likely to help
+
+If the hidden new-day memory refresh fails, the bot should still continue with the visible reply instead of failing the whole user request.
 
 ### Timezone confusion
 
@@ -153,7 +158,7 @@ If multiple same-day requests stack up while one turn is already running, up to 
 
 - long-lived project management
 - explicit task switching
-- multi-day durable work context without re-grounding
+- reusing the same remote Codex thread across multiple local days
 
 ## Decisions
 

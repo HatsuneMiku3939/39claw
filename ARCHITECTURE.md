@@ -142,10 +142,11 @@ Responsibilities:
 1. accept a normalized message request
 2. ask the thread policy for a logical thread key
 3. coordinate same-key execution and bounded queue admission
-4. load any existing binding from the thread store
-5. call the Codex gateway with or without an existing thread ID
-6. persist the returned thread ID when a new binding is created or updated
-7. return an immediate response and, when needed, deliver a deferred follow-up reply
+4. in `daily` mode, run the durable-memory preflight before the first visible turn of a new local day when the previous day's binding exists
+5. load any existing binding from the thread store
+6. call the Codex gateway with or without an existing thread ID
+7. persist the returned thread ID when a new binding is created or updated
+8. return an immediate response and, when needed, deliver a deferred follow-up reply
 
 ### 6.3 Thread Policy
 
@@ -225,7 +226,8 @@ Behavior:
 - incoming messages automatically resolve to today's bucket
 - if a thread exists for that key, resume it by passing the saved thread ID into the next turn
 - otherwise run the first turn without a saved thread ID and persist the returned thread ID
-- when the date changes, the logical bucket changes automatically
+- when the date changes, the logical bucket changes automatically and the next visible turn starts a fresh Codex thread for the new key
+- before that first visible new-day turn, 39claw resumes the previous daily thread once and runs a runtime-managed durable-memory refresh into `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/MEMORY.md` plus `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/YYYY-MM-DD.md`
 - Codex answers by following repository guidance and consulting the documentation in that repository
 
 Properties:
@@ -233,12 +235,16 @@ Properties:
 - no explicit thread command is required for normal usage
 - simple and low-friction
 - best for shared, conversation-oriented assistant flows
+- same-day continuity comes from the remote Codex thread
+- cross-day durable memory can be projected into Markdown files inside the workdir without 39claw modifying user-owned `AGENTS.md`
+- whether normal visible turns consult those memory files is controlled by the user-owned instructions in the workdir
 
 Tradeoffs:
 
-- long-running work may be split across date boundaries
+- long-running work still crosses a fresh remote-thread boundary at the start of a new day
 - unrelated same-day conversations may influence one another inside the shared daily context
 - timezone must be an explicit configuration concern
+- the durable-memory bridge requires a write-capable Codex sandbox because 39claw must update files inside `CLAW_CODEX_WORKDIR`
 
 ## 7.2 `task`
 

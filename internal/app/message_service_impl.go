@@ -22,6 +22,7 @@ type MessageServiceDependencies struct {
 	Policy           ThreadPolicy
 	Store            ThreadStore
 	WorkspaceManager TaskWorkspaceManager
+	DailyMemory      DailyMemoryRefresher
 	Gateway          CodexGateway
 	Coordinator      QueueCoordinator
 }
@@ -32,6 +33,7 @@ type DefaultMessageService struct {
 	policy      ThreadPolicy
 	store       ThreadStore
 	worktrees   TaskWorkspaceManager
+	dailyMemory DailyMemoryRefresher
 	gateway     CodexGateway
 	coordinator QueueCoordinator
 }
@@ -58,6 +60,10 @@ func NewMessageService(deps MessageServiceDependencies) (*DefaultMessageService,
 		return nil, errors.New("task workspace manager must not be nil in task mode")
 	}
 
+	if deps.Mode == config.ModeDaily && deps.DailyMemory == nil {
+		return nil, errors.New("daily memory refresher must not be nil in daily mode")
+	}
+
 	if deps.Gateway == nil {
 		return nil, errors.New("codex gateway must not be nil")
 	}
@@ -72,6 +78,7 @@ func NewMessageService(deps MessageServiceDependencies) (*DefaultMessageService,
 		policy:      deps.Policy,
 		store:       deps.Store,
 		worktrees:   deps.WorkspaceManager,
+		dailyMemory: deps.DailyMemory,
 		gateway:     deps.Gateway,
 		coordinator: deps.Coordinator,
 	}, nil
@@ -132,6 +139,7 @@ type preparedMessage struct {
 	userID     string
 	taskID     string
 	replyToID  string
+	receivedAt time.Time
 	input      CodexTurnInput
 	sink       DeferredReplySink
 	cleanup    func()
@@ -159,6 +167,7 @@ func (s *DefaultMessageService) prepareMessage(
 		logicalKey: logicalKey,
 		userID:     request.UserID,
 		replyToID:  request.MessageID,
+		receivedAt: request.ReceivedAt,
 		input: CodexTurnInput{
 			Prompt:     request.Content,
 			ImagePaths: append([]string(nil), request.ImagePaths...),
@@ -202,6 +211,12 @@ func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prep
 		}
 
 		prepared.input.WorkingDirectory = task.WorktreePath
+	}
+
+	if s.mode == config.ModeDaily {
+		if err := s.dailyMemory.RefreshBeforeFirstDailyTurn(ctx, prepared.logicalKey, prepared.receivedAt); err != nil {
+			slog.Error("refresh daily memory bridge", "logical_key", prepared.logicalKey, "error", err)
+		}
 	}
 
 	binding, ok, err := s.store.GetThreadBinding(ctx, string(s.mode), prepared.logicalKey)

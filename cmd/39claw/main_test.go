@@ -32,6 +32,7 @@ func TestRun(t *testing.T) {
 		name              string
 		env               map[string]string
 		wantThreadOptions codex.ThreadOptions
+		wantBootstrap     bool
 		wantErr           string
 	}{
 		{
@@ -59,6 +60,7 @@ func TestRun(t *testing.T) {
 				SandboxMode:      codex.SandboxModeWorkspaceWrite,
 				WebSearchMode:    codex.WebSearchModeLive,
 			},
+			wantBootstrap: true,
 		},
 		{
 			name: "passes configured codex thread options to gateway",
@@ -89,6 +91,20 @@ func TestRun(t *testing.T) {
 				WebSearchMode:         codex.WebSearchModeCached,
 				ApprovalPolicy:        codex.ApprovalModeOnRequest,
 			},
+		},
+		{
+			name: "rejects read-only sandbox in daily mode",
+			env: map[string]string{
+				"CLAW_MODE":                 "daily",
+				"CLAW_TIMEZONE":             "Asia/Tokyo",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "daily",
+				"CLAW_CODEX_WORKDIR":        "/workspace/project",
+				"CLAW_DATADIR":              "/tmp/39claw-data",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
+				"CLAW_CODEX_SANDBOX_MODE":   "read-only",
+			},
+			wantErr: "daily memory bridge requires CLAW_CODEX_SANDBOX_MODE to allow writes inside CLAW_CODEX_WORKDIR",
 		},
 		{
 			name: "rejects non-git workdir in task mode during startup",
@@ -133,6 +149,15 @@ func TestRun(t *testing.T) {
 				env["CLAW_DATADIR"] = t.TempDir()
 			}
 
+			if env["CLAW_MODE"] == "daily" {
+				workdir := filepath.Join(t.TempDir(), "daily-workdir")
+				if err := os.MkdirAll(workdir, 0o755); err != nil {
+					t.Fatalf("MkdirAll(daily-workdir) error = %v", err)
+				}
+				env["CLAW_CODEX_WORKDIR"] = workdir
+				tt.wantThreadOptions.WorkingDirectory = workdir
+			}
+
 			if env["CLAW_MODE"] == "task" && tt.wantErr == "" {
 				workdir := filepath.Join(t.TempDir(), "repo")
 				if err := os.MkdirAll(filepath.Join(workdir, ".git"), 0o755); err != nil {
@@ -163,6 +188,17 @@ func TestRun(t *testing.T) {
 			}
 
 			assertThreadOptionsEqual(t, capturedOptions.ThreadOptions, tt.wantThreadOptions)
+
+			if tt.wantBootstrap {
+				assertFileExists(t, filepath.Join(env["CLAW_CODEX_WORKDIR"], "AGENT_MEMORY", "MEMORY.md"))
+				assertFileExists(t, filepath.Join(
+					env["CLAW_CODEX_WORKDIR"],
+					".agents",
+					"skills",
+					"39claw-daily-memory-refresh",
+					"SKILL.md",
+				))
+			}
 		})
 	}
 }
@@ -345,4 +381,17 @@ func assertThreadOptionsEqual(t *testing.T, got codex.ThreadOptions, want codex.
 
 func boolPtr(value bool) *bool {
 	return &value
+}
+
+func assertFileExists(t *testing.T, path string) {
+	t.Helper()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat(%s) error = %v", path, err)
+	}
+
+	if info.IsDir() {
+		t.Fatalf("Stat(%s) returned a directory, want file", path)
+	}
 }
