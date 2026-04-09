@@ -158,11 +158,10 @@ func (e *executor) buildArgs(request execRequest) []string {
 }
 
 func (e *executor) buildEnv() map[string]string {
-	var env map[string]string
-	if len(e.env) > 0 {
-		env = cloneStringMap(e.env)
-	} else {
-		env = cloneCurrentEnv()
+	env := cloneCurrentEnv()
+
+	for key, value := range e.env {
+		env[key] = value
 	}
 
 	if env[originatorEnvKey] == "" {

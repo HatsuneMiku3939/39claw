@@ -177,6 +177,24 @@ func TestThreadRunPassesConfiguredEnvironmentVariables(t *testing.T) {
 	}
 }
 
+func TestThreadRunInheritsParentEnvironmentVariables(t *testing.T) {
+	t.Setenv("CODEX_TEST_PARENT_ENV", "inherited-value")
+
+	client, recorder := newTestClientWithEnv(t, "single-success", map[string]string{
+		"CODEX_HOME": "/tmp/custom-codex-home",
+	})
+	thread := client.StartThread(ThreadOptions{})
+
+	if _, err := thread.Run(context.Background(), TextInput("hello")); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	record := readInvocationRecord(t, recorder)
+	if record.Env["CODEX_TEST_PARENT_ENV"] != "inherited-value" {
+		t.Fatalf("CODEX_TEST_PARENT_ENV = %q, want %q", record.Env["CODEX_TEST_PARENT_ENV"], "inherited-value")
+	}
+}
+
 func TestRunReturnsTurnFailure(t *testing.T) {
 	t.Parallel()
 
@@ -384,7 +402,8 @@ func runHelperProcess() error {
 		Args:  args,
 		Stdin: string(stdin),
 		Env: map[string]string{
-			"CODEX_HOME": os.Getenv("CODEX_HOME"),
+			"CODEX_HOME":            os.Getenv("CODEX_HOME"),
+			"CODEX_TEST_PARENT_ENV": os.Getenv("CODEX_TEST_PARENT_ENV"),
 		},
 	}); err != nil {
 		return fmt.Errorf("append record: %w", err)
