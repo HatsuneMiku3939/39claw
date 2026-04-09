@@ -94,7 +94,7 @@ func TestMessageServiceHandleMessageDailyReusesSameDayBinding(t *testing.T) {
 		t.Fatalf("second thread id = %q, want %q", calls[1].threadID, "thread-1")
 	}
 
-	binding, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05")
+	binding, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05#1")
 	if err != nil {
 		t.Fatalf("GetThreadBinding() error = %v", err)
 	}
@@ -200,11 +200,11 @@ func TestMessageServiceHandleMessageDailyRollsOverOnNextDay(t *testing.T) {
 		t.Fatalf("second thread id = %q, want empty", calls[1].threadID)
 	}
 
-	if _, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05"); err != nil || !ok {
+	if _, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05#1"); err != nil || !ok {
 		t.Fatalf("same-day binding lookup = ok:%v err:%v, want ok:true err:nil", ok, err)
 	}
 
-	nextBinding, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-06")
+	nextBinding, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-06#1")
 	if err != nil {
 		t.Fatalf("GetThreadBinding() next day error = %v", err)
 	}
@@ -223,10 +223,19 @@ func TestMessageServiceHandleMessageDailyRefreshesBeforeVisibleTurn(t *testing.T
 
 	store := &memoryThreadStore{
 		bindings: map[string]app.ThreadBinding{
-			"daily:2026-04-05": {
+			"daily:2026-04-05#1": {
 				Mode:             "daily",
-				LogicalThreadKey: "2026-04-05",
+				LogicalThreadKey: "2026-04-05#1",
 				CodexThreadID:    "thread-previous",
+			},
+		},
+		dailySessions: map[string]app.DailySession{
+			"2026-04-05:2026-04-05#1": {
+				LocalDate:        "2026-04-05",
+				Generation:       1,
+				LogicalThreadKey: "2026-04-05#1",
+				ActivationReason: app.DailySessionActivationAutomatic,
+				IsActive:         true,
 			},
 		},
 	}
@@ -265,8 +274,16 @@ func TestMessageServiceHandleMessageDailyRefreshesBeforeVisibleTurn(t *testing.T
 		t.Fatalf("RefreshBeforeFirstDailyTurn() call count = %d, want 1", len(calls))
 	}
 
-	if calls[0].logicalKey != "2026-04-06" {
-		t.Fatalf("refresher logical key = %q, want %q", calls[0].logicalKey, "2026-04-06")
+	if calls[0].session.LogicalThreadKey != "2026-04-06#1" {
+		t.Fatalf("refresher logical key = %q, want %q", calls[0].session.LogicalThreadKey, "2026-04-06#1")
+	}
+
+	if calls[0].session.PreviousLogicalThreadKey != "2026-04-05#1" {
+		t.Fatalf(
+			"refresher previous logical key = %q, want %q",
+			calls[0].session.PreviousLogicalThreadKey,
+			"2026-04-05#1",
+		)
 	}
 }
 
@@ -304,6 +321,87 @@ func TestMessageServiceHandleMessageDailyContinuesWhenRefreshFails(t *testing.T)
 
 	if got, want := sequence, []string{"refresh", "turn"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("sequence = %v, want %v", got, want)
+	}
+}
+
+func TestMessageServiceHandleMessageDailyTargetsFreshGenerationAfterClear(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		bindings: map[string]app.ThreadBinding{
+			"daily:2026-04-05#1": {
+				Mode:             "daily",
+				LogicalThreadKey: "2026-04-05#1",
+				CodexThreadID:    "thread-previous",
+			},
+		},
+		dailySessions: map[string]app.DailySession{
+			"2026-04-05:2026-04-05#2": {
+				LocalDate:                "2026-04-05",
+				Generation:               2,
+				LogicalThreadKey:         "2026-04-05#2",
+				PreviousLogicalThreadKey: "2026-04-05#1",
+				ActivationReason:         app.DailySessionActivationClear,
+				IsActive:                 true,
+			},
+		},
+	}
+
+	refresher := &fakeDailyMemoryRefresher{}
+	gateway := &fakeCodexGateway{
+		results: []app.RunTurnResult{
+			{ThreadID: "thread-fresh", ResponseText: "Fresh same-day generation"},
+		},
+	}
+
+	service := newDailyMessageServiceWithRefresher(t, store, gateway, refresher, nil)
+
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		MessageID:  "message-1",
+		Content:    "fresh start please",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 10, 0, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	if response.Text != "Fresh same-day generation" {
+		t.Fatalf("response text = %q, want %q", response.Text, "Fresh same-day generation")
+	}
+
+	calls := gateway.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 1)
+	}
+	if calls[0].threadID != "" {
+		t.Fatalf("threadID = %q, want empty", calls[0].threadID)
+	}
+
+	refreshCalls := refresher.Calls()
+	if len(refreshCalls) != 1 {
+		t.Fatalf("RefreshBeforeFirstDailyTurn() call count = %d, want 1", len(refreshCalls))
+	}
+	if refreshCalls[0].session.LogicalThreadKey != "2026-04-05#2" {
+		t.Fatalf("refresher logical key = %q, want %q", refreshCalls[0].session.LogicalThreadKey, "2026-04-05#2")
+	}
+	if refreshCalls[0].session.PreviousLogicalThreadKey != "2026-04-05#1" {
+		t.Fatalf(
+			"refresher previous logical key = %q, want %q",
+			refreshCalls[0].session.PreviousLogicalThreadKey,
+			"2026-04-05#1",
+		)
+	}
+
+	binding, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05#2")
+	if err != nil {
+		t.Fatalf("GetThreadBinding() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetThreadBinding() ok = false, want true")
+	}
+	if binding.CodexThreadID != "thread-fresh" {
+		t.Fatalf("CodexThreadID = %q, want %q", binding.CodexThreadID, "thread-fresh")
 	}
 }
 
@@ -1298,6 +1396,7 @@ func (s stubThreadPolicy) ResolveMessageKey(context.Context, app.MessageRequest)
 type stubQueueCoordinator struct {
 	admission app.QueueAdmission
 	err       error
+	snapshot  app.QueueSnapshot
 }
 
 func (c *stubQueueCoordinator) Admit(string, func()) (app.QueueAdmission, error) {
@@ -1314,6 +1413,10 @@ func (c *stubQueueCoordinator) Admit(string, func()) (app.QueueAdmission, error)
 
 func (c *stubQueueCoordinator) Complete(string) (func(), bool) {
 	return nil, false
+}
+
+func (c *stubQueueCoordinator) Snapshot(string) app.QueueSnapshot {
+	return c.snapshot
 }
 
 type fakeCodexGateway struct {
@@ -1391,13 +1494,12 @@ type blockingCodexGateway struct {
 
 type noopDailyMemoryRefresher struct{}
 
-func (noopDailyMemoryRefresher) RefreshBeforeFirstDailyTurn(context.Context, string, time.Time) error {
+func (noopDailyMemoryRefresher) RefreshBeforeFirstDailyTurn(context.Context, app.DailySession) error {
 	return nil
 }
 
 type dailyMemoryCall struct {
-	logicalKey string
-	receivedAt time.Time
+	session app.DailySession
 }
 
 type fakeDailyMemoryRefresher struct {
@@ -1407,13 +1509,12 @@ type fakeDailyMemoryRefresher struct {
 	sequence *[]string
 }
 
-func (r *fakeDailyMemoryRefresher) RefreshBeforeFirstDailyTurn(_ context.Context, logicalKey string, receivedAt time.Time) error {
+func (r *fakeDailyMemoryRefresher) RefreshBeforeFirstDailyTurn(_ context.Context, session app.DailySession) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.calls = append(r.calls, dailyMemoryCall{
-		logicalKey: logicalKey,
-		receivedAt: receivedAt,
+		session: session,
 	})
 
 	if r.sequence != nil {
@@ -1547,10 +1648,11 @@ func (g *scriptedCodexGateway) Calls() []runTurnCall {
 }
 
 type memoryThreadStore struct {
-	mu          sync.Mutex
-	bindings    map[string]app.ThreadBinding
-	tasks       map[string]app.Task
-	activeTasks map[string]app.ActiveTask
+	mu            sync.Mutex
+	bindings      map[string]app.ThreadBinding
+	dailySessions map[string]app.DailySession
+	tasks         map[string]app.Task
+	activeTasks   map[string]app.ActiveTask
 }
 
 func (s *memoryThreadStore) GetThreadBinding(_ context.Context, mode string, logicalThreadKey string) (app.ThreadBinding, bool, error) {
@@ -1575,6 +1677,106 @@ func (s *memoryThreadStore) UpsertThreadBinding(_ context.Context, binding app.T
 
 	s.bindings[binding.Mode+":"+binding.LogicalThreadKey] = binding
 	return nil
+}
+
+func (s *memoryThreadStore) GetActiveDailySession(_ context.Context, localDate string) (app.DailySession, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, session := range s.dailySessions {
+		if session.LocalDate == localDate && session.IsActive {
+			return session, true, nil
+		}
+	}
+
+	return app.DailySession{}, false, nil
+}
+
+func (s *memoryThreadStore) GetLatestDailySessionBefore(_ context.Context, localDate string) (app.DailySession, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var latest app.DailySession
+	ok := false
+	for _, session := range s.dailySessions {
+		if !session.IsActive || session.LocalDate >= localDate {
+			continue
+		}
+
+		if !ok || session.LocalDate > latest.LocalDate || (session.LocalDate == latest.LocalDate && session.Generation > latest.Generation) {
+			latest = session
+			ok = true
+		}
+	}
+
+	return latest, ok, nil
+}
+
+func (s *memoryThreadStore) CreateDailySession(_ context.Context, session app.DailySession) (app.DailySession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, existing := range s.dailySessions {
+		if existing.LocalDate == session.LocalDate && existing.IsActive {
+			return existing, nil
+		}
+	}
+
+	if s.dailySessions == nil {
+		s.dailySessions = make(map[string]app.DailySession)
+	}
+
+	if session.CreatedAt.IsZero() {
+		session.CreatedAt = time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC)
+	}
+	if session.UpdatedAt.IsZero() {
+		session.UpdatedAt = session.CreatedAt
+	}
+	session.IsActive = true
+	s.dailySessions[session.LocalDate+":"+app.BuildDailyLogicalKey(session.LocalDate, session.Generation)] = session
+	return session, nil
+}
+
+func (s *memoryThreadStore) RotateDailySession(_ context.Context, localDate string, activationReason string) (app.DailySession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.dailySessions == nil {
+		return app.DailySession{}, sql.ErrNoRows
+	}
+
+	var activeKey string
+	var active app.DailySession
+	ok := false
+	for key, session := range s.dailySessions {
+		if session.LocalDate == localDate && session.IsActive {
+			activeKey = key
+			active = session
+			ok = true
+			break
+		}
+	}
+
+	if !ok {
+		return app.DailySession{}, sql.ErrNoRows
+	}
+
+	active.IsActive = false
+	s.dailySessions[activeKey] = active
+
+	next := app.DailySession{
+		LocalDate:                localDate,
+		Generation:               active.Generation + 1,
+		LogicalThreadKey:         app.BuildDailyLogicalKey(localDate, active.Generation+1),
+		PreviousLogicalThreadKey: active.LogicalThreadKey,
+		ActivationReason:         activationReason,
+		IsActive:                 true,
+		CreatedAt:                time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		UpdatedAt:                time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}
+	s.dailySessions[next.LocalDate+":"+next.LogicalThreadKey] = next
+
+	return next, nil
 }
 
 func (s *memoryThreadStore) CreateTask(_ context.Context, task app.Task) error {

@@ -24,6 +24,7 @@ type Dependencies struct {
 	Config               config.Config
 	Logger               *slog.Logger
 	Message              app.MessageService
+	DailyCommand         app.DailyCommandService
 	TaskCommand          app.TaskCommandService
 	SessionFactory       sessionFactory
 	HTTPClient           attachmentHTTPClient
@@ -31,10 +32,11 @@ type Dependencies struct {
 }
 
 type Runtime struct {
-	config      config.Config
-	logger      *slog.Logger
-	message     app.MessageService
-	taskCommand app.TaskCommandService
+	config       config.Config
+	logger       *slog.Logger
+	message      app.MessageService
+	dailyCommand app.DailyCommandService
+	taskCommand  app.TaskCommandService
 
 	sessionFactory sessionFactory
 	httpClient     attachmentHTTPClient
@@ -58,8 +60,12 @@ func NewRuntime(deps Dependencies) (*Runtime, error) {
 		return nil, errors.New("message service must not be nil")
 	}
 
-	if deps.TaskCommand == nil {
-		return nil, errors.New("task command service must not be nil")
+	if deps.Config.Mode == config.ModeDaily && deps.DailyCommand == nil {
+		return nil, errors.New("daily command service must not be nil in daily mode")
+	}
+
+	if deps.Config.Mode == config.ModeTask && deps.TaskCommand == nil {
+		return nil, errors.New("task command service must not be nil in task mode")
 	}
 
 	if deps.Config.DiscordToken == "" {
@@ -85,6 +91,7 @@ func NewRuntime(deps Dependencies) (*Runtime, error) {
 		config:               deps.Config,
 		logger:               deps.Logger,
 		message:              deps.Message,
+		dailyCommand:         deps.DailyCommand,
 		taskCommand:          deps.TaskCommand,
 		sessionFactory:       factory,
 		httpClient:           httpClient,
@@ -473,6 +480,15 @@ func (r *Runtime) routeCommand(ctx context.Context, request commandRequest) (app
 	switch request.Action {
 	case actionHelp:
 		return helpResponse(r.config.DiscordCommandName, r.config.Mode), nil
+	case actionClear:
+		if r.config.Mode != config.ModeDaily {
+			return app.MessageResponse{
+				Text:      unsupportedActionText(r.config.DiscordCommandName, r.config.Mode),
+				Ephemeral: true,
+			}, nil
+		}
+
+		return r.dailyCommand.Clear(ctx, request.UserID, time.Now())
 	case actionTaskCurrent, actionTaskList, actionTaskNew, actionTaskSwitch, actionTaskClose:
 		if r.config.Mode != config.ModeTask {
 			return app.MessageResponse{

@@ -35,8 +35,120 @@ func TestMigrateIsIdempotent(t *testing.T) {
 		t.Fatalf("query schema_migrations count error = %v", err)
 	}
 
-	if count != 2 {
-		t.Fatalf("schema_migrations count = %d, want %d", count, 2)
+	if count != 3 {
+		t.Fatalf("schema_migrations count = %d, want %d", count, 3)
+	}
+}
+
+func TestStoreCreateDailySessionCreatesGenerationOne(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	session, err := store.CreateDailySession(ctx, app.DailySession{
+		LocalDate:        "2026-04-05",
+		Generation:       1,
+		LogicalThreadKey: "2026-04-05#1",
+		ActivationReason: app.DailySessionActivationAutomatic,
+		IsActive:         true,
+	})
+	if err != nil {
+		t.Fatalf("CreateDailySession() error = %v", err)
+	}
+
+	if session.LogicalThreadKey != "2026-04-05#1" {
+		t.Fatalf("LogicalThreadKey = %q, want %q", session.LogicalThreadKey, "2026-04-05#1")
+	}
+
+	active, ok, err := store.GetActiveDailySession(ctx, "2026-04-05")
+	if err != nil {
+		t.Fatalf("GetActiveDailySession() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetActiveDailySession() ok = false, want true")
+	}
+	if active.Generation != 1 {
+		t.Fatalf("Generation = %d, want %d", active.Generation, 1)
+	}
+}
+
+func TestStoreRotateDailySessionCreatesNextGeneration(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := store.CreateDailySession(ctx, app.DailySession{
+		LocalDate:        "2026-04-05",
+		Generation:       1,
+		LogicalThreadKey: "2026-04-05#1",
+		ActivationReason: app.DailySessionActivationAutomatic,
+		IsActive:         true,
+	}); err != nil {
+		t.Fatalf("CreateDailySession() error = %v", err)
+	}
+
+	next, err := store.RotateDailySession(ctx, "2026-04-05", app.DailySessionActivationClear)
+	if err != nil {
+		t.Fatalf("RotateDailySession() error = %v", err)
+	}
+
+	if next.Generation != 2 {
+		t.Fatalf("Generation = %d, want %d", next.Generation, 2)
+	}
+	if next.PreviousLogicalThreadKey != "2026-04-05#1" {
+		t.Fatalf("PreviousLogicalThreadKey = %q, want %q", next.PreviousLogicalThreadKey, "2026-04-05#1")
+	}
+
+	active, ok, err := store.GetActiveDailySession(ctx, "2026-04-05")
+	if err != nil {
+		t.Fatalf("GetActiveDailySession() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetActiveDailySession() ok = false, want true")
+	}
+	if active.LogicalThreadKey != "2026-04-05#2" {
+		t.Fatalf("active logical key = %q, want %q", active.LogicalThreadKey, "2026-04-05#2")
+	}
+}
+
+func TestStoreGetLatestDailySessionBefore(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for _, session := range []app.DailySession{
+		{
+			LocalDate:        "2026-04-05",
+			Generation:       1,
+			LogicalThreadKey: "2026-04-05#1",
+			ActivationReason: app.DailySessionActivationAutomatic,
+			IsActive:         true,
+		},
+		{
+			LocalDate:        "2026-04-06",
+			Generation:       1,
+			LogicalThreadKey: "2026-04-06#1",
+			ActivationReason: app.DailySessionActivationAutomatic,
+			IsActive:         true,
+		},
+	} {
+		if _, err := store.CreateDailySession(ctx, session); err != nil {
+			t.Fatalf("CreateDailySession(%s) error = %v", session.LogicalThreadKey, err)
+		}
+	}
+
+	latest, ok, err := store.GetLatestDailySessionBefore(ctx, "2026-04-07")
+	if err != nil {
+		t.Fatalf("GetLatestDailySessionBefore() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetLatestDailySessionBefore() ok = false, want true")
+	}
+	if latest.LogicalThreadKey != "2026-04-06#1" {
+		t.Fatalf("LogicalThreadKey = %q, want %q", latest.LogicalThreadKey, "2026-04-06#1")
 	}
 }
 

@@ -61,12 +61,16 @@ func TestRuntimeStartRegistersCommands(t *testing.T) {
 		t.Fatalf("action option name = %q, want %q", actionOption.Name, optionAction)
 	}
 
-	if len(actionOption.Choices) != 1 {
-		t.Fatalf("action choice count = %d, want %d", len(actionOption.Choices), 1)
+	if len(actionOption.Choices) != 2 {
+		t.Fatalf("action choice count = %d, want %d", len(actionOption.Choices), 2)
 	}
 
 	if actionOption.Choices[0].Value != actionHelp {
 		t.Fatalf("action choice value = %v, want %q", actionOption.Choices[0].Value, actionHelp)
+	}
+
+	if actionOption.Choices[1].Value != actionClear {
+		t.Fatalf("second action choice value = %v, want %q", actionOption.Choices[1].Value, actionClear)
 	}
 }
 
@@ -374,10 +378,11 @@ func TestRuntimeDeferredReplyDeliveryLogsStructuredSuccess(t *testing.T) {
 			DiscordToken:       "discord-token",
 			DiscordCommandName: "release",
 		},
-		Logger:      logger,
-		Message:     messageService,
-		TaskCommand: &fakeTaskCommandService{},
-		HTTPClient:  http.DefaultClient,
+		Logger:       logger,
+		Message:      messageService,
+		DailyCommand: &fakeDailyCommandService{},
+		TaskCommand:  &fakeTaskCommandService{},
+		HTTPClient:   http.DefaultClient,
 		SessionFactory: func(token string) (session, error) {
 			return fakeSession, nil
 		},
@@ -458,7 +463,16 @@ func TestRuntimeCloseWaitsForDeferredQueuedReplyDrain(t *testing.T) {
 	}
 
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithTimeout(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{}, http.DefaultClient, time.Second)
+	runtime := newTestRuntimeWithTimeout(
+		t,
+		config.ModeDaily,
+		fakeSession,
+		messageService,
+		&fakeDailyCommandService{},
+		&fakeTaskCommandService{},
+		http.DefaultClient,
+		time.Second,
+	)
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -540,7 +554,16 @@ func TestRuntimeCloseCancelsDeferredDrainWhenTimeoutExpires(t *testing.T) {
 	}
 
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithTimeout(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{}, http.DefaultClient, 20*time.Millisecond)
+	runtime := newTestRuntimeWithTimeout(
+		t,
+		config.ModeDaily,
+		fakeSession,
+		messageService,
+		&fakeDailyCommandService{},
+		&fakeTaskCommandService{},
+		http.DefaultClient,
+		20*time.Millisecond,
+	)
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -843,6 +866,10 @@ func TestRuntimeHelpActionReturnsConfiguredCommandInfo(t *testing.T) {
 	if !strings.Contains(response.Data.Content, "Mode: daily") {
 		t.Fatalf("response content = %q, want mode guidance", response.Data.Content)
 	}
+
+	if !strings.Contains(response.Data.Content, "action:clear") {
+		t.Fatalf("response content = %q, want clear action guidance", response.Data.Content)
+	}
 }
 
 func TestRuntimeTaskCommandInDailyModeIsEphemeral(t *testing.T) {
@@ -875,6 +902,125 @@ func TestRuntimeTaskCommandInDailyModeIsEphemeral(t *testing.T) {
 
 	if !strings.Contains(response.Data.Content, "not available") {
 		t.Fatalf("response content = %q, want task unavailable guidance", response.Data.Content)
+	}
+}
+
+func TestRuntimeDailyClearActionRoutesIdleSuccess(t *testing.T) {
+	t.Parallel()
+
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("time.LoadLocation() error = %v", err)
+	}
+
+	store := &memoryThreadStore{}
+	dailyService, err := app.NewDailyCommandService(app.DailyCommandServiceDependencies{
+		CommandName: "release",
+		Timezone:    tokyo,
+		Store:       store,
+		Coordinator: &stubQueueCoordinator{},
+	})
+	if err != nil {
+		t.Fatalf("NewDailyCommandService() error = %v", err)
+	}
+
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithTimeout(
+		t,
+		config.ModeDaily,
+		fakeSession,
+		&fakeMessageService{},
+		dailyService,
+		&fakeTaskCommandService{},
+		http.DefaultClient,
+		0,
+	)
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionClear, "", ""))
+
+	if len(fakeSession.interactionResponses) != 1 {
+		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 1)
+	}
+
+	response := fakeSession.interactionResponses[0]
+	if response.Data == nil || response.Data.Flags != discordgo.MessageFlagsEphemeral {
+		t.Fatalf("response flags = %v, want ephemeral", response.Data.Flags)
+	}
+
+	if !strings.Contains(response.Data.Content, "#2") {
+		t.Fatalf("response content = %q, want rotated generation confirmation", response.Data.Content)
+	}
+}
+
+func TestRuntimeDailyClearActionRejectsBusyGenerationEphemerally(t *testing.T) {
+	t.Parallel()
+
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("time.LoadLocation() error = %v", err)
+	}
+
+	store := &memoryThreadStore{}
+	localDate := time.Now().In(tokyo).Format(time.DateOnly)
+	if _, err := store.CreateDailySession(context.Background(), app.DailySession{
+		LocalDate:        localDate,
+		Generation:       1,
+		LogicalThreadKey: localDate + "#1",
+		ActivationReason: app.DailySessionActivationAutomatic,
+		IsActive:         true,
+	}); err != nil {
+		t.Fatalf("CreateDailySession() error = %v", err)
+	}
+
+	dailyService, err := app.NewDailyCommandService(app.DailyCommandServiceDependencies{
+		CommandName: "release",
+		Timezone:    tokyo,
+		Store:       store,
+		Coordinator: &stubQueueCoordinator{snapshot: app.QueueSnapshot{InFlight: true, Queued: 1}},
+	})
+	if err != nil {
+		t.Fatalf("NewDailyCommandService() error = %v", err)
+	}
+
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithTimeout(
+		t,
+		config.ModeDaily,
+		fakeSession,
+		&fakeMessageService{},
+		dailyService,
+		&fakeTaskCommandService{},
+		http.DefaultClient,
+		0,
+	)
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionClear, "", ""))
+
+	if len(fakeSession.interactionResponses) != 1 {
+		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 1)
+	}
+
+	response := fakeSession.interactionResponses[0]
+	if response.Data == nil || response.Data.Flags != discordgo.MessageFlagsEphemeral {
+		t.Fatalf("response flags = %v, want ephemeral", response.Data.Flags)
+	}
+
+	if !strings.Contains(response.Data.Content, "still busy") {
+		t.Fatalf("response content = %q, want busy rejection", response.Data.Content)
 	}
 }
 

@@ -19,19 +19,18 @@ func TestRefresherRefreshBeforeFirstDailyTurnUsesPreviousBinding(t *testing.T) {
 		t.Fatalf("Ensure() error = %v", err)
 	}
 
-	tokyo := mustLoadLocation(t, "Asia/Tokyo")
 	store := &stubThreadStore{
 		bindings: map[string]app.ThreadBinding{
-			"daily:2026-04-05": {
+			"daily:2026-04-05#1": {
 				Mode:             "daily",
-				LogicalThreadKey: "2026-04-05",
+				LogicalThreadKey: "2026-04-05#1",
 				CodexThreadID:    "thread-previous",
 			},
 		},
 	}
 
 	memoryPath := filepath.Join(workdir, memoryDirName, memoryFileName)
-	bridgePath := filepath.Join(workdir, memoryDirName, "2026-04-06.md")
+	bridgePath := filepath.Join(workdir, memoryDirName, "2026-04-06.1.md")
 	gateway := &stubCodexGateway{
 		result: app.RunTurnResult{
 			ThreadID:     "thread-previous",
@@ -40,17 +39,20 @@ func TestRefresherRefreshBeforeFirstDailyTurnUsesPreviousBinding(t *testing.T) {
 	}
 
 	refresher := Refresher{
-		Timezone: tokyo,
-		Store:    store,
-		Gateway:  gateway,
-		Workdir:  workdir,
-		Timeout:  time.Second,
+		Store:   store,
+		Gateway: gateway,
+		Workdir: workdir,
+		Timeout: time.Second,
 	}
 
 	err := refresher.RefreshBeforeFirstDailyTurn(
 		context.Background(),
-		"2026-04-06",
-		time.Date(2026, time.April, 6, 9, 0, 0, 0, tokyo),
+		app.DailySession{
+			LocalDate:                "2026-04-06",
+			Generation:               1,
+			LogicalThreadKey:         "2026-04-06#1",
+			PreviousLogicalThreadKey: "2026-04-05#1",
+		},
 	)
 	if err != nil {
 		t.Fatalf("RefreshBeforeFirstDailyTurn() error = %v", err)
@@ -69,8 +71,8 @@ func TestRefresherRefreshBeforeFirstDailyTurnUsesPreviousBinding(t *testing.T) {
 		t.Fatalf("WorkingDirectory = %q, want %q", call.input.WorkingDirectory, workdir)
 	}
 
-	if call.input.Prompt != buildRefreshPrompt("2026-04-05", "2026-04-06") {
-		t.Fatalf("prompt = %q, want %q", call.input.Prompt, buildRefreshPrompt("2026-04-05", "2026-04-06"))
+	if call.input.Prompt != buildRefreshPrompt("2026-04-05#1", "2026-04-06#1", "2026-04-06.1.md") {
+		t.Fatalf("prompt = %q, want %q", call.input.Prompt, buildRefreshPrompt("2026-04-05#1", "2026-04-06#1", "2026-04-06.1.md"))
 	}
 
 	bridgeContents, err := os.ReadFile(bridgePath)
@@ -78,10 +80,10 @@ func TestRefresherRefreshBeforeFirstDailyTurnUsesPreviousBinding(t *testing.T) {
 		t.Fatalf("ReadFile(bridge note) error = %v", err)
 	}
 
-	expectedBridge := "# Daily Memory Bridge for 2026-04-06\n\n" +
+	expectedBridge := "# Daily Memory Bridge for 2026-04-06#1\n\n" +
 		"## Source\n\n" +
 		"- Previous thread id: `thread-previous`\n" +
-		"- Source day: `2026-04-05`\n\n" +
+		"- Source logical key: `2026-04-05#1`\n\n" +
 		"## Durable Facts Promoted\n\n" +
 		"- None yet.\n\n" +
 		"## MEMORY.md Updates Applied\n\n" +
@@ -89,7 +91,7 @@ func TestRefresherRefreshBeforeFirstDailyTurnUsesPreviousBinding(t *testing.T) {
 		"## Rejected Candidates\n\n" +
 		"- None yet.\n\n" +
 		"## Notes\n\n" +
-		"- Created by the 39claw daily memory preflight before the first visible turn of the new day.\n"
+		"- Created by the 39claw daily memory preflight before the first visible turn of the new generation.\n"
 	if string(bridgeContents) != expectedBridge {
 		t.Fatalf("bridge note contents = %q, want %q", string(bridgeContents), expectedBridge)
 	}
@@ -99,12 +101,11 @@ func TestRefresherSkipsWhenCurrentBindingExists(t *testing.T) {
 	t.Parallel()
 
 	refresher := Refresher{
-		Timezone: mustLoadLocation(t, "Asia/Tokyo"),
 		Store: &stubThreadStore{
 			bindings: map[string]app.ThreadBinding{
-				"daily:2026-04-06": {
+				"daily:2026-04-06#1": {
 					Mode:             "daily",
-					LogicalThreadKey: "2026-04-06",
+					LogicalThreadKey: "2026-04-06#1",
 					CodexThreadID:    "thread-current",
 				},
 			},
@@ -113,7 +114,12 @@ func TestRefresherSkipsWhenCurrentBindingExists(t *testing.T) {
 		Workdir: t.TempDir(),
 	}
 
-	if err := refresher.RefreshBeforeFirstDailyTurn(context.Background(), "2026-04-06", time.Time{}); err != nil {
+	if err := refresher.RefreshBeforeFirstDailyTurn(context.Background(), app.DailySession{
+		LocalDate:                "2026-04-06",
+		Generation:               1,
+		LogicalThreadKey:         "2026-04-06#1",
+		PreviousLogicalThreadKey: "2026-04-05#1",
+	}); err != nil {
 		t.Fatalf("RefreshBeforeFirstDailyTurn() error = %v", err)
 	}
 }
@@ -123,13 +129,16 @@ func TestRefresherSkipsWhenPreviousBindingIsMissing(t *testing.T) {
 
 	gateway := &stubCodexGateway{}
 	refresher := Refresher{
-		Timezone: mustLoadLocation(t, "Asia/Tokyo"),
-		Store:    &stubThreadStore{},
-		Gateway:  gateway,
-		Workdir:  t.TempDir(),
+		Store:   &stubThreadStore{},
+		Gateway: gateway,
+		Workdir: t.TempDir(),
 	}
 
-	if err := refresher.RefreshBeforeFirstDailyTurn(context.Background(), "2026-04-06", time.Time{}); err != nil {
+	if err := refresher.RefreshBeforeFirstDailyTurn(context.Background(), app.DailySession{
+		LocalDate:        "2026-04-06",
+		Generation:       1,
+		LogicalThreadKey: "2026-04-06#1",
+	}); err != nil {
 		t.Fatalf("RefreshBeforeFirstDailyTurn() error = %v", err)
 	}
 
@@ -143,12 +152,11 @@ func TestRefresherReturnsErrorWhenCompletionFormatIsUnexpected(t *testing.T) {
 
 	workdir := t.TempDir()
 	refresher := Refresher{
-		Timezone: mustLoadLocation(t, "Asia/Tokyo"),
 		Store: &stubThreadStore{
 			bindings: map[string]app.ThreadBinding{
-				"daily:2026-04-05": {
+				"daily:2026-04-05#1": {
 					Mode:             "daily",
-					LogicalThreadKey: "2026-04-05",
+					LogicalThreadKey: "2026-04-05#1",
 					CodexThreadID:    "thread-previous",
 				},
 			},
@@ -162,7 +170,12 @@ func TestRefresherReturnsErrorWhenCompletionFormatIsUnexpected(t *testing.T) {
 		Workdir: workdir,
 	}
 
-	err := refresher.RefreshBeforeFirstDailyTurn(context.Background(), "2026-04-06", time.Time{})
+	err := refresher.RefreshBeforeFirstDailyTurn(context.Background(), app.DailySession{
+		LocalDate:                "2026-04-06",
+		Generation:               1,
+		LogicalThreadKey:         "2026-04-06#1",
+		PreviousLogicalThreadKey: "2026-04-05#1",
+	})
 	if err == nil {
 		t.Fatal("RefreshBeforeFirstDailyTurn() error = nil, want non-nil")
 	}
@@ -173,12 +186,11 @@ func TestRefresherReturnsTimeout(t *testing.T) {
 
 	workdir := t.TempDir()
 	refresher := Refresher{
-		Timezone: mustLoadLocation(t, "Asia/Tokyo"),
 		Store: &stubThreadStore{
 			bindings: map[string]app.ThreadBinding{
-				"daily:2026-04-05": {
+				"daily:2026-04-05#1": {
 					Mode:             "daily",
-					LogicalThreadKey: "2026-04-05",
+					LogicalThreadKey: "2026-04-05#1",
 					CodexThreadID:    "thread-previous",
 				},
 			},
@@ -188,7 +200,12 @@ func TestRefresherReturnsTimeout(t *testing.T) {
 		Timeout: 10 * time.Millisecond,
 	}
 
-	err := refresher.RefreshBeforeFirstDailyTurn(context.Background(), "2026-04-06", time.Time{})
+	err := refresher.RefreshBeforeFirstDailyTurn(context.Background(), app.DailySession{
+		LocalDate:                "2026-04-06",
+		Generation:               1,
+		LogicalThreadKey:         "2026-04-06#1",
+		PreviousLogicalThreadKey: "2026-04-05#1",
+	})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("RefreshBeforeFirstDailyTurn() error = %v, want deadline exceeded", err)
 	}
@@ -209,6 +226,22 @@ func (s *stubThreadStore) GetThreadBinding(_ context.Context, mode string, logic
 
 func (s *stubThreadStore) UpsertThreadBinding(context.Context, app.ThreadBinding) error {
 	return nil
+}
+
+func (s *stubThreadStore) GetActiveDailySession(context.Context, string) (app.DailySession, bool, error) {
+	return app.DailySession{}, false, nil
+}
+
+func (s *stubThreadStore) GetLatestDailySessionBefore(context.Context, string) (app.DailySession, bool, error) {
+	return app.DailySession{}, false, nil
+}
+
+func (s *stubThreadStore) CreateDailySession(context.Context, app.DailySession) (app.DailySession, error) {
+	return app.DailySession{}, nil
+}
+
+func (s *stubThreadStore) RotateDailySession(context.Context, string, string) (app.DailySession, error) {
+	return app.DailySession{}, nil
 }
 
 func (s *stubThreadStore) CreateTask(context.Context, app.Task) error {

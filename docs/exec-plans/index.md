@@ -25,10 +25,11 @@ Plans in this directory should be written and maintained in line with `.agents/P
 
 These plans are intended to be executed in the order listed below. Most plans follow numeric order, but infrastructure prerequisites may require picking up a later-numbered plan first when it explicitly prepares the repository for another active plan.
 
-- [Add shared daily generation rotation and `action:clear` to `daily` mode](./active/12-daily-clear-generation.md)
+- None.
 
 ## Recently Completed Plans
 
+- [Add shared daily generation rotation and `action:clear` to `daily` mode](./completed/12-daily-clear-generation.md)
 - [Build a versioned SQLite migration runner and bootstrap path](./completed/13-sqlite-migration-runner.md)
 - [Prefer the remote default branch when creating `task` worktrees](./completed/14-task-worktree-remote-base.md)
 - [Build fake runtime validation infrastructure for adapter-level tests](./completed/11-fake-runtime-validation.md)

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"time"
 )
 
 type ThreadPolicy interface {
@@ -20,12 +19,16 @@ func (f DeferredReplySinkFunc) Deliver(ctx context.Context, response MessageResp
 }
 
 type DailyMemoryRefresher interface {
-	RefreshBeforeFirstDailyTurn(ctx context.Context, logicalKey string, receivedAt time.Time) error
+	RefreshBeforeFirstDailyTurn(ctx context.Context, session DailySession) error
 }
 
 type ThreadStore interface {
 	GetThreadBinding(ctx context.Context, mode string, logicalThreadKey string) (ThreadBinding, bool, error)
 	UpsertThreadBinding(ctx context.Context, binding ThreadBinding) error
+	GetActiveDailySession(ctx context.Context, localDate string) (DailySession, bool, error)
+	GetLatestDailySessionBefore(ctx context.Context, localDate string) (DailySession, bool, error)
+	CreateDailySession(ctx context.Context, session DailySession) (DailySession, error)
+	RotateDailySession(ctx context.Context, localDate string, activationReason string) (DailySession, error)
 	CreateTask(ctx context.Context, task Task) error
 	GetTask(ctx context.Context, discordUserID string, taskID string) (Task, bool, error)
 	UpdateTask(ctx context.Context, task Task) error
@@ -49,6 +52,7 @@ type CodexGateway interface {
 type QueueCoordinator interface {
 	Admit(key string, work func()) (QueueAdmission, error)
 	Complete(key string) (func(), bool)
+	Snapshot(key string) QueueSnapshot
 }
 
 type MessageService interface {
