@@ -109,10 +109,16 @@ func TestRun(t *testing.T) {
 		newCodexGateway = originalNewCodexGateway
 	})
 
+	originalNewCodexClient := newCodexClient
+	t.Cleanup(func() {
+		newCodexClient = originalNewCodexClient
+	})
+
 	tests := []struct {
 		name              string
 		env               map[string]string
 		wantThreadOptions codex.ThreadOptions
+		wantCodexEnv      map[string]string
 		wantBootstrap     bool
 		wantErr           string
 	}{
@@ -142,6 +148,27 @@ func TestRun(t *testing.T) {
 				WebSearchMode:    codex.WebSearchModeLive,
 			},
 			wantBootstrap: true,
+		},
+		{
+			name: "injects configured codex home into codex process environment",
+			env: map[string]string{
+				"CLAW_MODE":                 "task",
+				"CLAW_TIMEZONE":             "Asia/Tokyo",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "release",
+				"CLAW_CODEX_WORKDIR":        "/workspace/project",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
+				"CLAW_CODEX_HOME":           "/tmp/custom-codex-home",
+			},
+			wantThreadOptions: codex.ThreadOptions{
+				WorkingDirectory: "/workspace/project",
+				ApprovalPolicy:   codex.ApprovalModeNever,
+				SandboxMode:      codex.SandboxModeWorkspaceWrite,
+				WebSearchMode:    codex.WebSearchModeLive,
+			},
+			wantCodexEnv: map[string]string{
+				"CODEX_HOME": "/tmp/custom-codex-home",
+			},
 		},
 		{
 			name: "passes configured codex thread options to gateway",
@@ -207,6 +234,13 @@ func TestRun(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 			var capturedOptions codex.GatewayOptions
+			var capturedClientOptions codex.Options
+
+			newCodexClient = func(options codex.Options) *codex.Client {
+				capturedClientOptions = options
+				return codex.New(options)
+			}
+
 			newCodexGateway = func(client *codex.Client, options codex.GatewayOptions) app.CodexGateway {
 				capturedOptions = options
 				return stubCodexGateway{}
@@ -269,6 +303,7 @@ func TestRun(t *testing.T) {
 			}
 
 			assertThreadOptionsEqual(t, capturedOptions.ThreadOptions, tt.wantThreadOptions)
+			assertStringMapEqual(t, capturedClientOptions.Env, tt.wantCodexEnv)
 
 			if tt.wantBootstrap {
 				assertFileExists(t, filepath.Join(env["CLAW_CODEX_WORKDIR"], "AGENT_MEMORY", "MEMORY.md"))
@@ -388,6 +423,42 @@ func TestLoadThreadOptions(t *testing.T) {
 	}
 }
 
+func TestCodexProcessEnv(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		config config.Config
+		want   map[string]string
+	}{
+		{
+			name:   "returns nil when codex home is unset",
+			config: config.Config{},
+			want:   nil,
+		},
+		{
+			name: "maps configured claw codex home to codex home",
+			config: config.Config{
+				CodexHome: "/tmp/custom-codex-home",
+			},
+			want: map[string]string{
+				"CODEX_HOME": "/tmp/custom-codex-home",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := codexProcessEnv(tt.config)
+			assertStringMapEqual(t, got, tt.want)
+		})
+	}
+}
+
 type stubDiscordRuntime struct{}
 
 func (r *stubDiscordRuntime) Start(ctx context.Context) error {
@@ -462,6 +533,25 @@ func assertThreadOptionsEqual(t *testing.T, got codex.ThreadOptions, want codex.
 
 func boolPtr(value bool) *bool {
 	return &value
+}
+
+func assertStringMapEqual(t *testing.T, got map[string]string, want map[string]string) {
+	t.Helper()
+
+	if len(got) != len(want) {
+		t.Fatalf("map length = %d, want %d; got=%v want=%v", len(got), len(want), got, want)
+	}
+
+	for key, wantValue := range want {
+		gotValue, ok := got[key]
+		if !ok {
+			t.Fatalf("map missing key %q; got=%v want=%v", key, got, want)
+		}
+
+		if gotValue != wantValue {
+			t.Fatalf("map[%q] = %q, want %q", key, gotValue, wantValue)
+		}
+	}
 }
 
 func assertFileExists(t *testing.T, path string) {

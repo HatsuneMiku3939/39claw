@@ -163,6 +163,7 @@ The expected variables are:
 - `CLAW_CODEX_WORKDIR`
 - `CLAW_DATADIR`
 - `CLAW_CODEX_EXECUTABLE`
+- `CLAW_CODEX_HOME`
 - `CLAW_CODEX_BASE_URL`
 - `CLAW_CODEX_API_KEY`
 - `CLAW_CODEX_MODEL`
@@ -177,10 +178,11 @@ The expected variables are:
 - `CLAW_LOG_FORMAT`
 
 `CLAW_MODE`, `CLAW_TIMEZONE`, `CLAW_DISCORD_TOKEN`, `CLAW_DISCORD_COMMAND_NAME`, `CLAW_CODEX_WORKDIR`, `CLAW_DATADIR`, and `CLAW_CODEX_EXECUTABLE` are required.
-`CLAW_DISCORD_GUILD_ID`, `CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, `CLAW_CODEX_MODEL`, `CLAW_CODEX_SANDBOX_MODE`, `CLAW_CODEX_ADDITIONAL_DIRECTORIES`, `CLAW_CODEX_SKIP_GIT_REPO_CHECK`, `CLAW_CODEX_APPROVAL_POLICY`, `CLAW_CODEX_MODEL_REASONING_EFFORT`, `CLAW_CODEX_WEB_SEARCH_MODE`, `CLAW_CODEX_NETWORK_ACCESS`, `CLAW_LOG_LEVEL`, and `CLAW_LOG_FORMAT` are optional.
+`CLAW_DISCORD_GUILD_ID`, `CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, `CLAW_CODEX_HOME`, `CLAW_CODEX_MODEL`, `CLAW_CODEX_SANDBOX_MODE`, `CLAW_CODEX_ADDITIONAL_DIRECTORIES`, `CLAW_CODEX_SKIP_GIT_REPO_CHECK`, `CLAW_CODEX_APPROVAL_POLICY`, `CLAW_CODEX_MODEL_REASONING_EFFORT`, `CLAW_CODEX_WEB_SEARCH_MODE`, `CLAW_CODEX_NETWORK_ACCESS`, `CLAW_LOG_LEVEL`, and `CLAW_LOG_FORMAT` are optional.
 `CLAW_MODE` accepts `daily` or `task`.
 `CLAW_TIMEZONE` must be set explicitly for each deployment.
 `CLAW_DISCORD_COMMAND_NAME` must be unique per bot instance, normalized to lowercase, and validated conservatively before Discord registration.
+When `CLAW_CODEX_HOME` is set, 39claw must inject it into the spawned Codex CLI process as `CODEX_HOME`.
 When `CLAW_MODE=task`, `CLAW_CODEX_WORKDIR` must point to a Git repository and acts as the source repository root for task worktree creation.
 When `CLAW_MODE=daily`, startup must materialize the managed durable-memory skill and the `AGENT_MEMORY` directory inside `CLAW_CODEX_WORKDIR`.
 `CLAW_LOG_LEVEL` defaults to `info` when omitted.

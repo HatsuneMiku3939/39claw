@@ -365,6 +365,8 @@ These variables are required in `.env.local`:
 - `CLAW_DATADIR`
 - `CLAW_CODEX_EXECUTABLE`
 
+`CLAW_CODEX_HOME` is optional and can point 39claw at a custom Codex home directory.
+
 For Discord deployments, also set:
 
 - `CLAW_CODEX_APPROVAL_POLICY=never`
@@ -439,6 +441,8 @@ The first normal message for a new task may spend a moment preparing that task's
   - override the Codex base URL
 - `CLAW_CODEX_API_KEY`
   - provide an API key when needed
+- `CLAW_CODEX_HOME`
+  - when set, 39claw injects it into the Codex CLI process as `CODEX_HOME`
 - `CLAW_CODEX_SANDBOX_MODE`
   - `read-only`, `workspace-write`, or `danger-full-access`
 - `CLAW_CODEX_ADDITIONAL_DIRECTORIES`
