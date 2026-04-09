@@ -103,6 +103,8 @@ CLAW_DISCORD_GUILD_ID=replace-with-your-test-guild-id
 CLAW_CODEX_WORKDIR=/Users/you/src/project-alpha
 CLAW_DATADIR=/Users/you/.local/share/39claw-dev
 CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex
+# Optional: override the Codex home directory used by the spawned codex CLI.
+# CLAW_CODEX_HOME=/Users/you/.codex-dev
 
 CLAW_CODEX_SANDBOX_MODE=danger-full-access
 CLAW_CODEX_WEB_SEARCH_MODE=live
@@ -115,11 +117,12 @@ Why these values matter:
 
 1. `CLAW_MODE=task` enables task creation, switching, and task-specific threads.
 2. `CLAW_CODEX_WORKDIR` is the source repository root, not the final execution path for every turn.
-3. Each new active task can create its own worktree under `CLAW_DATADIR/worktrees/`.
-4. `CLAW_CODEX_SANDBOX_MODE=danger-full-access` gives Codex the widest local write access for autonomous repository work.
-5. `CLAW_CODEX_WEB_SEARCH_MODE=live` lets the bot look up fresh web information when implementation work needs it.
-6. `CLAW_CODEX_NETWORK_ACCESS=true` lets the bot open links and use network-backed tooling during a task.
-7. `CLAW_CODEX_APPROVAL_POLICY=never` avoids approval interruptions during autonomous development flows.
+3. `CLAW_CODEX_HOME`, when set, tells 39claw which `CODEX_HOME` value to pass to the spawned Codex CLI.
+4. Each new active task can create its own worktree under `CLAW_DATADIR/worktrees/`.
+5. `CLAW_CODEX_SANDBOX_MODE=danger-full-access` gives Codex the widest local write access for autonomous repository work.
+6. `CLAW_CODEX_WEB_SEARCH_MODE=live` lets the bot look up fresh web information when implementation work needs it.
+7. `CLAW_CODEX_NETWORK_ACCESS=true` lets the bot open links and use network-backed tooling during a task.
+8. `CLAW_CODEX_APPROVAL_POLICY=never` avoids approval interruptions during autonomous development flows.
 
 This is an intentionally aggressive autonomous-development preset. Master, this can be risky: Codex can modify files broadly and use the network during task execution, so use it only when that level of autonomy matches your repository and trust model.
 

@@ -84,6 +84,8 @@ CLAW_DISCORD_GUILD_ID=replace-with-your-test-guild-id
 CLAW_CODEX_WORKDIR=/Users/you/Documents/SecondBrain
 CLAW_DATADIR=/Users/you/.local/share/39claw-kb
 CLAW_CODEX_EXECUTABLE=/absolute/path/to/codex
+# Optional: override the Codex home directory used by the spawned codex CLI.
+# CLAW_CODEX_HOME=/Users/you/.codex-kb
 
 CLAW_CODEX_SANDBOX_MODE=workspace-write
 CLAW_CODEX_SKIP_GIT_REPO_CHECK=true
@@ -97,11 +99,12 @@ Why these values matter:
 
 1. `CLAW_MODE=daily` enables the shared day-based conversation flow.
 2. `CLAW_CODEX_WORKDIR` points at the vault where Codex will operate.
-3. `CLAW_CODEX_SANDBOX_MODE=workspace-write` allows 39claw to manage `AGENT_MEMORY/` in the vault.
-4. `CLAW_CODEX_SKIP_GIT_REPO_CHECK=true` matches the non-Git vault setup.
-5. `CLAW_CODEX_WEB_SEARCH_MODE=live` lets the bot look up fresh web information when that helps the answer.
-6. `CLAW_CODEX_NETWORK_ACCESS=true` lets the bot open links and use web-backed tooling during the turn.
-7. `CLAW_CODEX_APPROVAL_POLICY=never` keeps the daily knowledge-base flow smooth instead of stopping for extra approval prompts.
+3. `CLAW_CODEX_HOME`, when set, tells 39claw which `CODEX_HOME` value to pass to the spawned Codex CLI.
+4. `CLAW_CODEX_SANDBOX_MODE=workspace-write` allows 39claw to manage `AGENT_MEMORY/` in the vault.
+5. `CLAW_CODEX_SKIP_GIT_REPO_CHECK=true` matches the non-Git vault setup.
+6. `CLAW_CODEX_WEB_SEARCH_MODE=live` lets the bot look up fresh web information when that helps the answer.
+7. `CLAW_CODEX_NETWORK_ACCESS=true` lets the bot open links and use web-backed tooling during the turn.
+8. `CLAW_CODEX_APPROVAL_POLICY=never` keeps the daily knowledge-base flow smooth instead of stopping for extra approval prompts.
 
 This is a convenience-first preset. If the vault contains sensitive material and you want a more conservative setup, reduce or disable web access before using the bot more broadly.
 

@@ -28,6 +28,7 @@ type Config struct {
 	DataDir                    string
 	SQLitePath                 string
 	CodexExecutable            string
+	CodexHome                  string
 	CodexBaseURL               string
 	CodexAPIKey                string
 	CodexWorkdir               string
@@ -63,6 +64,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	optionalKeys := []string{
 		"CLAW_CODEX_BASE_URL",
 		"CLAW_CODEX_API_KEY",
+		"CLAW_CODEX_HOME",
 		"CLAW_DISCORD_GUILD_ID",
 		"CLAW_LOG_LEVEL",
 		"CLAW_LOG_FORMAT",
@@ -138,6 +140,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		DataDir:                    values["CLAW_DATADIR"],
 		SQLitePath:                 sqlitePath(values["CLAW_DATADIR"]),
 		CodexExecutable:            values["CLAW_CODEX_EXECUTABLE"],
+		CodexHome:                  values["CLAW_CODEX_HOME"],
 		CodexBaseURL:               values["CLAW_CODEX_BASE_URL"],
 		CodexAPIKey:                values["CLAW_CODEX_API_KEY"],
 		CodexWorkdir:               values["CLAW_CODEX_WORKDIR"],

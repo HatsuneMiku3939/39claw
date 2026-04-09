@@ -159,6 +159,24 @@ func TestResumeThreadPassesResumeArguments(t *testing.T) {
 	}
 }
 
+func TestThreadRunPassesConfiguredEnvironmentVariables(t *testing.T) {
+	t.Parallel()
+
+	client, recorder := newTestClientWithEnv(t, "single-success", map[string]string{
+		"CODEX_HOME": "/tmp/custom-codex-home",
+	})
+	thread := client.StartThread(ThreadOptions{})
+
+	if _, err := thread.Run(context.Background(), TextInput("hello")); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	record := readInvocationRecord(t, recorder)
+	if record.Env["CODEX_HOME"] != "/tmp/custom-codex-home" {
+		t.Fatalf("CODEX_HOME = %q, want %q", record.Env["CODEX_HOME"], "/tmp/custom-codex-home")
+	}
+}
+
 func TestRunReturnsTurnFailure(t *testing.T) {
 	t.Parallel()
 
@@ -285,23 +303,36 @@ func TestHelperProcess(t *testing.T) {
 }
 
 type helperInvocation struct {
-	Args  []string `json:"args"`
-	Stdin string   `json:"stdin"`
+	Args  []string          `json:"args"`
+	Stdin string            `json:"stdin"`
+	Env   map[string]string `json:"env,omitempty"`
 }
 
 func newTestClient(t *testing.T, scenario string) (*Client, string) {
 	t.Helper()
 
+	return newTestClientWithEnv(t, scenario, nil)
+}
+
+func newTestClientWithEnv(t *testing.T, scenario string, extraEnv map[string]string) (*Client, string) {
+	t.Helper()
+
 	recorder := filepath.Join(t.TempDir(), "invocations.jsonl")
 	wrapper := createHelperWrapper(t)
 
+	env := map[string]string{
+		"GO_WANT_CODEX_TEST_HELPER": "1",
+		"CODEX_TEST_SCENARIO":       scenario,
+		"CODEX_TEST_RECORD_FILE":    recorder,
+	}
+
+	for key, value := range extraEnv {
+		env[key] = value
+	}
+
 	client := New(Options{
 		ExecutablePath: wrapper,
-		Env: map[string]string{
-			"GO_WANT_CODEX_TEST_HELPER": "1",
-			"CODEX_TEST_SCENARIO":       scenario,
-			"CODEX_TEST_RECORD_FILE":    recorder,
-		},
+		Env:            env,
 	})
 
 	return client, recorder
@@ -352,6 +383,9 @@ func runHelperProcess() error {
 	if err := appendInvocationRecord(recordFile, helperInvocation{
 		Args:  args,
 		Stdin: string(stdin),
+		Env: map[string]string{
+			"CODEX_HOME": os.Getenv("CODEX_HOME"),
+		},
 	}); err != nil {
 		return fmt.Errorf("append record: %w", err)
 	}

@@ -47,6 +47,8 @@ var newCodexGateway = func(client *codex.Client, options codex.GatewayOptions) a
 	return codex.NewGateway(client, options)
 }
 
+var newCodexClient = codex.New
+
 func main() {
 	os.Exit(runCLI(os.Args[1:], os.LookupEnv, os.Stdout, os.Stderr))
 }
@@ -127,8 +129,9 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		return fmt.Errorf("initialize sqlite schema: %w", err)
 	}
 
-	client := codex.New(codex.Options{
+	client := newCodexClient(codex.Options{
 		ExecutablePath: cfg.CodexExecutable,
+		Env:            codexProcessEnv(cfg),
 		BaseURL:        cfg.CodexBaseURL,
 		APIKey:         cfg.CodexAPIKey,
 	})
@@ -280,6 +283,16 @@ func loadThreadOptions(cfg config.Config) (codex.ThreadOptions, error) {
 	}
 
 	return options, nil
+}
+
+func codexProcessEnv(cfg config.Config) map[string]string {
+	if cfg.CodexHome == "" {
+		return nil
+	}
+
+	return map[string]string{
+		"CODEX_HOME": cfg.CodexHome,
+	}
 }
 
 func cloneBoolPointer(value *bool) *bool {
