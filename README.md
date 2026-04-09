@@ -480,6 +480,26 @@ High-value runtime events include:
 
 Most message-path events also carry routing context such as `component`, `mode`, `logical_key`, `channel_id`, `reply_to_id`, `user_id`, and `task_id` when available.
 
+## Automated Validation
+
+Prefer the fake-runtime suites before running optional live Discord smoke checks.
+The reusable harness lives under `internal/testutil/runtimeharness`, and the primary adapter-level coverage lives under `internal/runtime/discord`.
+
+For focused runtime behavior validation from the repository root, run:
+
+```bash
+go test ./internal/testutil/runtimeharness -v
+go test ./internal/runtime/discord -run 'TestRuntimeContract' -v
+```
+
+These suites exercise the real Discord runtime startup path with a fake session and verify observable behavior such as:
+
+- reply targeting for qualifying mentions
+- streamed in-place reply edits for immediate turns
+- queued acknowledgments followed by deferred replies
+- command-style interaction presentation
+- attachment-aware message handling without a live Discord deployment
+
 ## Smoke Test Checklist
 
 Use this checklist when you want optional live Discord hardening beyond the normal automated suites.

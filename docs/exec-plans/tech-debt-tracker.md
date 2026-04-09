@@ -63,7 +63,7 @@ Follow `docs/operations/RELEASE_RUNBOOK.md` from a clean, up-to-date `master` ch
 
 The Discord runtime implementation has landed and the delivery plans have been archived, but the remaining validation debt should no longer be described as broad missing live Discord smoke coverage.
 
-The repository already has meaningful automated validation for message mapping, command routing, chunking, image download handling, multipart-input forwarding, queueing, and deferred reply behavior. The stronger long-term direction is to keep expanding that confidence through runtime-agnostic behavioral contracts plus adapter-level fake runtime coverage that can later be reused by future runtimes such as Slack or Telegram.
+The repository already has meaningful automated validation for message mapping, command routing, chunking, image download handling, multipart-input forwarding, queueing, and deferred reply behavior. It now also has a reusable fake-runtime vocabulary under `internal/testutil/runtimeharness` plus a Discord contract-style suite under `internal/runtime/discord` that drives the real runtime startup path through a fake session for mentions, streamed edits, queued replies, command interactions, and attachment-aware message flow.
 
 The live Discord gap should therefore be treated as narrow hardening work around behaviors that automated tests and fake runtimes cannot fully prove, such as real command-registration propagation, hosted attachment fetches, permission or intent quirks, and final reply delivery behavior in a real Discord deployment.
 
@@ -79,8 +79,8 @@ Automated tests still cannot prove that real Discord registration, hosted attach
 
 Treat this entry as a two-part follow-up:
 
-- continue documenting runtime-agnostic validation boundaries so contributors invest in automated contract and fake-runtime coverage first
-- add adapter-level fake runtime tests for key orchestration flows so most confidence no longer depends on live Discord confirmation
+- keep the fake-runtime suites current as new runtime-visible behavior is added so contributors continue to invest in automated contract coverage first
+- reserve live Discord checks for the remaining platform-only behaviors instead of reopening broad smoke-test expectations
 
 Keep the live Discord check as optional hardening until one of the following becomes true:
 
