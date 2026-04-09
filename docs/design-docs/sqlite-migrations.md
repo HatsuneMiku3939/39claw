@@ -1,14 +1,13 @@
 # SQLite Migrations
 
-This document proposes a migration structure for 39claw's local SQLite schema.
+This document describes the migration structure now used for 39claw's local SQLite schema.
 
-It is a design draft, not a statement that the full migration runner already exists in the repository today.
-The goal is to replace the current "create tables on startup and patch selected columns inline" approach with a versioned, testable, and explicit schema-evolution path.
+The repository now replaces the old "create tables on startup and patch selected columns inline" approach with a versioned, testable, and explicit schema-evolution path.
 
 ## Why This Change Is Needed
 
-The current store implementation initializes schema directly inside `internal/store/sqlite/store.go`.
-That keeps the first implementation small, but it becomes harder to reason about as the schema evolves.
+The original store implementation initialized schema directly inside `internal/store/sqlite/store.go`.
+That kept the first implementation small, but it became harder to reason about as the schema evolved.
 
 The current approach has three limits:
 
@@ -27,9 +26,9 @@ The current approach has three limits:
 - preserve compatibility with already-created local databases
 - keep migration logic separate from query and store logic
 
-## Proposed Package Shape
+## Package Shape
 
-The package boundary remains `internal/store/sqlite`, but responsibilities should split more explicitly:
+The package boundary remains `internal/store/sqlite`, but responsibilities are now split explicitly:
 
 - `internal/store/sqlite/db.go`
   - open the SQLite database
@@ -51,10 +50,10 @@ This keeps the store package small without introducing an external migration dep
 
 ## Startup Flow
 
-The intended startup flow is:
+The current startup flow is:
 
 ```text
-open database -> apply pragmas -> run migrations -> construct store -> serve requests
+OpenDB -> apply pragmas -> Migrate -> New(store) -> serve requests
 ```
 
 The migration step should happen exactly once per opened database handle during startup.
@@ -62,7 +61,7 @@ Store methods should not contain hidden schema-altering behavior after this refa
 
 ## Migration History Table
 
-The database should contain a dedicated history table:
+The database contains a dedicated history table:
 
 ```sql
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -136,9 +135,9 @@ If a later migration truly needs procedural branching, `migrate.go` may support 
 
 ## Initial Version Mapping
 
-If 39claw adopts this structure, the first migration set should reflect the schema that users may already have in the field.
+The first migration set reflects the schema that users may already have in the field.
 
-Recommended initial sequence:
+Current initial sequence:
 
 1. `0001_initial_schema.sql`
    - create `schema_migrations`
@@ -155,11 +154,11 @@ Recommended initial sequence:
    - rewrite legacy `daily` logical thread keys from `YYYY-MM-DD` to `YYYY-MM-DD#1`
    - insert or backfill matching `daily_sessions` rows
 
-This sequence mirrors the repository's current and planned state without pretending the original schema always existed in one step.
+This sequence mirrors the repository's shipped legacy states without pretending the original schema always existed in one step.
 
 ## Compatibility With Existing Databases
 
-Existing user databases created by the current startup schema path need a bootstrap rule.
+Existing user databases created by the old inline startup schema path need a bootstrap rule.
 
 Recommended bootstrap behavior:
 
@@ -227,5 +226,5 @@ This design does not currently propose:
 
 ## Recommendation
 
-This migration structure is worth adopting before the repository lands the `daily_sessions` feature and its legacy data rewrite.
-That upcoming work is the point where versioned migrations start paying for themselves instead of adding ceremony too early.
+Keep future SQLite schema work on top of this migration foundation.
+In particular, the planned `daily_sessions` feature and legacy daily-key rewrite should land as new migration versions instead of reopening ad hoc startup schema mutation.

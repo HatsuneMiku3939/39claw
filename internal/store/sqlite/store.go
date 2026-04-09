@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/HatsuneMiku3939/39claw/internal/app"
@@ -15,53 +13,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const (
-	driverName               = "sqlite"
-	sqliteDirectoryPermsMode = 0o755
-)
-
-var taskColumnDefinitions = []struct {
-	name       string
-	definition string
-}{
-	{name: "branch_name", definition: `TEXT NOT NULL DEFAULT ''`},
-	{name: "base_ref", definition: `TEXT NULL`},
-	{name: "worktree_path", definition: `TEXT NULL`},
-	{name: "worktree_status", definition: `TEXT NOT NULL DEFAULT 'pending'`},
-	{name: "worktree_created_at", definition: `TEXT NULL`},
-	{name: "worktree_pruned_at", definition: `TEXT NULL`},
-	{name: "last_used_at", definition: `TEXT NULL`},
-}
-
 type Store struct {
 	db    *sql.DB
 	clock func() time.Time
-}
-
-func Open(path string) (*Store, error) {
-	if path == "" {
-		return nil, errors.New("sqlite path must not be empty")
-	}
-
-	if path != ":memory:" {
-		dir := filepath.Dir(path)
-		if dir != "." {
-			if err := os.MkdirAll(dir, sqliteDirectoryPermsMode); err != nil {
-				return nil, fmt.Errorf("create sqlite directory: %w", err)
-			}
-		}
-	}
-
-	db, err := sql.Open(driverName, path)
-	if err != nil {
-		return nil, fmt.Errorf("open sqlite database: %w", err)
-	}
-
-	db.SetMaxOpenConns(1)
-	return &Store{
-		db:    db,
-		clock: time.Now().UTC,
-	}, nil
 }
 
 func New(db *sql.DB) *Store {
@@ -76,57 +30,7 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) InitSchema(ctx context.Context) error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS thread_bindings (
-			mode TEXT NOT NULL,
-			logical_thread_key TEXT NOT NULL,
-			codex_thread_id TEXT NOT NULL,
-			task_id TEXT NULL,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL,
-			PRIMARY KEY (mode, logical_thread_key)
-		);`,
-		`CREATE TABLE IF NOT EXISTS tasks (
-			task_id TEXT PRIMARY KEY,
-			discord_user_id TEXT NOT NULL,
-			task_name TEXT NOT NULL,
-			status TEXT NOT NULL,
-			branch_name TEXT NOT NULL DEFAULT '',
-			base_ref TEXT NULL,
-			worktree_path TEXT NULL,
-			worktree_status TEXT NOT NULL DEFAULT 'pending',
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL,
-			closed_at TEXT NULL,
-			worktree_created_at TEXT NULL,
-			worktree_pruned_at TEXT NULL,
-			last_used_at TEXT NULL
-		);`,
-		`CREATE TABLE IF NOT EXISTS active_tasks (
-			discord_user_id TEXT PRIMARY KEY,
-			task_id TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		);`,
-	}
-
-	for _, statement := range statements {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("exec schema statement: %w", err)
-		}
-	}
-
-	if err := s.ensureTaskColumns(ctx); err != nil {
-		return err
-	}
-
-	if _, err := s.db.ExecContext(
-		ctx,
-		`UPDATE tasks SET branch_name = 'task/' || task_id WHERE branch_name = ''`,
-	); err != nil {
-		return fmt.Errorf("backfill task branch names: %w", err)
-	}
-
-	return nil
+	return Migrate(ctx, s.db)
 }
 
 func (s *Store) GetThreadBinding(ctx context.Context, mode string, logicalThreadKey string) (app.ThreadBinding, bool, error) {
@@ -577,45 +481,6 @@ func scanTask(scanner interface{ Scan(dest ...any) error }) (app.Task, bool, err
 	}
 
 	return task, true, nil
-}
-
-func (s *Store) ensureTaskColumns(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(tasks)`)
-	if err != nil {
-		return fmt.Errorf("query task table info: %w", err)
-	}
-	defer rows.Close()
-
-	existingColumns := make(map[string]struct{})
-	for rows.Next() {
-		var cid int
-		var name string
-		var columnType string
-		var notNull int
-		var defaultValue sql.NullString
-		var primaryKey int
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return fmt.Errorf("scan task table info: %w", err)
-		}
-		existingColumns[name] = struct{}{}
-	}
-
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate task table info: %w", err)
-	}
-
-	for _, column := range taskColumnDefinitions {
-		if _, ok := existingColumns[column.name]; ok {
-			continue
-		}
-
-		statement := fmt.Sprintf(`ALTER TABLE tasks ADD COLUMN %s %s`, column.name, column.definition)
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("add tasks.%s column: %w", column.name, err)
-		}
-	}
-
-	return nil
 }
 
 func nullableString(value string) any {

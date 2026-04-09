@@ -114,20 +114,22 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	}
 	slog.SetDefault(logger)
 
-	store, err := sqlitestore.Open(cfg.SQLitePath)
+	db, err := sqlitestore.OpenDB(ctx, cfg.SQLitePath)
 	if err != nil {
-		return fmt.Errorf("open sqlite store: %w", err)
+		return fmt.Errorf("open sqlite database: %w", err)
 	}
 	defer func() {
-		closeErr := store.Close()
+		closeErr := db.Close()
 		if closeErr != nil && !errors.Is(closeErr, context.Canceled) {
-			logger.Error("close sqlite store", "error", closeErr)
+			logger.Error("close sqlite database", "error", closeErr)
 		}
 	}()
 
-	if err := store.InitSchema(ctx); err != nil {
-		return fmt.Errorf("initialize sqlite schema: %w", err)
+	if err := sqlitestore.Migrate(ctx, db); err != nil {
+		return fmt.Errorf("migrate sqlite database: %w", err)
 	}
+
+	store := sqlitestore.New(db)
 
 	client := newCodexClient(codex.Options{
 		ExecutablePath: cfg.CodexExecutable,

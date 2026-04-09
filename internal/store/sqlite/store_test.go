@@ -11,15 +11,32 @@ import (
 	"github.com/HatsuneMiku3939/39claw/internal/app"
 )
 
-func TestStoreInitSchemaIsIdempotent(t *testing.T) {
+func TestMigrateIsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	store := newTestStore(t)
+	db, err := OpenDB(context.Background(), filepath.Join(t.TempDir(), "39claw.db"))
+	if err != nil {
+		t.Fatalf("OpenDB() error = %v", err)
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Fatalf("db.Close() error = %v", closeErr)
+		}
+	}()
 
 	for i := 0; i < 2; i++ {
-		if err := store.InitSchema(context.Background()); err != nil {
-			t.Fatalf("InitSchema() error = %v", err)
+		if err := Migrate(context.Background(), db); err != nil {
+			t.Fatalf("Migrate() error = %v", err)
 		}
+	}
+
+	var count int
+	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
+		t.Fatalf("query schema_migrations count error = %v", err)
+	}
+
+	if count != 2 {
+		t.Fatalf("schema_migrations count = %d, want %d", count, 2)
 	}
 }
 
@@ -80,18 +97,7 @@ func TestStoreThreadBindingPersistsAcrossReopen(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "39claw.db")
 
-	store, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-
-	store.clock = func() time.Time {
-		return time.Date(2026, time.April, 5, 15, 4, 0, 0, time.UTC)
-	}
-
-	if err := store.InitSchema(context.Background()); err != nil {
-		t.Fatalf("InitSchema() error = %v", err)
-	}
+	store := newMigratedStoreAtPath(t, path)
 
 	if err := store.UpsertThreadBinding(context.Background(), app.ThreadBinding{
 		Mode:             "daily",
@@ -105,19 +111,12 @@ func TestStoreThreadBindingPersistsAcrossReopen(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	reopened, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open() reopen error = %v", err)
-	}
+	reopened := newMigratedStoreAtPath(t, path)
 	defer func() {
 		if closeErr := reopened.Close(); closeErr != nil {
 			t.Fatalf("Close() reopen error = %v", closeErr)
 		}
 	}()
-
-	if err := reopened.InitSchema(context.Background()); err != nil {
-		t.Fatalf("InitSchema() reopen error = %v", err)
-	}
 
 	binding, ok, err := reopened.GetThreadBinding(context.Background(), "daily", "2026-04-05")
 	if err != nil {
@@ -138,19 +137,8 @@ func TestStoreTaskStatePersistsAcrossReopen(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "39claw.db")
 
-	store, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-
-	store.clock = func() time.Time {
-		return time.Date(2026, time.April, 5, 15, 4, 0, 0, time.UTC)
-	}
-
+	store := newMigratedStoreAtPath(t, path)
 	ctx := context.Background()
-	if err := store.InitSchema(ctx); err != nil {
-		t.Fatalf("InitSchema() error = %v", err)
-	}
 
 	if err := store.CreateTask(ctx, app.Task{
 		TaskID:        "task-1",
@@ -171,19 +159,12 @@ func TestStoreTaskStatePersistsAcrossReopen(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	reopened, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open() reopen error = %v", err)
-	}
+	reopened := newMigratedStoreAtPath(t, path)
 	defer func() {
 		if closeErr := reopened.Close(); closeErr != nil {
 			t.Fatalf("Close() reopen error = %v", closeErr)
 		}
 	}()
-
-	if err := reopened.InitSchema(ctx); err != nil {
-		t.Fatalf("InitSchema() reopen error = %v", err)
-	}
 
 	task, ok, err := reopened.GetTask(ctx, "user-1", "task-1")
 	if err != nil {
@@ -374,7 +355,7 @@ func TestStoreCloseTaskKeepsDifferentActiveTask(t *testing.T) {
 	}
 }
 
-func TestStoreInitSchemaMigratesExistingTaskTable(t *testing.T) {
+func TestMigrateLegacyDatabaseBootstrapAddsTaskWorktreeColumns(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "39claw.db")
@@ -382,6 +363,18 @@ func TestStoreInitSchemaMigratesExistingTaskTable(t *testing.T) {
 	db, err := sql.Open(driverName, path)
 	if err != nil {
 		t.Fatalf("sql.Open() error = %v", err)
+	}
+
+	if _, err := db.ExecContext(context.Background(), `CREATE TABLE thread_bindings (
+		mode TEXT NOT NULL,
+		logical_thread_key TEXT NOT NULL,
+		codex_thread_id TEXT NOT NULL,
+		task_id TEXT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY (mode, logical_thread_key)
+	);`); err != nil {
+		t.Fatalf("create legacy thread_bindings table error = %v", err)
 	}
 
 	if _, err := db.ExecContext(context.Background(), `CREATE TABLE tasks (
@@ -394,6 +387,14 @@ func TestStoreInitSchemaMigratesExistingTaskTable(t *testing.T) {
 		closed_at TEXT NULL
 	);`); err != nil {
 		t.Fatalf("create legacy tasks table error = %v", err)
+	}
+
+	if _, err := db.ExecContext(context.Background(), `CREATE TABLE active_tasks (
+		discord_user_id TEXT PRIMARY KEY,
+		task_id TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);`); err != nil {
+		t.Fatalf("create legacy active_tasks table error = %v", err)
 	}
 
 	createdAt := time.Date(2026, time.April, 5, 15, 4, 0, 0, time.UTC).Format(time.RFC3339Nano)
@@ -415,19 +416,7 @@ func TestStoreInitSchemaMigratesExistingTaskTable(t *testing.T) {
 		t.Fatalf("db.Close() error = %v", err)
 	}
 
-	store, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer func() {
-		if closeErr := store.Close(); closeErr != nil {
-			t.Fatalf("Close() error = %v", closeErr)
-		}
-	}()
-
-	if err := store.InitSchema(context.Background()); err != nil {
-		t.Fatalf("InitSchema() error = %v", err)
-	}
+	store := newMigratedStoreAtPath(t, path)
 
 	task, ok, err := store.GetTask(context.Background(), "user-1", "task-1")
 	if err != nil {
@@ -506,24 +495,32 @@ func TestStoreUpdateTaskAndListClosedReadyTasks(t *testing.T) {
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 
-	store, err := Open(filepath.Join(t.TempDir(), "39claw.db"))
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-
-	store.clock = func() time.Time {
-		return time.Date(2026, time.April, 5, 15, 4, 0, 0, time.UTC)
-	}
-
-	if err := store.InitSchema(context.Background()); err != nil {
-		t.Fatalf("InitSchema() error = %v", err)
-	}
-
+	store := newMigratedStoreAtPath(t, filepath.Join(t.TempDir(), "39claw.db"))
 	t.Cleanup(func() {
 		if closeErr := store.Close(); closeErr != nil {
 			t.Fatalf("Close() error = %v", closeErr)
 		}
 	})
+
+	return store
+}
+
+func newMigratedStoreAtPath(t *testing.T, path string) *Store {
+	t.Helper()
+
+	db, err := OpenDB(context.Background(), path)
+	if err != nil {
+		t.Fatalf("OpenDB() error = %v", err)
+	}
+
+	if err := Migrate(context.Background(), db); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	store := New(db)
+	store.clock = func() time.Time {
+		return time.Date(2026, time.April, 5, 15, 4, 0, 0, time.UTC)
+	}
 
 	return store
 }

@@ -70,7 +70,9 @@ Implementation has not started yet. The intended outcome is a `daily` mode that 
 - `internal/dailymemory/service.go`
   - runs the hidden preflight refresh and currently assumes one thread per local day
 - `internal/store/sqlite/store.go`
-  - creates the SQLite schema and persists `thread_bindings`, `tasks`, and `active_tasks`
+  - persists `thread_bindings`, `tasks`, and `active_tasks` after startup migrations have already prepared the schema
+- `migrations/sqlite`
+  - owns versioned SQLite schema changes, so `daily_sessions` must land as a new migration instead of inline startup schema mutation
 - `internal/runtime/discord/commands.go`
   - defines the slash-command choices and help output
 - `internal/runtime/discord/interaction_mapper.go`
@@ -102,7 +104,7 @@ Start this plan only after confirming the repository still matches these assumpt
 - `internal/app/message_service_impl.go` still runs the daily-memory preflight before visible thread-binding lookup
 - `internal/dailymemory/service.go` still expects a date-like logical key and writes `AGENT_MEMORY/YYYY-MM-DD.md`
 - `internal/runtime/discord/commands.go` still owns the root command choices and currently exposes `action:help` only for `daily` mode
-- `internal/store/sqlite/store.go` still creates `thread_bindings`, `tasks`, and `active_tasks`
+- the repository now uses embedded SQLite migrations under `migrations/sqlite`, so this plan must add `daily_sessions` through new migration files rather than through inline `store.go` schema setup
 - `make test` and `make lint` pass before implementation work begins
 
 Verify that state with:
@@ -130,7 +132,7 @@ This plan fixes the following product and implementation choices:
 
 At the end of this milestone, SQLite should persist which same-day generation is active for each local date, and legacy `daily` thread bindings should be normalized from `YYYY-MM-DD` to `YYYY-MM-DD#1`.
 
-Add a new table in `internal/store/sqlite/store.go` named `daily_sessions` with these columns:
+Add a new migration under `migrations/sqlite` that creates a `daily_sessions` table with these columns:
 
 - `local_date TEXT NOT NULL`
 - `generation INTEGER NOT NULL`
@@ -236,7 +238,7 @@ Finish by running `make test` and `make lint`, then update this plan's `Progress
 
 ## Plan of Work
 
-Begin in `internal/store/sqlite/store.go`. Add the `daily_sessions` table, active-generation uniqueness, and the legacy `daily` key migration. Extend the app-facing store contract with focused daily-session methods rather than overloading task methods.
+Begin in `migrations/sqlite` by adding the `daily_sessions` migration files plus any legacy-key backfill migration needed for `daily`. Then extend the app-facing store contract with focused daily-session methods rather than overloading task methods.
 
 Next, introduce a small app-level daily-session resolver and use it from `internal/app/message_service_impl.go` before the visible turn loads a thread binding or calls the daily-memory refresher. The visible `daily` path should always operate on the generation key, not on the raw bucket string.
 
