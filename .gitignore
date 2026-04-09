@@ -4,4 +4,6 @@
 .env.*.local
 .envrc
 .tools
+.agents/
+AGENT_MEMORY/
 dist/
