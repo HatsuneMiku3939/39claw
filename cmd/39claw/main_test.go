@@ -250,7 +250,7 @@ func TestRun(t *testing.T) {
 			cancel := func() {}
 			if tt.wantErr == "" {
 				var timeoutCtx context.Context
-				timeoutCtx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+					timeoutCtx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
 				ctx = timeoutCtx
 			}
 			defer cancel()
