@@ -210,6 +210,8 @@ The repository should treat validation as three layers:
 - adapter-level fake runtime coverage
   - simulate platform inputs and capture runtime-visible outputs without depending on a live Discord deployment
   - cover representative normal-message events, command-style intents, attachment metadata inputs, reply targets, payload text, visibility hints, and deferred-delivery timing semantics
+  - keep the shared fake-runtime vocabulary under `internal/testutil/runtimeharness`
+  - keep the Discord contract-style suite under `internal/runtime/discord` and make `go test ./internal/runtime/discord -run 'TestRuntimeContract' -v` the first runtime-specific check before optional live hardening
 - live-platform hardening
   - stay narrow and optional instead of acting as the primary quality gate
   - focus on external-platform behaviors such as real command-registration propagation, hosted attachment fetches, permission or intent quirks, and final delivery edge cases
