@@ -13,12 +13,12 @@ This change matters because the repository currently creates and mutates schema 
 ## Progress
 
 - [x] (2026-04-06 00:00Z) Reviewed the current SQLite startup path, the inline schema initialization in `internal/store/sqlite/store.go`, the new design note in `docs/design-docs/sqlite-migrations.md`, and the active `daily` rotation plan to confirm that the migration runner should land as a separate prerequisite.
-- [ ] Create embedded migration assets under `migrations/sqlite` plus `migrations/embed.go` and move the current baseline schema into versioned SQL files.
-- [ ] Add `internal/store/sqlite/db.go` and `internal/store/sqlite/migrate.go` so startup can open the database, apply pragmas, create `schema_migrations`, and run pending migrations transactionally.
-- [ ] Add a bootstrap reconciliation path for legacy databases that were created before `schema_migrations` existed.
-- [ ] Update `cmd/39claw/main.go` and the store package so schema setup happens through `Migrate()` before store construction, not through inline schema mutation inside CRUD-oriented code.
-- [ ] Replace store tests that depend on `InitSchema()` with migration-aware coverage and keep reopen-oriented persistence tests passing.
-- [ ] Run `make test` and `make lint`, then update this plan with evidence and any follow-up work that should be deferred to a later plan.
+- [x] (2026-04-09 06:20Z) Added embedded migration assets under `migrations/sqlite` plus `migrations/embed.go`, splitting the historical schema into `0001_initial_schema.sql` and `0002_task_worktree_metadata.sql`.
+- [x] (2026-04-09 06:45Z) Added `internal/store/sqlite/db.go` and `internal/store/sqlite/migrate.go` so startup can open SQLite, apply pragmas, create `schema_migrations`, and run pending migrations transactionally.
+- [x] (2026-04-09 07:00Z) Implemented bootstrap reconciliation for known legacy databases that predate `schema_migrations`, including recognition of already-satisfied versions and branch-name backfill preservation.
+- [x] (2026-04-09 07:10Z) Updated `cmd/39claw/main.go` and the store package so startup follows `OpenDB -> Migrate -> New`, while keeping `InitSchema()` only as a thin compatibility shim.
+- [x] (2026-04-09 07:25Z) Replaced inline-schema test assumptions with migration-aware helpers and added dedicated migration coverage for fresh and legacy databases.
+- [x] (2026-04-09 07:40Z) Ran focused and full validation with `go test ./internal/store/sqlite -run 'TestStore|TestMigrate' -v`, `go test ./cmd/39claw -v`, `go test ./...`, and `./scripts/lint -c .golangci.yml`; `make` is not installed in this environment, so the repository-equivalent direct commands were used instead.
 
 ## Surprises & Discoveries
 
@@ -30,6 +30,12 @@ This change matters because the repository currently creates and mutates schema 
 
 - Observation: The active `daily` generation plan currently assumes it can add `daily_sessions` directly in store initialization. That assumption should be revised only after this plan lands so the later feature can target the new migration foundation rather than the old inline path.
   Evidence: `docs/exec-plans/active/12-daily-clear-generation.md`
+
+- Observation: The legacy bootstrap path only needs to recognize the exact table sets and column shapes that older 39claw builds could have produced. Treating partially-customized local schemas as supported would add complexity without improving the supported upgrade path.
+  Evidence: `internal/store/sqlite/migrate.go`, `internal/store/sqlite/migrate_test.go`
+
+- Observation: Keeping `InitSchema()` as a thin shim avoided a larger test-only churn while still removing schema evolution policy from CRUD code and from production startup.
+  Evidence: `internal/store/sqlite/store.go`, `cmd/39claw/main.go`
 
 ## Decision Log
 
@@ -45,9 +51,19 @@ This change matters because the repository currently creates and mutates schema 
   Rationale: Early users may already have local databases created by the inline `InitSchema()` path. A migration runner that only works for fresh databases would strand those users and would not be a complete replacement.
   Date/Author: 2026-04-06 / Codex
 
+- Decision: Model the historical schema as two production migrations: a baseline table-creation step and a separate task-worktree metadata step.
+  Rationale: Splitting the already-shipped additive task columns into `0002` preserves the real upgrade boundary that legacy databases need, keeps bootstrap reconciliation easy to reason about, and gives later features a clean place to append new versions.
+  Date/Author: 2026-04-09 / Codex
+
+- Decision: Reject unsupported legacy table sets during bootstrap instead of trying to infer arbitrary partially-migrated states.
+  Rationale: The repository only needs to upgrade shapes that 39claw itself previously produced. Failing fast on unknown legacy states is safer than pretending a generic schema-diff engine exists.
+  Date/Author: 2026-04-09 / Codex
+
 ## Outcomes & Retrospective
 
-Implementation has not started yet. The intended outcome is a repository where SQLite schema evolution is versioned, repeatable, and observable through dedicated migration history, while existing local databases still upgrade safely. This plan will be complete when fresh databases migrate from embedded SQL, legacy databases bootstrap into the same latest shape, and the startup path no longer relies on CRUD code to alter schema.
+Implementation completed on 2026-04-09. The repository now owns SQLite schema evolution through embedded, versioned migrations plus a narrow bootstrap path for legacy pre-runner databases. Fresh databases migrate through `migrations/sqlite/*.sql`, legacy databases reconcile into `schema_migrations` before any later versions run, and production startup no longer relies on CRUD code to mutate schema.
+
+The main tradeoff is that `InitSchema()` still exists as a compatibility shim for callers and tests, but it now delegates directly to `Migrate()` and no longer carries inline schema policy. That kept the refactor smaller while preserving a clean production ordering of `OpenDB -> Migrate -> New`.
 
 ## Context and Orientation
 
@@ -88,9 +104,9 @@ Begin this plan only after confirming the repository still matches these assumpt
 
 Verify that state with:
 
-    cd /home/filepang/playground/39claw
-    make test
-    make lint
+    cd /home/filepang/workspaces/39claw/39claw
+    go test ./...
+    ./scripts/lint -c .golangci.yml
 
 If the repository has drifted away from that shape, update this ExecPlan first so it remains self-contained and truthful.
 
@@ -210,12 +226,12 @@ Finally, clean up the now-redundant inline schema code, rerun the full checks, a
 
 ## Concrete Steps
 
-Run all commands from `/home/filepang/playground/39claw`.
+Run all commands from `/home/filepang/workspaces/39claw/39claw`.
 
 1. Confirm the baseline repository state before refactoring.
 
-    make test
-    make lint
+    go test ./...
+    ./scripts/lint -c .golangci.yml
 
 2. Implement the migration asset package and runner, then run focused SQLite tests while iterating.
 
@@ -227,8 +243,8 @@ Run all commands from `/home/filepang/playground/39claw`.
 
 4. Run the full required checks before considering the plan complete.
 
-    make test
-    make lint
+    go test ./...
+    ./scripts/lint -c .golangci.yml
 
 5. If the user also wants a commit after implementation, stage only the intended files and create an English Conventional Commit message after all checks pass.
 
@@ -241,8 +257,9 @@ Expected command outcomes:
     --- PASS: TestMigrateLegacyDatabaseBootstrap (0.00s)
     PASS
 
-    $ make lint
-    <repository lint command exits with status 0 and no reported violations>
+    $ ./scripts/lint -c .golangci.yml
+    0 issues.
+    Linting passed
 
 ## Validation and Acceptance
 
@@ -270,9 +287,9 @@ For startup integration:
 
 The required automated proof is:
 
-    cd /home/filepang/playground/39claw
-    make test
-    make lint
+    cd /home/filepang/workspaces/39claw/39claw
+    go test ./...
+    ./scripts/lint -c .golangci.yml
 
 This plan is complete only when both commands pass and the plan's living sections are updated with the actual results.
 
@@ -305,6 +322,13 @@ Important functions or entrypoints that should exist by the end of implementatio
 - a database-opening helper in `internal/store/sqlite/db.go`
 - `func Migrate(ctx context.Context, db *sql.DB) error` in `internal/store/sqlite/migrate.go`
 - a startup path in `cmd/39claw/main.go` that calls the migration runner before constructing the store
+
+Validation completed on 2026-04-09 with:
+
+- `go test ./internal/store/sqlite -run 'TestStore|TestMigrate' -v`
+- `go test ./cmd/39claw -v`
+- `go test ./...`
+- `./scripts/lint -c .golangci.yml`
 
 Short example of the intended startup shape:
 
@@ -356,3 +380,4 @@ In `internal/store/sqlite/store.go`, keep:
 By the end of this plan, `store.go` should no longer be the place that defines the repository's schema evolution policy.
 
 Revision note (2026-04-06): Created this plan after narrowing scope away from `daily_sessions`. The user chose to land the migration runner first and to revise the active `daily` generation plan only after that infrastructure exists.
+Revision note (2026-04-09): Completed the migration runner, legacy bootstrap path, startup refactor, migration-focused tests, and the `daily` plan follow-up update that now targets versioned SQL files.
