@@ -25,10 +25,11 @@ Plans in this directory should be written and maintained in line with `.agents/P
 
 These plans are intended to be executed in the order listed below. Most plans follow numeric order, but infrastructure prerequisites may require picking up a later-numbered plan first when it explicitly prepares the repository for another active plan.
 
-- [Replace task-mode source-checkout parenting with a managed bare repository](./active/15-task-managed-bare-parent.md)
+- None currently.
 
 ## Recently Completed Plans
 
+- [Replace task-mode source-checkout parenting with a managed bare repository](./completed/15-task-managed-bare-parent.md)
 - [Add shared daily generation rotation and `action:clear` to `daily` mode](./completed/12-daily-clear-generation.md)
 - [Build a versioned SQLite migration runner and bootstrap path](./completed/13-sqlite-migration-runner.md)
 - [Prefer the remote default branch when creating `task` worktrees](./completed/14-task-worktree-remote-base.md)

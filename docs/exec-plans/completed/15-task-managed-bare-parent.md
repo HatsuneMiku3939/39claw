@@ -19,7 +19,9 @@ The user-visible proof is practical. In `task` mode with a source repository tha
 - [x] (2026-04-10 11:20Z) Moved task worktree creation and pruning to the managed bare parent while preserving task branch identity, remote push behavior, cached-ref fallback, and closed-task pruning.
 - [x] (2026-04-10 11:20Z) Updated architecture, design, product, operator, and example docs so the new task-mode repository model is fully described.
 - [x] (2026-04-10 11:20Z) Added automated coverage for startup validation, managed-bare creation, remote propagation, task worktree branch switching, cached-remote fallback, and pruning regressions.
-- [ ] Run repository validation (`make test` / `make lint`, or the documented command-level fallback when `make` is unavailable), open the feature PR, merge it, and archive this plan into `docs/exec-plans/completed/`.
+- [x] (2026-04-10 11:22Z) Ran repository validation with the documented fallback commands because `make` was unavailable in this environment: `go test ./...` and `./scripts/lint -c .golangci.yml` both passed.
+- [x] (2026-04-10 11:40Z) Opened PR `#75`, waited for `Release Config` and `Test and Lint` to pass, and merged it with merge commit `7b826f22a59df956969025212f93547afbd27414`.
+- [x] (2026-04-10 11:44Z) Updated local `master` to the merged `origin/master` state and archived this plan because the shipped behavior, validation, and documentation now satisfy the plan's acceptance criteria with no blocking deferred scope.
 
 ## Surprises & Discoveries
 
@@ -53,11 +55,17 @@ The user-visible proof is practical. In `task` mode with a source repository tha
   Rationale: Automatic local-only sync creates ambiguous source-of-truth semantics, especially when the source checkout is dirty or when task branches diverge inside the managed bare parent.
   Date/Author: 2026-04-10 / Codex
 
+- Decision: No new `tech-debt-tracker.md` entry is required during archival.
+  Rationale: The plan's intended behavior shipped in PR `#75`, and the archive decision does not depend on any intentionally deferred scope that still blocks or narrows the delivered feature.
+  Date/Author: 2026-04-10 / Codex
+
 ## Outcomes & Retrospective
 
 The implementation now follows the intended repository split. Operators keep using `CLAW_CODEX_WORKDIR` as a normal checkout, while 39claw owns a separate managed bare repository for task worktree lifecycle under `${CLAW_DATADIR}/repos`. Task branches now live in that managed parent, task worktrees are created from it, and startup fails early when the configured checkout lacks an `origin` remote.
 
 The most important retrospective note is that "initialized from origin" mattered more than the exact shell verb. The clean user-facing model still came from `origin`, but the Git plumbing needed explicit remote-tracking refs inside the bare parent, so the final implementation used `git init --bare` plus explicit remote configuration rather than a single `git clone --bare` command.
+
+This plan no longer belongs in `active/` because the implementation, documentation, validation, feature PR, merge, and local `master` update are all complete. No additional cleanup entry was added to `docs/exec-plans/tech-debt-tracker.md`; future refinements to task-mode ergonomics can stand on their own instead of being framed as unfinished scope from this plan.
 
 ## Context and Orientation
 
@@ -240,3 +248,4 @@ The implementation should stay within the existing Go standard library plus the 
 No new third-party libraries are needed. Prefer extending the current config validation and startup assembly rather than adding a new subsystem. If a new persisted field becomes necessary to record the managed bare repository identity or path, document the exact schema change in this plan before implementation and add the corresponding migration plus tests in the same milestone.
 
 Revision Note: 2026-04-10 / Codex - Created this active ExecPlan after deciding that the task-mode branch-occupancy problem should be solved by moving task worktrees onto a managed bare parent repository and by explicitly requiring an `origin` remote instead of preserving no-remote support.
+Revision Note: 2026-04-10 / Codex - Archived this plan after PR `#75` merged, local `master` was updated, and no blocking deferred scope remained.
