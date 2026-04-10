@@ -84,10 +84,10 @@ thread_key = user + task_id
 
 ### Behavior
 
-- the configured `CLAW_CODEX_WORKDIR` must be a Git repository
+- the configured `CLAW_CODEX_WORKDIR` must be a Git repository with an `origin` remote
 - a current task must exist before normal messages can be routed
 - `task-new` creates task metadata immediately but defers worktree creation
-- the first normal message for a task creates the task worktree lazily when needed
+- the first normal message for a task creates or refreshes the managed bare parent under `${CLAW_DATADIR}/repos` and then creates the task worktree lazily when needed
 - messages are sent to the Codex thread associated with the active task and use that task's worktree once it exists
 - changing tasks changes the target logical thread
 - closed-task worktrees are retained only for the fifteen most recently closed ready tasks

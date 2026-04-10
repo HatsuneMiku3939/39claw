@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -227,6 +228,19 @@ func TestRun(t *testing.T) {
 			},
 			wantErr: "task mode requires CLAW_CODEX_WORKDIR to exist",
 		},
+		{
+			name: "rejects git workdir without origin remote in task mode during startup",
+			env: map[string]string{
+				"CLAW_MODE":                 "task",
+				"CLAW_TIMEZONE":             "Asia/Tokyo",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "release",
+				"CLAW_CODEX_WORKDIR":        "/workspace/repo-without-origin",
+				"CLAW_DATADIR":              "/tmp/39claw-data",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
+			},
+			wantErr: "task mode requires CLAW_CODEX_WORKDIR to have an origin remote",
+		},
 	}
 
 	for _, tt := range tests {
@@ -250,7 +264,7 @@ func TestRun(t *testing.T) {
 			cancel := func() {}
 			if tt.wantErr == "" {
 				var timeoutCtx context.Context
-					timeoutCtx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+				timeoutCtx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
 				ctx = timeoutCtx
 			}
 			defer cancel()
@@ -274,12 +288,13 @@ func TestRun(t *testing.T) {
 			}
 
 			if env["CLAW_MODE"] == "task" && tt.wantErr == "" {
-				workdir := filepath.Join(t.TempDir(), "repo")
-				if err := os.MkdirAll(filepath.Join(workdir, ".git"), 0o755); err != nil {
-					t.Fatalf("MkdirAll(.git) error = %v", err)
-				}
+				workdir := createTaskModeRemoteBackedRepository(t)
 				env["CLAW_CODEX_WORKDIR"] = workdir
 				tt.wantThreadOptions.WorkingDirectory = workdir
+			}
+
+			if env["CLAW_MODE"] == "task" && strings.Contains(tt.wantErr, "origin remote") {
+				env["CLAW_CODEX_WORKDIR"] = createTaskModeLocalRepository(t)
 			}
 
 			err := run(ctx, func(key string) (string, bool) {
@@ -474,6 +489,66 @@ type stubCodexGateway struct{}
 
 func (stubCodexGateway) RunTurn(ctx context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
 	return app.RunTurnResult{}, nil
+}
+
+func createTaskModeRemoteBackedRepository(t *testing.T) string {
+	t.Helper()
+
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Fatalf("git is required for task-mode startup tests: %v", err)
+	}
+
+	root := t.TempDir()
+	remote := filepath.Join(root, "remote.git")
+	source := filepath.Join(root, "source")
+
+	runGitTest(t, root, "init", "--bare", "-b", "main", remote)
+	runGitTest(t, root, "clone", remote, source)
+	runGitTest(t, source, "config", "user.email", "codex@example.com")
+	runGitTest(t, source, "config", "user.name", "Codex")
+	assertNoError(t, os.WriteFile(filepath.Join(source, "README.md"), []byte("hello\n"), 0o644))
+	runGitTest(t, source, "add", "README.md")
+	runGitTest(t, source, "commit", "-m", "initial commit")
+	runGitTest(t, source, "push", "-u", "origin", "main")
+
+	return source
+}
+
+func createTaskModeLocalRepository(t *testing.T) string {
+	t.Helper()
+
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Fatalf("git is required for task-mode startup tests: %v", err)
+	}
+
+	repo := filepath.Join(t.TempDir(), "source")
+	assertNoError(t, os.MkdirAll(repo, 0o755))
+	runGitTest(t, repo, "init", "-b", "main")
+	runGitTest(t, repo, "config", "user.email", "codex@example.com")
+	runGitTest(t, repo, "config", "user.name", "Codex")
+	assertNoError(t, os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\n"), 0o644))
+	runGitTest(t, repo, "add", "README.md")
+	runGitTest(t, repo, "commit", "-m", "initial commit")
+
+	return repo
+}
+
+func runGitTest(t *testing.T, workdir string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = workdir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v error = %v\n%s", args, err, output)
+	}
+}
+
+func assertNoError(t *testing.T, err error) {
+	t.Helper()
+
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func assertThreadOptionsEqual(t *testing.T, got codex.ThreadOptions, want codex.ThreadOptions) {

@@ -37,4 +37,4 @@ Recommended command names:
 1. Run the two instances with separate Discord bot applications and separate tokens if you want them online at the same time.
 2. Each 39claw process bulk-overwrites the slash-command schema for its own Discord application at startup.
 3. `daily` mode needs a writable Codex sandbox because 39claw manages `AGENT_MEMORY/` inside the configured workdir.
-4. `task` mode requires `CLAW_CODEX_WORKDIR` to be the root of a Git repository.
+4. `task` mode requires `CLAW_CODEX_WORKDIR` to be the root of a Git repository with an `origin` remote.

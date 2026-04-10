@@ -180,7 +180,7 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 
 	var workspaceManager app.TaskWorkspaceManager
 	if cfg.Mode == config.ModeTask {
-		workspaceManager, err = app.NewTaskWorkspaceManager(app.TaskWorkspaceManagerDependencies{
+		workspaceManager, err = app.NewTaskWorkspaceManager(ctx, app.TaskWorkspaceManagerDependencies{
 			Store:            store,
 			SourceRepository: cfg.CodexWorkdir,
 			DataDir:          cfg.DataDir,

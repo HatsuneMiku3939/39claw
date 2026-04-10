@@ -115,7 +115,7 @@ Expected flow:
 1. The user creates or switches to a task that has no ready task worktree yet.
 2. The user sends a normal message to continue that task.
 3. 39claw detects that the task worktree is still pending or previously failed.
-4. 39claw refreshes `origin` metadata on a best-effort basis when the source repository has an `origin` remote, then prepares the task-specific Git worktree under the bot data directory from the shared remote default branch when available.
+4. 39claw creates or refreshes the managed bare parent under `${CLAW_DATADIR}/repos`, best-effort fetches `origin`, and then prepares the task-specific Git worktree under the bot data directory from the shared remote default branch when available.
 5. After workspace preparation succeeds, 39claw runs the Codex turn in that task worktree.
 
 Expected user perception:
@@ -229,7 +229,7 @@ The most recent closed task workspaces should remain available longer than older
 - Active task state is always user-scoped within a bot instance in v1.
 - The active task should remain active until the user explicitly closes it or switches to another task.
 - If a task is closed and the user then sends a normal message, the bot should respond with missing-active-task guidance rather than routing the message normally.
-- `task` mode assumes the configured workdir is a Git repository.
+- `task` mode assumes the configured workdir is a Git repository with an `origin` remote.
 - New tasks create metadata first and prepare their task worktree lazily on the first normal message.
 - Closed-task retention keeps only the fifteen most recently closed ready task worktrees.
-- Task branches are retained even when older closed-task worktrees are pruned.
+- Task branches are retained in the managed bare parent even when older closed-task worktrees are pruned.

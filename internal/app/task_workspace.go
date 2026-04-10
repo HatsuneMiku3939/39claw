@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,10 +16,13 @@ import (
 )
 
 const (
-	defaultGitExecutablePath   = "git"
-	defaultClosedTaskRetention = 15
-	worktreesDirectoryName     = "worktrees"
-	worktreeDirectoryPerms     = 0o755
+	defaultGitExecutablePath      = "git"
+	defaultClosedTaskRetention    = 15
+	worktreesDirectoryName        = "worktrees"
+	managedRepositoriesDirectory  = "repos"
+	worktreeDirectoryPerms        = 0o755
+	managedOriginFetchRefspec     = "+refs/heads/*:refs/remotes/origin/*"
+	managedRepositoryHashByteSize = 6
 )
 
 type TaskWorkspaceManagerDependencies struct {
@@ -40,7 +45,12 @@ type GitTaskWorkspaceManager struct {
 	clock            func() time.Time
 }
 
-func NewTaskWorkspaceManager(deps TaskWorkspaceManagerDependencies) (*GitTaskWorkspaceManager, error) {
+type gitRemoteConfig struct {
+	url     string
+	pushURL string
+}
+
+func NewTaskWorkspaceManager(ctx context.Context, deps TaskWorkspaceManagerDependencies) (*GitTaskWorkspaceManager, error) {
 	if deps.Store == nil {
 		return nil, errors.New("thread store must not be nil")
 	}
@@ -75,7 +85,7 @@ func NewTaskWorkspaceManager(deps TaskWorkspaceManagerDependencies) (*GitTaskWor
 		clock = time.Now().UTC
 	}
 
-	return &GitTaskWorkspaceManager{
+	manager := &GitTaskWorkspaceManager{
 		store:            deps.Store,
 		sourceRepository: sourceRepository,
 		dataDir:          dataDir,
@@ -83,7 +93,13 @@ func NewTaskWorkspaceManager(deps TaskWorkspaceManagerDependencies) (*GitTaskWor
 		closedRetention:  closedRetention,
 		logger:           logger,
 		clock:            clock,
-	}, nil
+	}
+
+	if _, err := manager.sourceOriginConfig(ctx); err != nil {
+		return nil, err
+	}
+
+	return manager, nil
 }
 
 func DefaultTaskBranchName(taskID string) string {
@@ -107,10 +123,14 @@ func (m *GitTaskWorkspaceManager) EnsureReady(ctx context.Context, task Task) (T
 		return task, nil
 	}
 
+	managedRepositoryPath, err := m.ensureManagedRepository(ctx)
+	if err != nil {
+		return Task{}, m.markTaskWorktreeFailed(ctx, task, "", err)
+	}
+
 	baseRef := task.BaseRef
 	if baseRef == "" {
-		m.refreshOrigin(ctx)
-		detectedBaseRef, err := m.detectBaseRef(ctx)
+		detectedBaseRef, err := m.detectBaseRef(ctx, managedRepositoryPath)
 		if err != nil {
 			return Task{}, m.markTaskWorktreeFailed(ctx, task, "", err)
 		}
@@ -122,11 +142,11 @@ func (m *GitTaskWorkspaceManager) EnsureReady(ctx context.Context, task Task) (T
 		worktreePath = m.worktreePath(task.TaskID)
 	}
 
-	if err := m.prepareWorktreePath(ctx, worktreePath); err != nil {
+	if err := m.prepareWorktreePath(ctx, managedRepositoryPath, worktreePath); err != nil {
 		return Task{}, m.markTaskWorktreeFailed(ctx, task, worktreePath, err)
 	}
 
-	branchExists, err := m.branchExists(ctx, task.BranchName)
+	branchExists, err := m.branchExists(ctx, managedRepositoryPath, task.BranchName)
 	if err != nil {
 		return Task{}, m.markTaskWorktreeFailed(ctx, task, worktreePath, err)
 	}
@@ -142,7 +162,7 @@ func (m *GitTaskWorkspaceManager) EnsureReady(ctx context.Context, task Task) (T
 		args = append(args, baseRef)
 	}
 
-	if _, err := m.runGit(ctx, args...); err != nil {
+	if _, err := m.runGitIn(ctx, managedRepositoryPath, args...); err != nil {
 		return Task{}, m.markTaskWorktreeFailed(ctx, task, worktreePath, err)
 	}
 
@@ -173,13 +193,18 @@ func (m *GitTaskWorkspaceManager) PruneClosed(ctx context.Context) error {
 		return nil
 	}
 
+	managedRepositoryPath, err := m.ensureManagedRepository(ctx)
+	if err != nil {
+		return fmt.Errorf("ensure managed task repository: %w", err)
+	}
+
 	var errs []error
 	for _, task := range tasks[m.closedRetention:] {
 		if strings.TrimSpace(task.WorktreePath) == "" {
 			continue
 		}
 
-		if _, err := m.runGit(ctx, "worktree", "remove", "--force", task.WorktreePath); err != nil {
+		if _, err := m.runGitIn(ctx, managedRepositoryPath, "worktree", "remove", "--force", task.WorktreePath); err != nil {
 			m.logger.Error(
 				"prune closed task worktree",
 				"task_id", task.TaskID,
@@ -208,13 +233,13 @@ func (m *GitTaskWorkspaceManager) PruneClosed(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (m *GitTaskWorkspaceManager) detectBaseRef(ctx context.Context) (string, error) {
-	if ref, ok := m.originHeadRef(ctx); ok {
+func (m *GitTaskWorkspaceManager) detectBaseRef(ctx context.Context, repositoryPath string) (string, error) {
+	if ref, ok := m.originHeadRef(ctx, repositoryPath); ok {
 		return ref, nil
 	}
 
 	for _, ref := range []string{"origin/main", "origin/master", "main", "master"} {
-		exists, err := m.refExists(ctx, ref)
+		exists, err := m.refExists(ctx, repositoryPath, ref)
 		if err != nil {
 			return "", err
 		}
@@ -226,8 +251,8 @@ func (m *GitTaskWorkspaceManager) detectBaseRef(ctx context.Context) (string, er
 	return "", errors.New("detect task worktree base ref: expected origin/HEAD, origin/main, origin/master, main, or master")
 }
 
-func (m *GitTaskWorkspaceManager) branchExists(ctx context.Context, branchName string) (bool, error) {
-	_, err := m.runGit(ctx, "show-ref", "--verify", "--quiet", "refs/heads/"+branchName)
+func (m *GitTaskWorkspaceManager) branchExists(ctx context.Context, repositoryPath string, branchName string) (bool, error) {
+	_, err := m.runGitIn(ctx, repositoryPath, "show-ref", "--verify", "--quiet", "refs/heads/"+branchName)
 	if err == nil {
 		return true, nil
 	}
@@ -240,8 +265,8 @@ func (m *GitTaskWorkspaceManager) branchExists(ctx context.Context, branchName s
 	return false, fmt.Errorf("check branch existence: %w", err)
 }
 
-func (m *GitTaskWorkspaceManager) refreshOrigin(ctx context.Context) {
-	exists, err := m.remoteExists(ctx, "origin")
+func (m *GitTaskWorkspaceManager) refreshOrigin(ctx context.Context, repositoryPath string) {
+	exists, err := m.remoteExistsIn(ctx, repositoryPath, "origin")
 	if err != nil {
 		m.logger.Warn("check git remote before task worktree fetch", "remote", "origin", "error", err)
 		return
@@ -250,13 +275,18 @@ func (m *GitTaskWorkspaceManager) refreshOrigin(ctx context.Context) {
 		return
 	}
 
-	if _, err := m.runGit(ctx, "fetch", "origin", "--prune"); err != nil {
+	if _, err := m.runGitIn(ctx, repositoryPath, "fetch", "origin", "--prune"); err != nil {
 		m.logger.Warn("refresh git remote before task worktree base ref detection", "remote", "origin", "error", err)
+		return
+	}
+
+	if _, err := m.runGitIn(ctx, repositoryPath, "remote", "set-head", "origin", "--auto"); err != nil {
+		m.logger.Warn("refresh git remote head for task worktree base ref detection", "remote", "origin", "error", err)
 	}
 }
 
-func (m *GitTaskWorkspaceManager) remoteExists(ctx context.Context, remoteName string) (bool, error) {
-	_, err := m.runGit(ctx, "remote", "get-url", remoteName)
+func (m *GitTaskWorkspaceManager) remoteExistsIn(ctx context.Context, repositoryPath string, remoteName string) (bool, error) {
+	_, err := m.runGitIn(ctx, repositoryPath, "remote", "get-url", remoteName)
 	if err == nil {
 		return true, nil
 	}
@@ -269,13 +299,13 @@ func (m *GitTaskWorkspaceManager) remoteExists(ctx context.Context, remoteName s
 	return false, fmt.Errorf("check remote existence: %w", err)
 }
 
-func (m *GitTaskWorkspaceManager) originHeadRef(ctx context.Context) (string, bool) {
-	ref, err := m.runGit(ctx, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+func (m *GitTaskWorkspaceManager) originHeadRef(ctx context.Context, repositoryPath string) (string, bool) {
+	ref, err := m.runGitIn(ctx, repositoryPath, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
 	if err != nil || strings.TrimSpace(ref) == "" {
 		return "", false
 	}
 
-	exists, verifyErr := m.refExists(ctx, ref)
+	exists, verifyErr := m.refExists(ctx, repositoryPath, ref)
 	if verifyErr != nil || !exists {
 		return "", false
 	}
@@ -283,8 +313,8 @@ func (m *GitTaskWorkspaceManager) originHeadRef(ctx context.Context) (string, bo
 	return ref, true
 }
 
-func (m *GitTaskWorkspaceManager) refExists(ctx context.Context, ref string) (bool, error) {
-	_, err := m.runGit(ctx, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+func (m *GitTaskWorkspaceManager) refExists(ctx context.Context, repositoryPath string, ref string) (bool, error) {
+	_, err := m.runGitIn(ctx, repositoryPath, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
 	if err == nil {
 		return true, nil
 	}
@@ -297,13 +327,13 @@ func (m *GitTaskWorkspaceManager) refExists(ctx context.Context, ref string) (bo
 	return false, fmt.Errorf("check ref existence %q: %w", ref, err)
 }
 
-func (m *GitTaskWorkspaceManager) prepareWorktreePath(ctx context.Context, worktreePath string) error {
+func (m *GitTaskWorkspaceManager) prepareWorktreePath(ctx context.Context, repositoryPath string, worktreePath string) error {
 	if err := os.MkdirAll(filepath.Dir(worktreePath), worktreeDirectoryPerms); err != nil {
 		return fmt.Errorf("create worktree parent directory: %w", err)
 	}
 
 	if _, statErr := os.Stat(worktreePath); statErr == nil {
-		if _, err := m.runGit(ctx, "worktree", "remove", "--force", worktreePath); err != nil {
+		if _, err := m.runGitIn(ctx, repositoryPath, "worktree", "remove", "--force", worktreePath); err != nil {
 			m.logger.Debug("ignore stale worktree removal failure before retry", "worktree_path", worktreePath, "error", err)
 		}
 	} else if !errors.Is(statErr, os.ErrNotExist) {
@@ -341,8 +371,192 @@ func (m *GitTaskWorkspaceManager) worktreePath(taskID string) string {
 	return filepath.Join(m.dataDir, worktreesDirectoryName, taskID)
 }
 
-func (m *GitTaskWorkspaceManager) runGit(ctx context.Context, args ...string) (string, error) {
-	commandArgs := append([]string{"-C", m.sourceRepository}, args...)
+func (m *GitTaskWorkspaceManager) managedRepositoryPath() string {
+	baseName := sanitizeTaskRepositoryName(filepath.Base(filepath.Clean(m.sourceRepository)))
+	if baseName == "" {
+		baseName = "source-repository"
+	}
+
+	sourceHash := sha256.Sum256([]byte(filepath.Clean(m.sourceRepository)))
+	suffix := hex.EncodeToString(sourceHash[:managedRepositoryHashByteSize])
+
+	return filepath.Join(m.dataDir, managedRepositoriesDirectory, baseName+"-"+suffix+".git")
+}
+
+func (m *GitTaskWorkspaceManager) ensureManagedRepository(ctx context.Context) (string, error) {
+	remoteConfig, err := m.sourceOriginConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	managedRepositoryPath := m.managedRepositoryPath()
+	if err := os.MkdirAll(filepath.Dir(managedRepositoryPath), worktreeDirectoryPerms); err != nil {
+		return "", fmt.Errorf("create managed repository parent directory: %w", err)
+	}
+
+	_, statErr := os.Stat(managedRepositoryPath)
+	switch {
+	case statErr == nil:
+		isBare, bareErr := m.isBareRepository(ctx, managedRepositoryPath)
+		if bareErr != nil {
+			return "", bareErr
+		}
+		if !isBare {
+			return "", fmt.Errorf("managed task repository is not bare: %s", managedRepositoryPath)
+		}
+	case errors.Is(statErr, os.ErrNotExist):
+		if err := m.initBareRepository(ctx, managedRepositoryPath); err != nil {
+			return "", err
+		}
+	default:
+		return "", fmt.Errorf("stat managed task repository: %w", statErr)
+	}
+
+	if err := m.syncManagedOriginConfig(ctx, managedRepositoryPath, remoteConfig); err != nil {
+		return "", err
+	}
+
+	m.refreshOrigin(ctx, managedRepositoryPath)
+	return managedRepositoryPath, nil
+}
+
+func (m *GitTaskWorkspaceManager) sourceOriginConfig(ctx context.Context) (gitRemoteConfig, error) {
+	exists, err := m.remoteExistsIn(ctx, m.sourceRepository, "origin")
+	if err != nil {
+		return gitRemoteConfig{}, fmt.Errorf("check source repository origin remote: %w", err)
+	}
+	if !exists {
+		return gitRemoteConfig{}, fmt.Errorf(
+			"task mode requires CLAW_CODEX_WORKDIR to have an origin remote: %s",
+			m.sourceRepository,
+		)
+	}
+
+	url, err := m.runGitIn(ctx, m.sourceRepository, "remote", "get-url", "origin")
+	if err != nil {
+		return gitRemoteConfig{}, fmt.Errorf("load source repository origin remote URL: %w", err)
+	}
+
+	pushURL, err := m.optionalGitConfigValue(ctx, m.sourceRepository, "remote.origin.pushurl")
+	if err != nil {
+		return gitRemoteConfig{}, fmt.Errorf("load source repository origin push URL: %w", err)
+	}
+
+	return gitRemoteConfig{
+		url:     strings.TrimSpace(url),
+		pushURL: strings.TrimSpace(pushURL),
+	}, nil
+}
+
+func (m *GitTaskWorkspaceManager) isBareRepository(ctx context.Context, repositoryPath string) (bool, error) {
+	value, err := m.runGitIn(ctx, repositoryPath, "rev-parse", "--is-bare-repository")
+	if err != nil {
+		return false, fmt.Errorf("check managed task repository type: %w", err)
+	}
+
+	return strings.EqualFold(strings.TrimSpace(value), "true"), nil
+}
+
+func (m *GitTaskWorkspaceManager) initBareRepository(ctx context.Context, repositoryPath string) error {
+	//nolint:gosec // The git executable path is intentionally configurable for tests.
+	cmd := exec.CommandContext(ctx, m.gitExecutable, "init", "--bare", repositoryPath)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = strings.TrimSpace(stdout.String())
+		}
+		if message == "" {
+			return fmt.Errorf("initialize managed task repository: %w", err)
+		}
+		return fmt.Errorf("initialize managed task repository: %w: %s", err, message)
+	}
+
+	return nil
+}
+
+func (m *GitTaskWorkspaceManager) syncManagedOriginConfig(
+	ctx context.Context,
+	repositoryPath string,
+	remoteConfig gitRemoteConfig,
+) error {
+	exists, err := m.remoteExistsIn(ctx, repositoryPath, "origin")
+	if err != nil {
+		return fmt.Errorf("check managed task repository origin remote: %w", err)
+	}
+
+	if exists {
+		if _, err := m.runGitIn(ctx, repositoryPath, "remote", "set-url", "origin", remoteConfig.url); err != nil {
+			return fmt.Errorf("update managed task repository origin remote URL: %w", err)
+		}
+	} else {
+		if _, err := m.runGitIn(ctx, repositoryPath, "remote", "add", "origin", remoteConfig.url); err != nil {
+			return fmt.Errorf("add managed task repository origin remote: %w", err)
+		}
+	}
+
+	if _, err := m.runGitIn(ctx, repositoryPath, "config", "--replace-all", "remote.origin.fetch", managedOriginFetchRefspec); err != nil {
+		return fmt.Errorf("configure managed task repository origin fetch refspec: %w", err)
+	}
+
+	if err := m.syncManagedOriginPushURL(ctx, repositoryPath, remoteConfig.pushURL); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *GitTaskWorkspaceManager) syncManagedOriginPushURL(
+	ctx context.Context,
+	repositoryPath string,
+	pushURL string,
+) error {
+	existingPushURL, err := m.optionalGitConfigValue(ctx, repositoryPath, "remote.origin.pushurl")
+	if err != nil {
+		return fmt.Errorf("check managed task repository origin push URL: %w", err)
+	}
+
+	if existingPushURL != "" {
+		if _, err := m.runGitIn(ctx, repositoryPath, "config", "--unset-all", "remote.origin.pushurl"); err != nil {
+			return fmt.Errorf("clear managed task repository origin push URL: %w", err)
+		}
+	}
+
+	if strings.TrimSpace(pushURL) == "" {
+		return nil
+	}
+
+	if _, err := m.runGitIn(ctx, repositoryPath, "config", "remote.origin.pushurl", pushURL); err != nil {
+		return fmt.Errorf("configure managed task repository origin push URL: %w", err)
+	}
+
+	return nil
+}
+
+func (m *GitTaskWorkspaceManager) optionalGitConfigValue(
+	ctx context.Context,
+	repositoryPath string,
+	key string,
+) (string, error) {
+	value, err := m.runGitIn(ctx, repositoryPath, "config", "--get", key)
+	if err == nil {
+		return strings.TrimSpace(value), nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return "", nil
+	}
+
+	return "", fmt.Errorf("load git config %s: %w", key, err)
+}
+
+func (m *GitTaskWorkspaceManager) runGitIn(ctx context.Context, repositoryPath string, args ...string) (string, error) {
+	commandArgs := append([]string{"-C", repositoryPath}, args...)
 
 	//nolint:gosec // The git executable path is intentionally configurable for tests.
 	cmd := exec.CommandContext(ctx, m.gitExecutable, commandArgs...)
@@ -363,4 +577,30 @@ func (m *GitTaskWorkspaceManager) runGit(ctx context.Context, args ...string) (s
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+func sanitizeTaskRepositoryName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(trimmed))
+	for _, r := range trimmed {
+		switch {
+		case r >= 'a' && r <= 'z':
+			builder.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			builder.WriteRune(r + ('a' - 'A'))
+		case r >= '0' && r <= '9':
+			builder.WriteRune(r)
+		case r == '-', r == '_', r == '.':
+			builder.WriteRune(r)
+		default:
+			builder.WriteByte('-')
+		}
+	}
+
+	return strings.Trim(builder.String(), "-.")
 }

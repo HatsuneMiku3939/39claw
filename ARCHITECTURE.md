@@ -55,7 +55,7 @@ Instead, it routes Discord interactions into Codex threads that operate against 
 The distinction between `daily` mode and `task` mode is therefore not a different execution engine.
 It is a difference in the role of the repository that Codex is operating against.
 
-- In `task` mode, the configured workdir must be a Git repository that serves as the source repository for task-isolated worktrees, allowing Codex to help perform operational tasks such as code changes, pull request handling, and release workflows.
+- In `task` mode, the configured workdir must be a Git repository with an `origin` remote. It remains the operator-visible source checkout and validation anchor, while 39claw creates task-isolated worktrees from its own managed bare parent repository under `CLAW_DATADIR`.
 - In `daily` mode, the repository is a knowledge-oriented repository that primarily contains instructions and documentation, allowing Codex to answer questions by following local guidance and searching the knowledge base.
 
 Both modes share the same Codex-native foundation.
@@ -270,11 +270,11 @@ thread_key = user + task_id
 
 Behavior:
 
-- `task` mode requires `CLAW_CODEX_WORKDIR` to be a Git repository
+- `task` mode requires `CLAW_CODEX_WORKDIR` to be a Git repository with an `origin` remote
 - normal messages require an active task context
-- each task reserves its own branch identity and eventually its own Git worktree
+- each task reserves its own branch identity in a managed bare parent repository under `${CLAW_DATADIR}/repos`
 - messages route to the thread bound to the active task
-- the first normal message for a task may lazily create the task worktree before Codex runs
+- the first normal message for a task may lazily create the managed bare parent and the task worktree before Codex runs
 - changing the active task changes the target thread
 - each task maps to a distinct Codex conversation thread, so switching tasks also switches execution context and working directory once the task worktree exists
 

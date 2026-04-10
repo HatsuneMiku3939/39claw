@@ -12,6 +12,7 @@ This example assumes:
 
 - you can clone the source repository locally before starting 39claw
 - `CLAW_CODEX_WORKDIR` points at that repository root
+- that checkout has an `origin` remote configured
 - task worktrees will be created under the 39claw data directory
 - you want a convenience-first autonomous development preset
 - you installed `39claw` already through one of the packaged installation paths in [README.md](../README.md)
@@ -63,10 +64,11 @@ Check that the chosen workdir is the repository root:
 ```bash
 cd /Users/you/src/project-alpha
 git status --short --branch
+git remote get-url origin
 test -e .git && echo "git root ok"
 ```
 
-If `.git` is missing at that exact path, point `CLAW_CODEX_WORKDIR` at the real repository root before continuing.
+If `.git` is missing at that exact path, or `git remote get-url origin` fails, point `CLAW_CODEX_WORKDIR` at the real repository root and configure `origin` before continuing.
 
 ## Step 3: Create the local data directory
 
@@ -77,7 +79,8 @@ mkdir -p /Users/you/.local/share/39claw-dev
 39claw will store:
 
 1. the SQLite database at `/Users/you/.local/share/39claw-dev/39claw.sqlite`
-2. task worktrees under `/Users/you/.local/share/39claw-dev/worktrees/`
+2. a managed bare task repository under `/Users/you/.local/share/39claw-dev/repos/`
+3. task worktrees under `/Users/you/.local/share/39claw-dev/worktrees/`
 
 ## Step 4: Create the environment file
 
@@ -116,9 +119,9 @@ CLAW_LOG_FORMAT=text
 Why these values matter:
 
 1. `CLAW_MODE=task` enables task creation, switching, and task-specific threads.
-2. `CLAW_CODEX_WORKDIR` is the source repository root, not the final execution path for every turn.
+2. `CLAW_CODEX_WORKDIR` is the operator-visible source checkout and must have an `origin` remote.
 3. `CLAW_CODEX_HOME`, when set, tells 39claw which `CODEX_HOME` value to pass to the spawned Codex CLI.
-4. Each new active task can create its own worktree under `CLAW_DATADIR/worktrees/`.
+4. 39claw creates a managed bare parent under `CLAW_DATADIR/repos/` and each new active task can create its own worktree under `CLAW_DATADIR/worktrees/`.
 5. `CLAW_CODEX_SANDBOX_MODE=danger-full-access` gives Codex the widest local write access for autonomous repository work.
 6. `CLAW_CODEX_WEB_SEARCH_MODE=live` lets the bot look up fresh web information when implementation work needs it.
 7. `CLAW_CODEX_NETWORK_ACCESS=true` lets the bot open links and use network-backed tooling during a task.
@@ -184,7 +187,7 @@ On startup, 39claw should:
 
 1. connect to Discord
 2. register the `/dev` command
-3. validate that `/Users/you/src/project-alpha` is a Git repository root
+3. validate that `/Users/you/src/project-alpha` is a Git repository root with an `origin` remote
 
 ## Step 8: Create the first task in Discord
 
@@ -197,15 +200,16 @@ In your Discord test channel:
 
 The first normal message for that task may take a moment longer because 39claw can create the task worktree before Codex starts.
 
-## Step 9: Confirm the worktree was created
+## Step 9: Confirm the managed repository and worktree were created
 
 After the first normal task message, inspect the data directory:
 
 ```bash
+find /Users/you/.local/share/39claw-dev/repos -maxdepth 2 -type d | sort
 find /Users/you/.local/share/39claw-dev/worktrees -maxdepth 2 -type d | sort
 ```
 
-You should see a task-specific directory under `worktrees/`.
+You should see one bare repository under `repos/` and a task-specific directory under `worktrees/`.
 
 ## Step 10: Smoke-test task switching
 
@@ -228,9 +232,10 @@ If startup fails, check these first:
 
 1. `CLAW_CODEX_WORKDIR` must exist and be a directory.
 2. `CLAW_CODEX_WORKDIR` must be the root of a Git repository.
-3. `CLAW_DISCORD_COMMAND_NAME` must contain only lowercase letters, digits, or hyphens.
-4. `CLAW_DISCORD_TOKEN` must belong to the bot application you invited to the server.
-5. `danger-full-access` and network-enabled execution should match your security expectations before you leave the bot running unattended.
+3. `CLAW_CODEX_WORKDIR` must have a working `origin` remote.
+4. `CLAW_DISCORD_COMMAND_NAME` must contain only lowercase letters, digits, or hyphens.
+5. `CLAW_DISCORD_TOKEN` must belong to the bot application you invited to the server.
+6. `danger-full-access` and network-enabled execution should match your security expectations before you leave the bot running unattended.
 
 ## Step 12: Move from test to real use
 

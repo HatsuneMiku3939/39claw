@@ -95,6 +95,13 @@ That includes:
 
 This metadata lets 39claw decide whether a task needs lazy worktree creation, whether a closed task is eligible for pruning, and which working directory Codex should use for the next turn.
 
+Task mode also owns a repository-shaped on-disk artifact outside SQLite:
+
+- `${CLAW_DATADIR}/repos/<repo-id>.git`
+
+That managed bare repository is not a user-facing checkout.
+It exists so 39claw can own task branches and create task worktrees without letting the operator-visible source checkout occupy the default branch for every bot-managed workspace.
+
 ## Storage Direction for v1
 
 SQLite is the preferred v1 storage backend.
