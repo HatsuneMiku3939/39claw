@@ -42,7 +42,6 @@ func TestRefresherRefreshBeforeFirstDailyTurnUsesPreviousBinding(t *testing.T) {
 		Store:   store,
 		Gateway: gateway,
 		Workdir: workdir,
-		Timeout: time.Second,
 	}
 
 	err := refresher.RefreshBeforeFirstDailyTurn(
@@ -181,7 +180,7 @@ func TestRefresherReturnsErrorWhenCompletionFormatIsUnexpected(t *testing.T) {
 	}
 }
 
-func TestRefresherReturnsTimeout(t *testing.T) {
+func TestRefresherUsesCallerContextDeadline(t *testing.T) {
 	t.Parallel()
 
 	workdir := t.TempDir()
@@ -197,10 +196,12 @@ func TestRefresherReturnsTimeout(t *testing.T) {
 		},
 		Gateway: timeoutCodexGateway{},
 		Workdir: workdir,
-		Timeout: 10 * time.Millisecond,
 	}
 
-	err := refresher.RefreshBeforeFirstDailyTurn(context.Background(), app.DailySession{
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	err := refresher.RefreshBeforeFirstDailyTurn(ctx, app.DailySession{
 		LocalDate:                "2026-04-06",
 		Generation:               1,
 		LogicalThreadKey:         "2026-04-06#1",

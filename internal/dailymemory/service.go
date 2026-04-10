@@ -7,18 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/HatsuneMiku3939/39claw/internal/app"
 )
-
-const defaultRefreshTimeout = time.Minute
 
 type Refresher struct {
 	Store   app.ThreadStore
 	Gateway app.CodexGateway
 	Workdir string
-	Timeout time.Duration
 }
 
 func (r Refresher) RefreshBeforeFirstDailyTurn(ctx context.Context, session app.DailySession) error {
@@ -83,14 +79,7 @@ func (r Refresher) RefreshBeforeFirstDailyTurn(ctx context.Context, session app.
 		return err
 	}
 
-	refreshCtx := ctx
-	cancel := func() {}
-	if timeout := r.effectiveTimeout(); timeout > 0 {
-		refreshCtx, cancel = context.WithTimeout(ctx, timeout)
-	}
-	defer cancel()
-
-	result, err := r.Gateway.RunTurn(refreshCtx, previousBinding.CodexThreadID, app.CodexTurnInput{
+	result, err := r.Gateway.RunTurn(ctx, previousBinding.CodexThreadID, app.CodexTurnInput{
 		Prompt:           buildRefreshPrompt(session.PreviousLogicalThreadKey, session.LogicalThreadKey, bridgeFilename),
 		WorkingDirectory: workdir,
 	})
@@ -103,14 +92,6 @@ func (r Refresher) RefreshBeforeFirstDailyTurn(ctx context.Context, session app.
 	}
 
 	return nil
-}
-
-func (r Refresher) effectiveTimeout() time.Duration {
-	if r.Timeout != 0 {
-		return r.Timeout
-	}
-
-	return defaultRefreshTimeout
 }
 
 func ensureBridgeNote(path string, previousThreadID string, previousLogicalKey string, currentLogicalKey string) error {
