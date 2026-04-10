@@ -44,6 +44,44 @@ func TestTaskCommandServiceShowCurrentTask(t *testing.T) {
 	}
 }
 
+func TestTaskCommandServiceShowCurrentTaskIncludesWorktreeBranchWhenAvailable(t *testing.T) {
+	t.Parallel()
+
+	service := newTaskCommandServiceWithWorkspace(t, &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:         "task-1",
+				DiscordUserID:  "user-1",
+				TaskName:       "Release work",
+				Status:         app.TaskStatusOpen,
+				WorktreeStatus: app.TaskWorktreeStatusReady,
+				WorktreePath:   "/tmp/worktrees/task-1",
+				CreatedAt:      time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+	}, nil, &branchReportingTaskWorkspaceManager{
+		branches: map[string]string{
+			"task-1": "main",
+		},
+	})
+
+	response, err := service.ShowCurrentTask(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("ShowCurrentTask() error = %v", err)
+	}
+
+	want := "Active task: `Release work` (`task-1`) [branch: `main`]. Use `/release action:task-list` to see open tasks or `/release action:task-close task_id:task-1` when you're done."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
+	}
+}
+
 func TestTaskCommandServiceShowCurrentTaskWithoutActiveTaskReturnsGuidance(t *testing.T) {
 	t.Parallel()
 
@@ -154,6 +192,52 @@ func TestTaskCommandServiceListTasksMarksActiveTask(t *testing.T) {
 	}
 
 	want := "Open tasks:\n- `Release work` (`task-1`)\n- `Docs update` (`task-2`) [active]\nUse `/release action:task-switch task_name:<name>` to change the active task."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
+	}
+}
+
+func TestTaskCommandServiceListTasksIncludesWorktreeBranchWhenAvailable(t *testing.T) {
+	t.Parallel()
+
+	service := newTaskCommandServiceWithWorkspace(t, &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:         "task-1",
+				DiscordUserID:  "user-1",
+				TaskName:       "Release work",
+				Status:         app.TaskStatusOpen,
+				WorktreeStatus: app.TaskWorktreeStatusReady,
+				WorktreePath:   "/tmp/worktrees/task-1",
+				CreatedAt:      time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+			"user-1:task-2": {
+				TaskID:         "task-2",
+				DiscordUserID:  "user-1",
+				TaskName:       "Docs update",
+				Status:         app.TaskStatusOpen,
+				WorktreeStatus: app.TaskWorktreeStatusPending,
+				CreatedAt:      time.Date(2026, time.April, 5, 1, 0, 0, 0, time.UTC),
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-2",
+			},
+		},
+	}, nil, &branchReportingTaskWorkspaceManager{
+		branches: map[string]string{
+			"task-1": "feature/release",
+		},
+	})
+
+	response, err := service.ListTasks(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("ListTasks() error = %v", err)
+	}
+
+	want := "Open tasks:\n- `Release work` (`task-1`) [branch: `feature/release`]\n- `Docs update` (`task-2`) [active]\nUse `/release action:task-switch task_name:<name>` to change the active task."
 	if response.Text != want {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
@@ -475,4 +559,21 @@ func (*countingTaskWorkspaceManager) EnsureReady(context.Context, app.Task) (app
 func (m *countingTaskWorkspaceManager) PruneClosed(context.Context) error {
 	m.pruneCalls++
 	return nil
+}
+
+type branchReportingTaskWorkspaceManager struct {
+	branches map[string]string
+}
+
+func (*branchReportingTaskWorkspaceManager) EnsureReady(context.Context, app.Task) (app.Task, error) {
+	return app.Task{}, nil
+}
+
+func (*branchReportingTaskWorkspaceManager) PruneClosed(context.Context) error {
+	return nil
+}
+
+func (m *branchReportingTaskWorkspaceManager) CurrentBranch(_ context.Context, task app.Task) (string, bool, error) {
+	branch, ok := m.branches[task.TaskID]
+	return branch, ok, nil
 }

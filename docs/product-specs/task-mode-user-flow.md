@@ -144,9 +144,9 @@ Expected user perception:
 For `task` mode to feel usable, v1 should support at least:
 
 - `/<instance-command> action:task-current`
-  - show the current task name and ID
+  - show the current task name and ID, plus the current worktree branch when available
 - `/<instance-command> action:task-list`
-  - show task names and IDs
+  - show open task names and IDs, plus each task's current worktree branch when available
 - `/<instance-command> action:task-new task_name:<name>`
   - create a new task and switch the active task to it
 - `/<instance-command> action:task-switch task_name:<name>`

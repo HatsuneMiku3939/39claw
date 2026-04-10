@@ -84,10 +84,15 @@ func (s *DefaultTaskCommandService) ShowCurrentTask(ctx context.Context, userID 
 		), nil
 	}
 
+	renderedTask, err := s.renderTaskWithBranch(ctx, task)
+	if err != nil {
+		return MessageResponse{}, err
+	}
+
 	return taskCommandResponse(
 		fmt.Sprintf(
 			"Active task: %s. Use %s to see open tasks or %s when you're done.",
-			renderTask(task),
+			renderedTask,
 			s.commands.taskList(),
 			s.commands.taskClose(task.TaskID),
 		),
@@ -112,7 +117,12 @@ func (s *DefaultTaskCommandService) ListTasks(ctx context.Context, userID string
 	lines := make([]string, 0, len(tasks))
 	lines = append(lines, "Open tasks:")
 	for _, task := range tasks {
-		line := "- " + renderTask(task)
+		renderedTask, err := s.renderTaskWithBranch(ctx, task)
+		if err != nil {
+			return MessageResponse{}, err
+		}
+
+		line := "- " + renderedTask
 		if ok && activeTask.TaskID == task.TaskID {
 			line += " [active]"
 		}
@@ -329,6 +339,28 @@ func (s *DefaultTaskCommandService) renderActiveTaskSuffix(ctx context.Context, 
 
 func renderTask(task Task) string {
 	return fmt.Sprintf("`%s` (`%s`)", task.TaskName, task.TaskID)
+}
+
+func (s *DefaultTaskCommandService) renderTaskWithBranch(ctx context.Context, task Task) (string, error) {
+	renderedTask := renderTask(task)
+	if s.worktrees == nil {
+		return renderedTask, nil
+	}
+
+	branchReader, ok := s.worktrees.(TaskWorkspaceBranchReader)
+	if !ok {
+		return renderedTask, nil
+	}
+
+	branch, branchOK, err := branchReader.CurrentBranch(ctx, task)
+	if err != nil {
+		return "", fmt.Errorf("load task worktree branch: %w", err)
+	}
+	if !branchOK {
+		return renderedTask, nil
+	}
+
+	return fmt.Sprintf("%s [branch: `%s`]", renderedTask, branch), nil
 }
 
 func taskCommandResponse(text string) MessageResponse {
