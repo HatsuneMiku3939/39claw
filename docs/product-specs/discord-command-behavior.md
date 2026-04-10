@@ -78,11 +78,14 @@ If the bot responds to normal conversation, the conditions should be easy for us
 
 Examples:
 
-- explicit mention required
+- explicit mention required in guild channels
+- direct messages may be treated as explicit user turns without an extra mention
 
-v1 should use mention-only triggering for normal-message interaction.
-When the bot is mentioned, a normal message may contain typed text, one or more image attachments, or both.
-If the mention is present but the message contains neither text nor a usable image attachment, the bot should stay silent.
+v1 should use a small, channel-aware trigger contract for normal-message interaction.
+In guild channels, normal-message interaction remains mention-only.
+In direct messages, normal-message interaction should work without an extra bot mention.
+When a qualifying normal message is accepted, it may contain typed text, one or more image attachments, or both.
+If a qualifying trigger is present but the message contains neither text nor a usable image attachment, the bot should stay silent.
 If the turn starts immediately, the bot may first post a short placeholder reply and then edit that same reply as Codex streams progress or partial assistant output.
 If another turn for the same logical conversation is already running, the bot should acknowledge queued acceptance immediately and post the real answer later as a reply to the original triggering message.
 If five waiting messages are already queued for that logical conversation, the bot should return a clear retry-later response instead of queueing more work.
@@ -263,7 +266,7 @@ This command behavior layer is not intended to:
 
 ## Decisions
 
-- v1 normal-message triggering should be mention-only.
+- v1 normal-message triggering should be mention-only in guild channels and direct-message-triggered in DMs.
 - each bot instance should register exactly one slash command whose name identifies that instance in Discord search.
 - `action:help` should stay structurally simple in v1, but it should only describe commands that are actually available in the current bot instance.
 - `daily` mode may expose `action:clear` on that same root command so users can intentionally rotate the shared same-day generation.

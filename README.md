@@ -12,7 +12,7 @@ It is built for teams or individuals who want to work with Codex from inside Dis
 - two conversation modes for different workflows
 - one instance-specific slash command with explicit action choices
 - SQLite-backed continuity across restarts
-- image attachment support for mention-triggered turns
+- image attachment support for guild mentions and direct messages
 - queued acknowledgments when the same conversation is already busy
 
 ## Installation
@@ -153,9 +153,9 @@ Use `task` mode when you want durable work streams that continue across multiple
 
 ### Normal conversation
 
-- 39claw responds only when the bot is mentioned
+- 39claw responds to direct messages without a mention, and to guild messages only when the bot is mentioned
 - a qualifying message may contain text, images, or both
-- if the mention includes no text and no usable image, the bot stays silent
+- if the qualifying trigger includes no text and no usable image, the bot stays silent
 - replies are posted in the same channel as replies to the triggering message
 
 ### Commands
@@ -286,7 +286,7 @@ If this is your first time running a Discord bot, do this before the quick start
 
 In the bot settings, enable **Message Content Intent**.
 
-39claw reads the content of mention-triggered messages, so this intent is required for normal conversation in guild channels.
+39claw reads the content of guild mention-triggered messages and direct messages, so this intent is required for normal conversation in guild channels.
 
 ### 3. Generate an invite URL
 
@@ -326,7 +326,7 @@ If you set `CLAW_DISCORD_GUILD_ID`, 39claw registers slash commands in that guil
 
 ### 7. Know what to expect in the channel
 
-- normal conversation is mention-only
+- normal conversation is mention-only in guild channels and works without a mention in DMs
 - slash commands are explicit and do not require a mention
 - in `task` mode, users must create or switch to a task before normal conversation will run
 
@@ -494,7 +494,7 @@ go test ./internal/runtime/discord -run 'TestRuntimeContract' -v
 
 These suites exercise the real Discord runtime startup path with a fake session and verify observable behavior such as:
 
-- reply targeting for qualifying mentions
+- reply targeting for qualifying guild mentions and direct messages
 - streamed in-place reply edits for immediate turns
 - queued acknowledgments followed by deferred replies
 - command-style interaction presentation
@@ -505,7 +505,8 @@ These suites exercise the real Discord runtime startup path with a fake session 
 Use this checklist when you want optional live Discord hardening beyond the normal automated suites.
 It is most useful for real-platform behaviors such as hosted attachments, command registration, permissions, and final reply delivery:
 
-- mention the bot and confirm the reply targets the original message
+- mention the bot in a guild channel and confirm the reply targets the original message
+- send the bot a direct message without a mention and confirm it answers
 - mention the bot with text plus an image and confirm the request is handled
 - mention the bot with only an image and confirm the bot still answers
 - send unrelated chatter without a mention and confirm the bot stays silent
@@ -552,8 +553,8 @@ For the complete release candidate checklist, tagging steps, and post-release ve
 
 39claw is still early-stage software, but the current build already supports:
 
-- mention-only normal conversation
-- mention-triggered image attachment intake
+- guild mention and direct-message normal conversation
+- guild-mention and direct-message image attachment intake
 - `daily` and `task` conversation modes
 - one instance-specific root slash command
 - `action:help`, `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, and `action:task-close`

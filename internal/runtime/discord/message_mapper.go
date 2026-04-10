@@ -17,7 +17,7 @@ func mapMessageCreate(selfUserID string, event *discordgo.MessageCreate) (app.Me
 		return app.MessageRequest{}, false
 	}
 
-	if !mentionsUser(event.Mentions, selfUserID) {
+	if !isDirectMessage(event) && !mentionsUser(event.Mentions, selfUserID) {
 		return app.MessageRequest{}, false
 	}
 
@@ -36,6 +36,10 @@ func mapMessageCreate(selfUserID string, event *discordgo.MessageCreate) (app.Me
 		Mentioned:  true,
 		ReceivedAt: receivedAt,
 	}, true
+}
+
+func isDirectMessage(event *discordgo.MessageCreate) bool {
+	return event != nil && strings.TrimSpace(event.GuildID) == ""
 }
 
 func mentionsUser(users []*discordgo.User, userID string) bool {

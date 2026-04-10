@@ -113,9 +113,9 @@ When the bot runs in `daily` mode, 39claw also manages a durable memory projecti
 
 ## Discord Behavior Defaults
 
-Normal conversation is mention-only in v1.
+Normal conversation is mention-only in guild channels and direct-message-triggered in DMs in v1.
 When a qualifying normal message is handled, the bot replies in the same channel and targets the triggering message as the reply root.
-Qualifying normal messages may include text, image attachments, or both as long as the bot mention is present and at least one usable input remains after attachment filtering.
+Qualifying normal messages may include text, image attachments, or both as long as the guild-channel bot mention is present or the message arrived in a direct message, and at least one usable input remains after attachment filtering.
 
 Each bot instance should expose one slash-command surface whose root name comes from `CLAW_DISCORD_COMMAND_NAME`.
 That root command should always expose `action:help`.
@@ -136,8 +136,8 @@ If the source repository has an `origin` remote, 39claw should try `git fetch or
 Once the task worktree is ready, Codex runs with the task-specific `worktree_path` as the effective working directory for that turn.
 Closed tasks keep their task branches, but only the fifteen most recently closed ready tasks keep their worktrees; older closed ready worktrees are force-pruned.
 
-Unsupported non-mention chatter is ignored.
-Mention-only posts that contain no text and no usable image attachments are also ignored.
+Unsupported guild-channel non-mention chatter is ignored.
+Qualifying posts that contain no text and no usable image attachments are also ignored.
 Long responses are chunked into Discord-safe messages while preserving code fences when practical.
 Before a response is sent to Discord, local workspace file references should be rewritten so the absolute `CLAW_CODEX_WORKDIR` path is not exposed, and percent-encoded path segments should be decoded for display.
 Only one Codex turn may run at a time for a given logical thread key.
@@ -224,8 +224,8 @@ Most of these outcomes should be proven through automated contract coverage plus
 - In `daily` mode, the first qualifying mention creates generation `#1`, a second same-day mention reuses the active generation, and the first mention on the next local date creates a fresh `#1` generation after the durable-memory preflight refreshes `AGENT_MEMORY` from the last active prior-day generation when that previous binding exists.
 - In `daily` mode, `/<instance-command> action:clear` rotates the shared same-day generation only when the current generation is idle, and the next mention creates or resumes a fresh same-day binding after the durable-memory preflight refreshes `AGENT_MEMORY` from the previous recorded generation when that previous binding exists.
 - In `daily` mode, startup does not create or rewrite `AGENTS.md`.
-- A mention-triggered message with text plus image attachments reaches Codex as multipart input.
-- A mention-triggered message with only one or more usable image attachments is accepted and answered.
+- A guild mention or direct message with text plus image attachments reaches Codex as multipart input.
+- A guild mention or direct message with only one or more usable image attachments is accepted and answered.
 - In `task` mode, a normal mention without an active task returns guidance instead of routing to Codex.
 - `/<instance-command> action:task-current` shows the active task for the requesting user.
 - `/<instance-command> action:task-new task_name:<name>` creates a task and sets it active for the requesting user.
@@ -234,7 +234,7 @@ Most of these outcomes should be proven through automated contract coverage plus
 - `/<instance-command> action:task-close task_id:<id>` closes the task and clears active state when the closed task was active.
 - Closed-task worktree retention keeps only the fifteen most recently closed ready worktrees and never deletes the task branches.
 - Existing `daily` and `task` bindings survive process restart through SQLite-backed state.
-- Non-mention chatter is ignored, unsupported non-image-only mention posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.
+- Guild non-mention chatter is ignored, unsupported non-image-only qualifying posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.
 - Simultaneous requests for the same logical thread do not execute overlapping Codex turns.
 - Simultaneous requests for the same logical thread receive queued acknowledgments and later deferred replies until the waiting queue reaches five items.
 
