@@ -158,6 +158,55 @@ func TestRuntimeMentionHandlingRepliesToTriggerMessage(t *testing.T) {
 	}
 }
 
+func TestRuntimeDirectMessageHandlingRepliesWithoutMention(t *testing.T) {
+	t.Parallel()
+
+	messageService := &fakeMessageService{
+		response: app.MessageResponse{
+			Text:      "Hello from DM",
+			ReplyToID: "message-1",
+		},
+	}
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "message-1",
+			ChannelID: "dm-channel-1",
+			Content:   "hello from dm",
+			Author:    &discordgo.User{ID: "user-1"},
+		},
+	})
+
+	if len(messageService.requests) != 1 {
+		t.Fatalf("message request count = %d, want %d", len(messageService.requests), 1)
+	}
+
+	if messageService.requests[0].Content != "hello from dm" {
+		t.Fatalf("mapped content = %q, want %q", messageService.requests[0].Content, "hello from dm")
+	}
+
+	if !messageService.requests[0].Mentioned {
+		t.Fatal("Mentioned = false, want true")
+	}
+
+	if len(fakeSession.sentMessages) != 1 {
+		t.Fatalf("sent message count = %d, want %d", len(fakeSession.sentMessages), 1)
+	}
+
+	if fakeSession.sentMessages[0].Reference == nil || fakeSession.sentMessages[0].Reference.MessageID != "message-1" {
+		t.Fatal("first sent message missing reply reference")
+	}
+}
+
 func TestRuntimeMentionHandlingStreamsProgressByEditingReply(t *testing.T) {
 	t.Parallel()
 
@@ -821,6 +870,7 @@ func TestRuntimeIgnoresUnsupportedChatter(t *testing.T) {
 		Message: &discordgo.Message{
 			ID:        "message-1",
 			ChannelID: "channel-1",
+			GuildID:   "guild-1",
 			Content:   "just chatting",
 			Author:    &discordgo.User{ID: "user-1"},
 		},
