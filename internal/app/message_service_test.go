@@ -432,7 +432,7 @@ func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 		t.Fatalf("HandleMessage() error = %v", err)
 	}
 
-	if response.Text != "No active task is selected. Use `/release action:task-new task_name:<name>`, `/release action:task-list`, or `/release action:task-switch task_id:<id>` first." {
+	if response.Text != "No active task is selected. Use `/release action:task-new task_name:<name>`, `/release action:task-list`, or `/release action:task-switch task_name:<name>` first." {
 		t.Fatalf("guidance text = %q", response.Text)
 	}
 }

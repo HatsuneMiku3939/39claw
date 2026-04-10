@@ -56,13 +56,13 @@ func registeredCommands(cfg config.Config) []*discordgo.ApplicationCommand {
 			&discordgo.ApplicationCommandOption{
 				Type:        discordgo.ApplicationCommandOptionString,
 				Name:        optionTaskName,
-				Description: "Task name for task-new.",
+				Description: "Task name for task-new or task-switch.",
 				Required:    false,
 			},
 			&discordgo.ApplicationCommandOption{
 				Type:        discordgo.ApplicationCommandOptionString,
 				Name:        optionTaskID,
-				Description: "Task ID for task-switch or task-close.",
+				Description: "Task ID for task-switch when a name is ambiguous, or for task-close.",
 				Required:    false,
 			},
 		)
@@ -97,7 +97,7 @@ func helpResponse(commandName string, mode config.Mode) app.MessageResponse {
 			fmt.Sprintf("- `/%s action:%s` shows the active task.", commandName, actionTaskCurrent),
 			fmt.Sprintf("- `/%s action:%s` lists open tasks.", commandName, actionTaskList),
 			fmt.Sprintf("- `/%s action:%s task_name:<name>` creates and activates a task.", commandName, actionTaskNew),
-			fmt.Sprintf("- `/%s action:%s task_id:<id>` changes the active task.", commandName, actionTaskSwitch),
+			fmt.Sprintf("- `/%s action:%s task_name:<name>` changes the active task and falls back to `task_id` when the name is ambiguous.", commandName, actionTaskSwitch),
 			fmt.Sprintf("- `/%s action:%s task_id:<id>` closes a task.", commandName, actionTaskClose),
 		)
 	}
@@ -121,7 +121,7 @@ func unsupportedActionText(commandName string, mode config.Mode) string {
 	}
 
 	return fmt.Sprintf(
-		"Unsupported action. Use `/%s action:%s`, `/%s action:%s`, `/%s action:%s`, `/%s action:%s task_name:<name>`, `/%s action:%s task_id:<id>`, or `/%s action:%s task_id:<id>`.",
+		"Unsupported action. Use `/%s action:%s`, `/%s action:%s`, `/%s action:%s`, `/%s action:%s task_name:<name>`, `/%s action:%s task_name:<name>`, or `/%s action:%s task_id:<id>`.",
 		commandName,
 		actionHelp,
 		commandName,

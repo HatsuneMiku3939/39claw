@@ -101,7 +101,7 @@ If any step fails, Codex must not run for that turn.
 
 Task switching remains intentionally small.
 
-`/<instance-command> action:task-switch task_id:<id>` changes only the active task pointer for the requesting user.
+`/<instance-command> action:task-switch task_name:<name>` changes only the active task pointer for the requesting user, with `task_id` used only as an ambiguity fallback.
 It does not:
 
 - run Git checkout in the current shell

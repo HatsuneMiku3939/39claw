@@ -54,7 +54,7 @@ func TestTaskCommandServiceShowCurrentTaskWithoutActiveTaskReturnsGuidance(t *te
 		t.Fatalf("ShowCurrentTask() error = %v", err)
 	}
 
-	want := "No active task is selected. Use `/release action:task-new task_name:<name>`, `/release action:task-list`, or `/release action:task-switch task_id:<id>` first."
+	want := "No active task is selected. Use `/release action:task-new task_name:<name>`, `/release action:task-list`, or `/release action:task-switch task_name:<name>` first."
 	if response.Text != want {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
@@ -153,13 +153,13 @@ func TestTaskCommandServiceListTasksMarksActiveTask(t *testing.T) {
 		t.Fatalf("ListTasks() error = %v", err)
 	}
 
-	want := "Open tasks:\n- `Release work` (`task-1`)\n- `Docs update` (`task-2`) [active]\nUse `/release action:task-switch task_id:<id>` to change the active task."
+	want := "Open tasks:\n- `Release work` (`task-1`)\n- `Docs update` (`task-2`) [active]\nUse `/release action:task-switch task_name:<name>` to change the active task."
 	if response.Text != want {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
 }
 
-func TestTaskCommandServiceSwitchTaskRequiresOpenTask(t *testing.T) {
+func TestTaskCommandServiceSwitchTaskByIDRequiresOpenTask(t *testing.T) {
 	t.Parallel()
 
 	service := newTaskCommandService(t, &memoryThreadStore{
@@ -174,12 +174,85 @@ func TestTaskCommandServiceSwitchTaskRequiresOpenTask(t *testing.T) {
 		},
 	})
 
-	response, err := service.SwitchTask(context.Background(), "user-1", "task-1")
+	response, err := service.SwitchTask(context.Background(), "user-1", "task-1", "")
 	if err != nil {
 		t.Fatalf("SwitchTask() error = %v", err)
 	}
 
 	want := "Task `task-1` is closed. Use `/release action:task-list` to find an open task or `/release action:task-new task_name:<name>` to create another one."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
+	}
+}
+
+func TestTaskCommandServiceSwitchTaskByUniqueName(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	service := newTaskCommandService(t, store)
+
+	response, err := service.SwitchTask(context.Background(), "user-1", "", "release work")
+	if err != nil {
+		t.Fatalf("SwitchTask() error = %v", err)
+	}
+
+	want := "Active task is now `Release work` (`task-1`). Your next message will continue this task."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
+	}
+
+	activeTask, ok, err := store.GetActiveTask(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("GetActiveTask() error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("GetActiveTask() ok = false, want true")
+	}
+
+	if activeTask.TaskID != "task-1" {
+		t.Fatalf("TaskID = %q, want %q", activeTask.TaskID, "task-1")
+	}
+}
+
+func TestTaskCommandServiceSwitchTaskByNameRequiresIDWhenAmbiguous(t *testing.T) {
+	t.Parallel()
+
+	service := newTaskCommandService(t, &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+			"user-1:task-2": {
+				TaskID:        "task-2",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 1, 0, 0, 0, time.UTC),
+			},
+		},
+	})
+
+	response, err := service.SwitchTask(context.Background(), "user-1", "", "Release work")
+	if err != nil {
+		t.Fatalf("SwitchTask() error = %v", err)
+	}
+
+	want := "Multiple open tasks are named `Release work`. Retry with a task ID:\n- `Release work` (`task-1`)\n- `Release work` (`task-2`)\nUse `/release action:task-switch task_id:<id>` when the task name is ambiguous."
 	if response.Text != want {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
