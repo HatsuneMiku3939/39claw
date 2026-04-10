@@ -67,7 +67,7 @@ Expected user perception:
 
 Expected flow:
 
-1. The user uses `/<instance-command> action:task-new task_name:<name>`, `/<instance-command> action:task-switch task_id:<id>`, or `/<instance-command> action:task-current` plus other task actions to establish the desired task context.
+1. The user uses `/<instance-command> action:task-new task_name:<name>`, `/<instance-command> action:task-switch task_name:<name>`, or `/<instance-command> action:task-current` plus other task actions to establish the desired task context.
 2. 39claw records that task as the active context for the user within the current bot instance.
 3. A newly created task reserves its own task branch identity even before worktree creation.
 4. The next normal message routes to the thread associated with that task.
@@ -149,10 +149,10 @@ For `task` mode to feel usable, v1 should support at least:
   - show task names and IDs
 - `/<instance-command> action:task-new task_name:<name>`
   - create a new task and switch the active task to it
-- `/<instance-command> action:task-switch task_id:<id>`
-  - switch the active task to the specified task
-- `/<instance-command> action:task-close task_id:<id>`
-  - close the specified task
+- `/<instance-command> action:task-switch task_name:<name>`
+  - switch the active task to the uniquely named open task, with `task_id` used only when the name is ambiguous
+- `/<instance-command> action:task-close task_name:<name>`
+  - close the uniquely named open task, with `task_id` used only when the name is ambiguous
 
 The root-command action surface should stay explicit and stable enough that users can learn it as the standard task-control surface for `task` mode.
 
@@ -190,7 +190,7 @@ When no active task exists, the bot should:
 
 - say that an active task is required
 - explain the next action clearly
-- direct the user toward `/<instance-command> action:task-new task_name:<name>`, `/<instance-command> action:task-switch task_id:<id>`, or `/<instance-command> action:task-list` as appropriate
+- direct the user toward `/<instance-command> action:task-new task_name:<name>`, `/<instance-command> action:task-switch task_name:<name>`, or `/<instance-command> action:task-list` as appropriate
 - avoid pretending the user message was processed normally
 
 If a user closes a task and then immediately sends a normal message, the bot should treat that as a missing-active-task case.

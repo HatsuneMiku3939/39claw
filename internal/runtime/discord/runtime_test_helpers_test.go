@@ -536,6 +536,16 @@ type fakeTaskCommandService struct {
 		userID   string
 		taskName string
 	}
+	switchCalls []struct {
+		userID   string
+		taskID   string
+		taskName string
+	}
+	closeCalls []struct {
+		userID   string
+		taskID   string
+		taskName string
+	}
 
 	currentResponse app.MessageResponse
 	listResponse    app.MessageResponse
@@ -561,11 +571,21 @@ func (s *fakeTaskCommandService) CreateTask(ctx context.Context, userID string, 
 	return s.createResponse, nil
 }
 
-func (s *fakeTaskCommandService) SwitchTask(ctx context.Context, userID string, taskID string) (app.MessageResponse, error) {
+func (s *fakeTaskCommandService) SwitchTask(ctx context.Context, userID string, taskID string, taskName string) (app.MessageResponse, error) {
+	s.switchCalls = append(s.switchCalls, struct {
+		userID   string
+		taskID   string
+		taskName string
+	}{userID: userID, taskID: taskID, taskName: taskName})
 	return s.switchResponse, nil
 }
 
-func (s *fakeTaskCommandService) CloseTask(ctx context.Context, userID string, taskID string) (app.MessageResponse, error) {
+func (s *fakeTaskCommandService) CloseTask(ctx context.Context, userID string, taskID string, taskName string) (app.MessageResponse, error) {
+	s.closeCalls = append(s.closeCalls, struct {
+		userID   string
+		taskID   string
+		taskName string
+	}{userID: userID, taskID: taskID, taskName: taskName})
 	return s.closeResponse, nil
 }
 

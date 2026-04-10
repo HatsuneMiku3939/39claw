@@ -1122,6 +1122,14 @@ func TestRuntimeTaskCommandRoutesTaskModeActions(t *testing.T) {
 			Text:      "Created task `Release work` (`task-1`) and made it active. Your next message will continue this task.",
 			Ephemeral: true,
 		},
+		switchResponse: app.MessageResponse{
+			Text:      "Active task is now `Release work` (`task-1`). Your next message will continue this task.",
+			Ephemeral: true,
+		},
+		closeResponse: app.MessageResponse{
+			Text:      "Closed task `Release work` (`task-1`). No active task is selected now.",
+			Ephemeral: true,
+		},
 	}
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithServices(t, config.ModeTask, fakeSession, &fakeMessageService{}, taskService)
@@ -1135,6 +1143,8 @@ func TestRuntimeTaskCommandRoutesTaskModeActions(t *testing.T) {
 
 	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskCurrent, "", ""))
 	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskNew, "Release work", ""))
+	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskSwitch, "Release work", ""))
+	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskClose, "Release work", ""))
 
 	if len(taskService.currentCalls) != 1 {
 		t.Fatalf("current call count = %d, want %d", len(taskService.currentCalls), 1)
@@ -1148,11 +1158,35 @@ func TestRuntimeTaskCommandRoutesTaskModeActions(t *testing.T) {
 		t.Fatalf("create task name = %q, want %q", taskService.createCalls[0].taskName, "Release work")
 	}
 
-	if len(fakeSession.interactionResponses) != 2 {
-		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 2)
+	if len(taskService.switchCalls) != 1 {
+		t.Fatalf("switch call count = %d, want %d", len(taskService.switchCalls), 1)
 	}
 
-	response := fakeSession.interactionResponses[1]
+	if taskService.switchCalls[0].taskName != "Release work" {
+		t.Fatalf("switch task name = %q, want %q", taskService.switchCalls[0].taskName, "Release work")
+	}
+
+	if taskService.switchCalls[0].taskID != "" {
+		t.Fatalf("switch task id = %q, want empty", taskService.switchCalls[0].taskID)
+	}
+
+	if len(taskService.closeCalls) != 1 {
+		t.Fatalf("close call count = %d, want %d", len(taskService.closeCalls), 1)
+	}
+
+	if taskService.closeCalls[0].taskName != "Release work" {
+		t.Fatalf("close task name = %q, want %q", taskService.closeCalls[0].taskName, "Release work")
+	}
+
+	if taskService.closeCalls[0].taskID != "" {
+		t.Fatalf("close task id = %q, want empty", taskService.closeCalls[0].taskID)
+	}
+
+	if len(fakeSession.interactionResponses) != 4 {
+		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 4)
+	}
+
+	response := fakeSession.interactionResponses[3]
 	if response.Data == nil || response.Data.Flags != discordgo.MessageFlagsEphemeral {
 		t.Fatal("task response should be ephemeral")
 	}

@@ -15,8 +15,8 @@ type TaskCommandService interface {
 	ShowCurrentTask(ctx context.Context, userID string) (MessageResponse, error)
 	ListTasks(ctx context.Context, userID string) (MessageResponse, error)
 	CreateTask(ctx context.Context, userID string, taskName string) (MessageResponse, error)
-	SwitchTask(ctx context.Context, userID string, taskID string) (MessageResponse, error)
-	CloseTask(ctx context.Context, userID string, taskID string) (MessageResponse, error)
+	SwitchTask(ctx context.Context, userID string, taskID string, taskName string) (MessageResponse, error)
+	CloseTask(ctx context.Context, userID string, taskID string, taskName string) (MessageResponse, error)
 }
 
 type TaskCommandServiceDependencies struct {
@@ -158,20 +158,32 @@ func (s *DefaultTaskCommandService) CreateTask(ctx context.Context, userID strin
 	), nil
 }
 
-func (s *DefaultTaskCommandService) SwitchTask(ctx context.Context, userID string, taskID string) (MessageResponse, error) {
+func (s *DefaultTaskCommandService) SwitchTask(ctx context.Context, userID string, taskID string, taskName string) (MessageResponse, error) {
 	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
-		return taskCommandResponse(s.taskIDRequiredMessage()), nil
+	taskName = strings.TrimSpace(taskName)
+	if taskID == "" && taskName == "" {
+		return taskCommandResponse(s.taskSelectorRequiredMessage()), nil
 	}
 
-	task, ok, err := s.store.GetTask(ctx, userID, taskID)
+	task, ok, err := s.loadOpenTaskBySelector(ctx, userID, taskID, taskName, "task-switch")
 	if err != nil {
-		return MessageResponse{}, fmt.Errorf("load task: %w", err)
+		var commandErr taskCommandError
+		if errors.As(err, &commandErr) {
+			return taskCommandResponse(commandErr.Error()), nil
+		}
+
+		return MessageResponse{}, err
 	}
 
 	if !ok {
+		if taskID != "" {
+			return taskCommandResponse(
+				fmt.Sprintf("Task `%s` was not found. Use %s to find an open task.", taskID, s.commands.taskList()),
+			), nil
+		}
+
 		return taskCommandResponse(
-			fmt.Sprintf("Task `%s` was not found. Use %s to find an open task.", taskID, s.commands.taskList()),
+			fmt.Sprintf("No open task named `%s` was found. Use %s to find an open task.", taskName, s.commands.taskList()),
 		), nil
 	}
 
@@ -198,20 +210,32 @@ func (s *DefaultTaskCommandService) SwitchTask(ctx context.Context, userID strin
 	), nil
 }
 
-func (s *DefaultTaskCommandService) CloseTask(ctx context.Context, userID string, taskID string) (MessageResponse, error) {
+func (s *DefaultTaskCommandService) CloseTask(ctx context.Context, userID string, taskID string, taskName string) (MessageResponse, error) {
 	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
-		return taskCommandResponse(s.taskIDRequiredMessage()), nil
+	taskName = strings.TrimSpace(taskName)
+	if taskID == "" && taskName == "" {
+		return taskCommandResponse(s.taskSelectorRequiredMessage()), nil
 	}
 
-	task, ok, err := s.store.GetTask(ctx, userID, taskID)
+	task, ok, err := s.loadOpenTaskBySelector(ctx, userID, taskID, taskName, "task-close")
 	if err != nil {
-		return MessageResponse{}, fmt.Errorf("load task: %w", err)
+		var commandErr taskCommandError
+		if errors.As(err, &commandErr) {
+			return taskCommandResponse(commandErr.Error()), nil
+		}
+
+		return MessageResponse{}, err
 	}
 
 	if !ok {
+		if taskID != "" {
+			return taskCommandResponse(
+				fmt.Sprintf("Task `%s` was not found. Use %s to find an open task.", taskID, s.commands.taskList()),
+			), nil
+		}
+
 		return taskCommandResponse(
-			fmt.Sprintf("Task `%s` was not found. Use %s to find an open task.", taskID, s.commands.taskList()),
+			fmt.Sprintf("No open task named `%s` was found. Use %s to find an open task.", taskName, s.commands.taskList()),
 		), nil
 	}
 
@@ -273,8 +297,8 @@ func (s *DefaultTaskCommandService) noOpenTasksMessage() string {
 	return fmt.Sprintf("No open tasks yet. Use %s to create one.", s.commands.taskNewPlaceholder())
 }
 
-func (s *DefaultTaskCommandService) taskIDRequiredMessage() string {
-	return fmt.Sprintf("A task ID is required. Use %s to find an open task.", s.commands.taskList())
+func (s *DefaultTaskCommandService) taskSelectorRequiredMessage() string {
+	return fmt.Sprintf("A task name or task ID is required. Use %s to find an open task.", s.commands.taskList())
 }
 
 func (s *DefaultTaskCommandService) taskNameRequiredMessage() string {
@@ -312,6 +336,57 @@ func taskCommandResponse(text string) MessageResponse {
 		Text:      text,
 		Ephemeral: true,
 	}
+}
+
+func (s *DefaultTaskCommandService) loadOpenTaskBySelector(
+	ctx context.Context,
+	userID string,
+	taskID string,
+	taskName string,
+	action string,
+) (Task, bool, error) {
+	if taskID != "" {
+		task, ok, err := s.store.GetTask(ctx, userID, taskID)
+		if err != nil {
+			return Task{}, false, fmt.Errorf("load task: %w", err)
+		}
+
+		return task, ok, nil
+	}
+
+	tasks, err := s.store.ListOpenTasks(ctx, userID)
+	if err != nil {
+		return Task{}, false, fmt.Errorf("list open tasks for switch: %w", err)
+	}
+
+	matches := make([]Task, 0, len(tasks))
+	for _, task := range tasks {
+		if strings.EqualFold(task.TaskName, taskName) {
+			matches = append(matches, task)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return Task{}, false, nil
+	case 1:
+		return matches[0], true, nil
+	default:
+		lines := []string{
+			fmt.Sprintf("Multiple open tasks are named `%s`. Retry with a task ID:", taskName),
+		}
+		for _, task := range matches {
+			lines = append(lines, "- "+renderTask(task))
+		}
+		lines = append(lines, fmt.Sprintf("Use %s when the task name is ambiguous.", s.commands.taskIDPlaceholder(action)))
+		return Task{}, false, taskCommandError(strings.Join(lines, "\n"))
+	}
+}
+
+type taskCommandError string
+
+func (e taskCommandError) Error() string {
+	return string(e)
 }
 
 func (s *DefaultTaskCommandService) pruneClosedTaskWorktrees(ctx context.Context) {
