@@ -20,15 +20,16 @@ This turns `task` mode into an execution-oriented workflow instead of a long-liv
 
 ## Core Decisions
 
-- `task` mode is valid only when `CLAW_CODEX_WORKDIR` points to a Git repository.
-- In `task` mode, `CLAW_CODEX_WORKDIR` is the source repository root, not the final Codex working directory for every turn.
+- `task` mode is valid only when `CLAW_CODEX_WORKDIR` points to a Git repository with an `origin` remote.
+- In `task` mode, `CLAW_CODEX_WORKDIR` is the operator-visible source checkout and startup validation target, not the parent repository that directly owns task worktrees.
 - Each task owns one task-specific branch name.
-- Each task may also own one task-specific Git worktree created from that source repository.
+- 39claw maintains one managed bare parent repository under `${CLAW_DATADIR}/repos/<repo-id>.git` for the configured source checkout.
+- Each task may also own one task-specific Git worktree created from that managed bare parent.
 - Worktrees are created lazily on the first normal message that needs to run Codex for the task.
-- The base ref for worktree creation is detected automatically by preferring the remote default branch state.
-- When the source repository has an `origin` remote, worktree preparation should try `git fetch origin --prune` as a best-effort refresh before resolving the base ref.
+- The base ref for worktree creation is detected automatically inside the managed bare parent by preferring the remote default branch state.
+- Worktree preparation synchronizes the managed bare parent to the source checkout's `origin` URL and best-effort `pushurl`, then tries `git fetch origin --prune` plus `git remote set-head origin --auto` before resolving the base ref.
 - Base-ref resolution should prefer `origin/HEAD`, then `origin/main`, then `origin/master`, and only then fall back to local `main` or `master`.
-- Closing a task does not delete its branch.
+- Closing a task does not delete its branch from the managed bare parent.
 - Closed-task worktrees are treated as disposable cache-like workspaces.
 - The system keeps the most recent fifteen closed-task worktrees and prunes older closed-task worktrees with forced removal.
 
@@ -38,11 +39,12 @@ In `daily` mode, the configured Codex working directory remains the directory pa
 
 In `task` mode, the repository model changes:
 
-- source repository root: `CLAW_CODEX_WORKDIR`
+- source checkout root: `CLAW_CODEX_WORKDIR`
+- managed bare parent root: `${CLAW_DATADIR}/repos/<repo-id>.git`
 - task worktree root: `${CLAW_DATADIR}/worktrees/<task_id>`
 - Codex working directory for a task turn: the task's `worktree_path` once the worktree is ready
 
-This means the configured workdir remains globally important, but in `task` mode it acts as the shared Git source from which task worktrees are derived.
+This means the configured workdir remains globally important, but in `task` mode it acts as the human-facing checkout and remote-configuration source. Task branches and task worktrees belong to the managed bare parent instead of to the visible checkout.
 
 ## Task State Model
 
@@ -88,12 +90,14 @@ The first normal message sent to an active task with `worktree_status=pending` o
 The preparation flow is:
 
 1. load the active task record
-2. refresh `origin` metadata with a best-effort `git fetch origin --prune` when the source repository has an `origin` remote
-3. detect the base ref by preferring `origin/HEAD`, then `origin/main`, then `origin/master`, and only then falling back to local `main` or `master`
-4. create the task worktree under `${CLAW_DATADIR}/worktrees/<task_id>`
-5. create or attach the reserved task branch for that worktree
-6. persist `base_ref`, `worktree_path`, `worktree_created_at`, and `worktree_status=ready`
-7. run Codex with the task-specific worktree path as the working directory
+2. create or validate the managed bare parent under `${CLAW_DATADIR}/repos/<repo-id>.git`
+3. synchronize that managed bare parent to the source checkout's `origin` URL and optional `pushurl`
+4. refresh managed-`origin` metadata with a best-effort `git fetch origin --prune`
+5. detect the base ref by preferring `origin/HEAD`, then `origin/main`, then `origin/master`, and only then falling back to local `main` or `master`
+6. create the task worktree under `${CLAW_DATADIR}/worktrees/<task_id>`
+7. create or attach the reserved task branch for that worktree inside the managed bare parent
+8. persist `base_ref`, `worktree_path`, `worktree_created_at`, and `worktree_status=ready`
+9. run Codex with the task-specific worktree path as the working directory
 
 If any step fails, Codex must not run for that turn.
 
@@ -128,7 +132,7 @@ After close succeeds, the system applies closed-task worktree retention:
 - older closed tasks with `worktree_status=ready` are pruned by `git worktree remove --force`
 - when pruning succeeds, the task becomes `worktree_status=pruned` and records `worktree_pruned_at`
 
-The branch is intentionally left behind so repository history and manual recovery options remain available even after workspace cleanup.
+The branch is intentionally left behind in the managed bare parent so repository history and manual recovery options remain available even after workspace cleanup.
 
 ## Failure and Retry Model
 
@@ -143,7 +147,7 @@ Lazy worktree creation failure is handled at normal-message time:
 - the task moves to `worktree_status=failed`
 - the next normal message retries worktree preparation automatically
 
-If the best-effort `git fetch origin --prune` step fails, the system should log the refresh failure but still continue base-ref detection using any already-available remote-tracking refs and then the local fallback branches.
+If the best-effort `git fetch origin --prune` step fails, the system should log the refresh failure but still continue base-ref detection using any already-available remote-tracking refs in the managed bare parent and then the local fallback branches.
 
 Pruning failure must not reopen or invalidate the closed task.
 If pruning fails, the system should keep the task in `closed + ready`, log the failure, and try again during a later cleanup opportunity.
@@ -163,6 +167,9 @@ The `tasks` table now carries task worktree metadata in addition to task identit
 `branch_name` is fixed at task creation.
 `base_ref` and `worktree_path` are populated on first successful worktree creation and remain stable afterward.
 `last_used_at` is updated whenever a normal message successfully uses the task context.
+
+Task branches are intentionally stored in the managed bare parent rather than in the visible source checkout.
+That keeps the operator checkout branch-neutral with respect to bot-owned worktrees while preserving normal `git push origin ...` behavior from inside task worktrees.
 
 ## User Experience Consequences
 

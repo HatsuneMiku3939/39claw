@@ -350,9 +350,9 @@ Pick one:
 - `CLAW_MODE=daily`
 - `CLAW_MODE=task`
 
-If you choose `task`, `CLAW_CODEX_WORKDIR` must point to a Git repository.
-39claw treats that repository as the source repository for task-specific worktrees stored under `CLAW_DATADIR`.
-If startup finds a missing or non-Git task workdir, the bot exits with a clear configuration error before it connects to Discord.
+If you choose `task`, `CLAW_CODEX_WORKDIR` must point to a Git repository with an `origin` remote.
+39claw treats that checkout as the operator-visible source repository and creates a managed bare parent under `CLAW_DATADIR/repos` plus task-specific worktrees under `CLAW_DATADIR/worktrees`.
+If startup finds a missing, non-Git, or no-`origin` task workdir, the bot exits with a clear configuration error before it connects to Discord.
 
 ### 2. Set the required environment variables
 
@@ -425,9 +425,9 @@ The first normal message for a new task may spend a moment preparing that task's
 - `CLAW_DISCORD_COMMAND_NAME`
   - the unique root slash command name for this bot instance
 - `CLAW_CODEX_WORKDIR`
-  - working directory passed to Codex
+  - in `daily` mode, the working directory passed to Codex; in `task` mode, the operator-visible Git checkout that must have an `origin` remote
 - `CLAW_DATADIR`
-  - directory used for local state; the SQLite database path is fixed to `39claw.sqlite` inside this directory
+  - directory used for local state; `39claw.sqlite`, managed task repositories under `repos/`, and task worktrees under `worktrees/` all live here
 - `CLAW_CODEX_EXECUTABLE`
   - path to the `codex` executable
 

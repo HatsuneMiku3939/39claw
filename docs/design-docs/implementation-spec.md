@@ -131,11 +131,11 @@ When a bot instance runs in `daily` mode, the first visible turn of a new daily 
 If that preflight fails or times out, 39claw should log the failure and continue with the visible turn instead of blocking the user.
 If `action:clear` is invoked while the current active daily generation still has in-flight or queued work, 39claw should reject the clear request with an ephemeral retry-later response instead of rotating immediately.
 39claw must not create or modify user-owned instruction files such as `AGENTS.md`; if a deployment wants visible turns to consult `AGENT_MEMORY`, the deployment must express that through its own checked-in instructions.
-When a bot instance runs in `task` mode, `CLAW_CODEX_WORKDIR` must be a Git repository.
-`task-new` creates task metadata only; the first normal message for a pending or failed task creates the task worktree lazily from the remote default branch when possible by trying `origin/HEAD`, then `origin/main`, then `origin/master`, and only then falling back to local `main` or `master`.
-If the source repository has an `origin` remote, 39claw should try `git fetch origin --prune` before detecting that base ref, but a fetch failure should not block task execution by itself.
+When a bot instance runs in `task` mode, `CLAW_CODEX_WORKDIR` must be a Git repository with an `origin` remote.
+`task-new` creates task metadata only; the first normal message for a pending or failed task creates the task worktree lazily from a managed bare parent under `${CLAW_DATADIR}/repos`, preferring the remote default branch by trying `origin/HEAD`, then `origin/main`, then `origin/master`, and only then falling back to local `main` or `master` inside that managed repository.
+Before detecting that base ref, 39claw should synchronize the managed bare parent against the source checkout's `origin` configuration and try `git fetch origin --prune`; a fetch failure should not block task execution by itself when cached remote refs are already available.
 Once the task worktree is ready, Codex runs with the task-specific `worktree_path` as the effective working directory for that turn.
-Closed tasks keep their task branches, but only the fifteen most recently closed ready tasks keep their worktrees; older closed ready worktrees are force-pruned.
+Closed tasks keep their task branches in the managed bare parent, but only the fifteen most recently closed ready tasks keep their worktrees; older closed ready worktrees are force-pruned.
 
 Unsupported guild-channel non-mention chatter is ignored.
 Qualifying posts that contain no text and no usable image attachments are also ignored.
@@ -185,7 +185,8 @@ The expected variables are:
 `CLAW_TIMEZONE` must be set explicitly for each deployment.
 `CLAW_DISCORD_COMMAND_NAME` must be unique per bot instance, normalized to lowercase, and validated conservatively before Discord registration.
 When `CLAW_CODEX_HOME` is set, 39claw must inject it into the spawned Codex CLI process as `CODEX_HOME`.
-When `CLAW_MODE=task`, `CLAW_CODEX_WORKDIR` must point to a Git repository and acts as the source repository root for task worktree creation.
+When `CLAW_MODE=task`, `CLAW_CODEX_WORKDIR` must point to a Git repository with an `origin` remote and acts as the operator-visible source checkout plus validation target for task-mode startup.
+Task-mode startup and first-use preparation must maintain a managed bare parent repository under `${CLAW_DATADIR}/repos`, and task worktrees must be created from that managed parent rather than directly from the visible source checkout.
 When `CLAW_MODE=daily`, startup must materialize the managed durable-memory skill and the `AGENT_MEMORY` directory inside `CLAW_CODEX_WORKDIR`.
 `CLAW_LOG_LEVEL` defaults to `info` when omitted.
 When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guild for faster development feedback.
@@ -231,10 +232,10 @@ Most of these outcomes should be proven through automated contract coverage plus
 - In `task` mode, a normal mention without an active task returns guidance instead of routing to Codex.
 - `/<instance-command> action:task-current` shows the active task for the requesting user.
 - `/<instance-command> action:task-new task_name:<name>` creates a task and sets it active for the requesting user.
-- The first normal message for a new task creates a task worktree lazily under `${CLAW_DATADIR}/worktrees/<task_id>` and then runs Codex inside that worktree.
+- The first normal message for a new task creates or refreshes a managed bare parent under `${CLAW_DATADIR}/repos`, then creates a task worktree lazily under `${CLAW_DATADIR}/worktrees/<task_id>`, and then runs Codex inside that worktree.
 - `/<instance-command> action:task-switch task_name:<name>` changes the routing target for subsequent normal messages, with `task_id` reserved for ambiguity fallback.
 - `/<instance-command> action:task-close task_name:<name>` closes the task and clears active state when the closed task was active, with `task_id` reserved for ambiguity fallback.
-- Closed-task worktree retention keeps only the fifteen most recently closed ready worktrees and never deletes the task branches.
+- Closed-task worktree retention keeps only the fifteen most recently closed ready worktrees and never deletes the task branches held by the managed bare parent.
 - Existing `daily` and `task` bindings survive process restart through SQLite-backed state.
 - Guild non-mention chatter is ignored, unsupported non-image-only qualifying posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.
 - Simultaneous requests for the same logical thread do not execute overlapping Codex turns.

@@ -24,7 +24,7 @@ This leads to two distinct mode families on the same foundation:
 - `daily`
   - knowledge-oriented interaction against repository instructions and documentation, with one active shared generation per local day plus a runtime-managed durable-memory bridge under `AGENT_MEMORY/`
 - `task`
-  - execution-oriented interaction against a Git work repository where each task eventually runs inside its own task-specific worktree
+  - execution-oriented interaction against an operator-visible Git checkout with an `origin` remote, where 39claw manages a separate bare parent repository and each task eventually runs inside its own task-specific worktree
 
 The detailed rationale for these modes lives in `ARCHITECTURE.md` and `thread-modes.md`.
 

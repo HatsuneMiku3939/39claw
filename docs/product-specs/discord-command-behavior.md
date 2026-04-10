@@ -272,4 +272,4 @@ This command behavior layer is not intended to:
 - `action:help` should stay structurally simple in v1, but it should only describe commands that are actually available in the current bot instance.
 - `daily` mode may expose `action:clear` on that same root command so users can intentionally rotate the shared same-day generation.
 - Unsupported invocation patterns should be ignored rather than acknowledged with lightweight feedback.
-- In `task` mode, the configured workdir is a Git repository source for task worktrees rather than only one shared execution directory.
+- In `task` mode, the configured workdir is an operator-visible Git checkout with an `origin` remote, while task worktrees are owned by a managed bare repository under the bot data directory.
