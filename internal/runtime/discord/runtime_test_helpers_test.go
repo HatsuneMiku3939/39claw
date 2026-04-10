@@ -189,10 +189,17 @@ type fakeSession struct {
 	sentMessages         []*discordgo.MessageSend
 	editedMessages       []*discordgo.MessageEdit
 	deletedMessageIDs    []string
+	reactions            []addedReaction
 	interactionResponses []*discordgo.InteractionResponse
 	interactionEdits     []*discordgo.WebhookEdit
 	followups            []*discordgo.WebhookParams
 	deliveries           []runtimeharness.Delivery
+}
+
+type addedReaction struct {
+	channelID string
+	messageID string
+	emoji     string
 }
 
 func newFakeSession(selfUserID string) *fakeSession {
@@ -305,6 +312,24 @@ func (s *fakeSession) ChannelMessageDelete(
 		Kind:      runtimeharness.DeliveryKindChannelDelete,
 		ChannelID: channelID,
 		MessageID: messageID,
+	})
+	s.mu.Unlock()
+
+	s.signal()
+	return nil
+}
+
+func (s *fakeSession) MessageReactionAdd(
+	channelID string,
+	messageID string,
+	emojiID string,
+	options ...discordgo.RequestOption,
+) error {
+	s.mu.Lock()
+	s.reactions = append(s.reactions, addedReaction{
+		channelID: channelID,
+		messageID: messageID,
+		emoji:     emojiID,
 	})
 	s.mu.Unlock()
 

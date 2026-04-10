@@ -157,6 +157,7 @@ Use `task` mode when you want durable work streams that continue across multiple
 - a qualifying message may contain text, images, or both
 - if the qualifying trigger includes no text and no usable image, the bot stays silent
 - replies are posted in the same channel as replies to the triggering message
+- when a normal-message reply finishes successfully, 39claw adds a `✅` reaction to the primary bot reply when Discord permissions allow it
 
 ### Commands
 
@@ -309,8 +310,11 @@ Recommended permissions:
 
 Useful optional permissions:
 
+- `Add Reactions`
 - `Embed Links`
 - `Attach Files`
+
+`Add Reactions` is required if you want 39claw to mark completed normal-message replies with a `✅` reaction.
 
 ### 5. Invite the bot to a test server
 
@@ -506,6 +510,7 @@ Use this checklist when you want optional live Discord hardening beyond the norm
 It is most useful for real-platform behaviors such as hosted attachments, command registration, permissions, and final reply delivery:
 
 - mention the bot in a guild channel and confirm the reply targets the original message
+- confirm the bot adds a `✅` reaction after the final normal-message reply finishes
 - send the bot a direct message without a mention and confirm it answers
 - mention the bot with text plus an image and confirm the request is handled
 - mention the bot with only an image and confirm the bot still answers

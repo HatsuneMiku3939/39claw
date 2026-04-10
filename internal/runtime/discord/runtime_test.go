@@ -156,6 +156,18 @@ func TestRuntimeMentionHandlingRepliesToTriggerMessage(t *testing.T) {
 	if fakeSession.sentMessages[0].Reference == nil || fakeSession.sentMessages[0].Reference.MessageID != "message-1" {
 		t.Fatal("first sent message missing reply reference")
 	}
+
+	if len(fakeSession.reactions) != 1 {
+		t.Fatalf("reaction count = %d, want %d", len(fakeSession.reactions), 1)
+	}
+
+	if fakeSession.reactions[0].messageID != "sent-message-1" {
+		t.Fatalf("reaction message id = %q, want %q", fakeSession.reactions[0].messageID, "sent-message-1")
+	}
+
+	if fakeSession.reactions[0].emoji != completionReactionEmoji {
+		t.Fatalf("reaction emoji = %q, want %q", fakeSession.reactions[0].emoji, completionReactionEmoji)
+	}
 }
 
 func TestRuntimeDirectMessageHandlingRepliesWithoutMention(t *testing.T) {
@@ -275,6 +287,14 @@ func TestRuntimeMentionHandlingStreamsProgressByEditingReply(t *testing.T) {
 	if got := stringPointerValue(fakeSession.editedMessages[1].Content); got != "Final streamed response" {
 		t.Fatalf("second edit content = %q, want %q", got, "Final streamed response")
 	}
+
+	if len(fakeSession.reactions) != 1 {
+		t.Fatalf("reaction count = %d, want %d", len(fakeSession.reactions), 1)
+	}
+
+	if fakeSession.reactions[0].messageID != "sent-message-1" {
+		t.Fatalf("reaction message id = %q, want %q", fakeSession.reactions[0].messageID, "sent-message-1")
+	}
 }
 
 func TestRuntimeMentionHandlingSanitizesWorkspacePathsForDiscord(t *testing.T) {
@@ -343,6 +363,7 @@ func TestRuntimeMentionHandlingPresentsQueuedAcknowledgementAndDeferredReply(t *
 			return app.MessageResponse{
 				Text:      "A response is already running for this conversation. Your message has been queued at position 1.",
 				ReplyToID: request.MessageID,
+				Deferred:  true,
 			}, nil
 		},
 	}
@@ -376,6 +397,10 @@ func TestRuntimeMentionHandlingPresentsQueuedAcknowledgementAndDeferredReply(t *
 		t.Fatalf("queued ack content = %q", fakeSession.sentMessages[0].Content)
 	}
 
+	if len(fakeSession.reactions) != 0 {
+		t.Fatalf("reaction count after ack = %d, want %d", len(fakeSession.reactions), 0)
+	}
+
 	close(deliverQueuedResponse)
 
 	select {
@@ -394,6 +419,14 @@ func TestRuntimeMentionHandlingPresentsQueuedAcknowledgementAndDeferredReply(t *
 
 	if fakeSession.sentMessages[1].Reference == nil || fakeSession.sentMessages[1].Reference.MessageID != "message-1" {
 		t.Fatal("deferred sent message missing reply reference")
+	}
+
+	if len(fakeSession.reactions) != 1 {
+		t.Fatalf("reaction count after deferred delivery = %d, want %d", len(fakeSession.reactions), 1)
+	}
+
+	if fakeSession.reactions[0].messageID != "sent-message-2" {
+		t.Fatalf("reaction message id = %q, want %q", fakeSession.reactions[0].messageID, "sent-message-2")
 	}
 }
 
@@ -415,6 +448,7 @@ func TestRuntimeDeferredReplyDeliveryLogsStructuredSuccess(t *testing.T) {
 			return app.MessageResponse{
 				Text:      "A response is already running for this conversation. Your message has been queued at position 1.",
 				ReplyToID: request.MessageID,
+				Deferred:  true,
 			}, nil
 		},
 	}
@@ -499,6 +533,7 @@ func TestRuntimeCloseWaitsForDeferredQueuedReplyDrain(t *testing.T) {
 			return app.MessageResponse{
 				Text:      "A response is already running for this conversation. Your message has been queued at position 1.",
 				ReplyToID: request.MessageID,
+				Deferred:  true,
 			}, nil
 		},
 		waitForDrain: func(ctx context.Context) error {
@@ -590,6 +625,7 @@ func TestRuntimeCloseCancelsDeferredDrainWhenTimeoutExpires(t *testing.T) {
 			return app.MessageResponse{
 				Text:      "A response is already running for this conversation. Your message has been queued at position 1.",
 				ReplyToID: request.MessageID,
+				Deferred:  true,
 			}, nil
 		},
 		waitForDrain: func(ctx context.Context) error {

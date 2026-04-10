@@ -163,6 +163,7 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 		return MessageResponse{
 			Text:      queuedAcknowledgementMessage(admission.Position),
 			ReplyToID: request.MessageID,
+			Deferred:  true,
 		}, nil
 	}
 

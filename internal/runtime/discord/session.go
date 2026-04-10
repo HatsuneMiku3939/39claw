@@ -28,6 +28,12 @@ type session interface {
 		messageID string,
 		options ...discordgo.RequestOption,
 	) error
+	MessageReactionAdd(
+		channelID string,
+		messageID string,
+		emojiID string,
+		options ...discordgo.RequestOption,
+	) error
 	InteractionRespond(
 		interaction *discordgo.Interaction,
 		resp *discordgo.InteractionResponse,

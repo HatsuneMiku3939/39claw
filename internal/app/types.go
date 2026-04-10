@@ -24,6 +24,7 @@ type MessageResponse struct {
 	ReplyToID string
 	Ephemeral bool
 	Ignore    bool
+	Deferred  bool
 }
 
 type ThreadBinding struct {
