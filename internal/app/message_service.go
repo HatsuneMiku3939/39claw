@@ -45,6 +45,10 @@ type TaskWorkspaceManager interface {
 	PruneClosed(ctx context.Context) error
 }
 
+type TaskWorkspaceBranchReader interface {
+	CurrentBranch(ctx context.Context, task Task) (string, bool, error)
+}
+
 type CodexGateway interface {
 	RunTurn(ctx context.Context, threadID string, input CodexTurnInput) (RunTurnResult, error)
 }

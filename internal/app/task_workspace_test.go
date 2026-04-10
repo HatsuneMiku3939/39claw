@@ -98,6 +98,69 @@ func TestGitTaskWorkspaceManagerEnsureReadyCreatesManagedBareWorktree(t *testing
 	}
 }
 
+func TestGitTaskWorkspaceManagerCurrentBranchReadsWorktreeState(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required for worktree integration tests")
+	}
+
+	sourceRepo := createRemoteBackedGitRepository(t, "main")
+	dataDir := t.TempDir()
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:         "task-1",
+				DiscordUserID:  "user-1",
+				TaskName:       "Release work",
+				Status:         app.TaskStatusOpen,
+				BranchName:     app.DefaultTaskBranchName("task-1"),
+				WorktreeStatus: app.TaskWorktreeStatusPending,
+				CreatedAt:      time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+
+	manager, err := app.NewTaskWorkspaceManager(context.Background(), app.TaskWorkspaceManagerDependencies{
+		Store:            store,
+		SourceRepository: sourceRepo,
+		DataDir:          dataDir,
+		GitExecutable:    "git",
+		Clock: func() time.Time {
+			return time.Date(2026, time.April, 5, 15, 4, 0, 0, time.UTC)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewTaskWorkspaceManager() error = %v", err)
+	}
+
+	task, ok, err := store.GetTask(context.Background(), "user-1", "task-1")
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetTask() ok = false, want true")
+	}
+
+	readyTask, err := manager.EnsureReady(context.Background(), task)
+	if err != nil {
+		t.Fatalf("EnsureReady() error = %v", err)
+	}
+
+	runGit(t, readyTask.WorktreePath, "switch", "main")
+
+	branch, branchOK, err := manager.CurrentBranch(context.Background(), readyTask)
+	if err != nil {
+		t.Fatalf("CurrentBranch() error = %v", err)
+	}
+	if !branchOK {
+		t.Fatal("CurrentBranch() ok = false, want true")
+	}
+	if branch != "main" {
+		t.Fatalf("CurrentBranch() = %q, want %q", branch, "main")
+	}
+}
+
 func TestGitTaskWorkspaceManagerEnsureReadyPrefersRemoteDefaultBranch(t *testing.T) {
 	t.Parallel()
 

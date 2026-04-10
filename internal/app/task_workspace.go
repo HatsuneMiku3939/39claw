@@ -233,6 +233,29 @@ func (m *GitTaskWorkspaceManager) PruneClosed(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+func (m *GitTaskWorkspaceManager) CurrentBranch(ctx context.Context, task Task) (string, bool, error) {
+	if task.WorktreeStatus != TaskWorktreeStatusReady {
+		return "", false, nil
+	}
+
+	worktreePath := strings.TrimSpace(task.WorktreePath)
+	if worktreePath == "" {
+		return "", false, nil
+	}
+
+	branch, err := m.runGitIn(ctx, worktreePath, "branch", "--show-current")
+	if err != nil {
+		return "", false, fmt.Errorf("read current worktree branch: %w", err)
+	}
+
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return "", false, nil
+	}
+
+	return branch, true, nil
+}
+
 func (m *GitTaskWorkspaceManager) detectBaseRef(ctx context.Context, repositoryPath string) (string, error) {
 	if ref, ok := m.originHeadRef(ctx, repositoryPath); ok {
 		return ref, nil
