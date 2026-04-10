@@ -1792,7 +1792,7 @@ func (s *memoryThreadStore) CreateTask(_ context.Context, task app.Task) error {
 	}
 
 	if task.BranchName == "" {
-		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+		task.BranchName = app.DefaultTaskBranchName(task.TaskName, task.TaskID)
 	}
 
 	if task.WorktreeStatus == "" {
@@ -1913,7 +1913,7 @@ func (m *fakeTaskWorkspaceManager) EnsureReady(_ context.Context, task app.Task)
 	}
 
 	if task.BranchName == "" {
-		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+		task.BranchName = app.DefaultTaskBranchName(task.TaskName, task.TaskID)
 	}
 	task.BaseRef = "main"
 	task.WorktreePath = "/tmp/worktrees/" + task.TaskID

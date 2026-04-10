@@ -291,8 +291,8 @@ func TestStoreTaskStatePersistsAcrossReopen(t *testing.T) {
 		t.Fatalf("TaskName = %q, want %q", task.TaskName, "Release work")
 	}
 
-	if task.BranchName != "task/task-1" {
-		t.Fatalf("BranchName = %q, want %q", task.BranchName, "task/task-1")
+	if task.BranchName != "task/release-work" {
+		t.Fatalf("BranchName = %q, want %q", task.BranchName, "task/release-work")
 	}
 
 	if task.WorktreeStatus != app.TaskWorktreeStatusPending {
@@ -347,8 +347,8 @@ func TestStoreTaskLifecycle(t *testing.T) {
 		t.Fatalf("Status = %q, want %q", task.Status, app.TaskStatusOpen)
 	}
 
-	if task.BranchName != "task/task-1" {
-		t.Fatalf("BranchName = %q, want %q", task.BranchName, "task/task-1")
+	if task.BranchName != "task/foundation-work" {
+		t.Fatalf("BranchName = %q, want %q", task.BranchName, "task/foundation-work")
 	}
 
 	if task.WorktreeStatus != app.TaskWorktreeStatusPending {

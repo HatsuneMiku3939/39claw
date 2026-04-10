@@ -102,17 +102,13 @@ func NewTaskWorkspaceManager(ctx context.Context, deps TaskWorkspaceManagerDepen
 	return manager, nil
 }
 
-func DefaultTaskBranchName(taskID string) string {
-	return "task/" + strings.TrimSpace(taskID)
-}
-
 func (m *GitTaskWorkspaceManager) EnsureReady(ctx context.Context, task Task) (Task, error) {
 	if strings.TrimSpace(task.TaskID) == "" {
 		return Task{}, errors.New("task id must not be empty")
 	}
 
 	if task.BranchName == "" {
-		task.BranchName = DefaultTaskBranchName(task.TaskID)
+		task.BranchName = DefaultTaskBranchName(task.TaskName, task.TaskID)
 	}
 
 	if task.WorktreeStatus == "" {

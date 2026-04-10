@@ -69,7 +69,7 @@ Expected flow:
 
 1. The user uses `/<instance-command> action:task-new task_name:<name>`, `/<instance-command> action:task-switch task_name:<name>`, or `/<instance-command> action:task-current` plus other task actions to establish the desired task context.
 2. 39claw records that task as the active context for the user within the current bot instance.
-3. A newly created task reserves its own task branch identity even before worktree creation.
+3. A newly created task reserves its own task branch identity even before worktree creation, using a Git-safe slug derived from `task_name` and falling back to `task_id` only when the name cannot produce a usable branch suffix.
 4. The next normal message routes to the thread associated with that task.
 5. If the task has no ready worktree yet, 39claw prepares the task workspace lazily before running Codex.
 6. If the task has no bound thread yet, 39claw creates one.

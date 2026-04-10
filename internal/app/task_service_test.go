@@ -129,8 +129,8 @@ func TestTaskCommandServiceCreateTaskMakesTaskActive(t *testing.T) {
 		t.Fatalf("TaskName = %q, want %q", task.TaskName, "Release work")
 	}
 
-	if task.BranchName != "task/01JABCDEF0123456789TASK000" {
-		t.Fatalf("BranchName = %q, want %q", task.BranchName, "task/01JABCDEF0123456789TASK000")
+	if task.BranchName != "task/release-work" {
+		t.Fatalf("BranchName = %q, want %q", task.BranchName, "task/release-work")
 	}
 
 	if task.WorktreeStatus != app.TaskWorktreeStatusPending {

@@ -780,7 +780,7 @@ func (s *memoryThreadStore) CreateTask(_ context.Context, task app.Task) error {
 	}
 
 	if task.BranchName == "" {
-		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+		task.BranchName = app.DefaultTaskBranchName(task.TaskName, task.TaskID)
 	}
 
 	if task.WorktreeStatus == "" {
