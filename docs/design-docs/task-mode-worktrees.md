@@ -81,7 +81,8 @@ Instead, it records the metadata needed for later creation:
 - `status=open`
 - `worktree_status=pending`
 
-The branch name should be generated once at task creation time and treated as immutable task identity metadata.
+The branch name should be generated once at task creation time from a Git-safe slug of `task_name` and treated as immutable task identity metadata.
+If the task name collapses to an unusable value after normalization, the implementation should fall back to the task ID so branch reservation still succeeds.
 
 ## Lazy Worktree Creation
 

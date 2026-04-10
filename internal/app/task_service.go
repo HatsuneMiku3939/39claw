@@ -147,7 +147,7 @@ func (s *DefaultTaskCommandService) CreateTask(ctx context.Context, userID strin
 		WorktreeStatus: TaskWorktreeStatusPending,
 	}
 
-	task.BranchName = DefaultTaskBranchName(task.TaskID)
+	task.BranchName = DefaultTaskBranchName(task.TaskName, task.TaskID)
 
 	if err := s.store.CreateTask(ctx, task); err != nil {
 		return MessageResponse{}, fmt.Errorf("create task: %w", err)

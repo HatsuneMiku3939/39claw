@@ -118,7 +118,7 @@ func (s *Store) CreateTask(ctx context.Context, task app.Task) error {
 	}
 
 	if task.BranchName == "" {
-		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+		task.BranchName = app.DefaultTaskBranchName(task.TaskName, task.TaskID)
 	}
 
 	if task.WorktreeStatus == "" {
@@ -207,7 +207,7 @@ func (s *Store) UpdateTask(ctx context.Context, task app.Task) error {
 	}
 
 	if task.BranchName == "" {
-		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+		task.BranchName = app.DefaultTaskBranchName(task.TaskName, task.TaskID)
 	}
 
 	if task.WorktreeStatus == "" {
@@ -441,7 +441,7 @@ func scanTask(scanner interface{ Scan(dest ...any) error }) (app.Task, bool, err
 	task.Status = app.TaskStatus(status)
 	task.BranchName = branchName
 	if task.BranchName == "" {
-		task.BranchName = app.DefaultTaskBranchName(task.TaskID)
+		task.BranchName = app.DefaultTaskBranchName(task.TaskName, task.TaskID)
 	}
 	task.BaseRef = nullableStringValue(baseRef)
 	task.WorktreePath = nullableStringValue(worktreePath)
