@@ -233,7 +233,7 @@ Most of these outcomes should be proven through automated contract coverage plus
 - `/<instance-command> action:task-new task_name:<name>` creates a task and sets it active for the requesting user.
 - The first normal message for a new task creates a task worktree lazily under `${CLAW_DATADIR}/worktrees/<task_id>` and then runs Codex inside that worktree.
 - `/<instance-command> action:task-switch task_name:<name>` changes the routing target for subsequent normal messages, with `task_id` reserved for ambiguity fallback.
-- `/<instance-command> action:task-close task_id:<id>` closes the task and clears active state when the closed task was active.
+- `/<instance-command> action:task-close task_name:<name>` closes the task and clears active state when the closed task was active, with `task_id` reserved for ambiguity fallback.
 - Closed-task worktree retention keeps only the fifteen most recently closed ready worktrees and never deletes the task branches.
 - Existing `daily` and `task` bindings survive process restart through SQLite-backed state.
 - Guild non-mention chatter is ignored, unsupported non-image-only qualifying posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.

@@ -184,8 +184,8 @@ In `task` mode, the same root command also supports:
   - create a task and make it active
 - `/<instance-command> action:task-switch task_name:<name>`
   - switch the active task by name; use `task_id` only when the name is ambiguous
-- `/<instance-command> action:task-close task_id:<id>`
-  - close a task
+- `/<instance-command> action:task-close task_name:<name>`
+  - close a task by name; use `task_id` only when the name is ambiguous
 
 ### Busy conversations
 

@@ -151,8 +151,8 @@ For `task` mode to feel usable, v1 should support at least:
   - create a new task and switch the active task to it
 - `/<instance-command> action:task-switch task_name:<name>`
   - switch the active task to the uniquely named open task, with `task_id` used only when the name is ambiguous
-- `/<instance-command> action:task-close task_id:<id>`
-  - close the specified task
+- `/<instance-command> action:task-close task_name:<name>`
+  - close the uniquely named open task, with `task_id` used only when the name is ambiguous
 
 The root-command action surface should stay explicit and stable enough that users can learn it as the standard task-control surface for `task` mode.
 

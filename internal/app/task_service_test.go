@@ -280,7 +280,7 @@ func TestTaskCommandServiceCloseTaskClearsActiveTaskWhenClosingCurrentTask(t *te
 	}
 	service := newTaskCommandService(t, store)
 
-	response, err := service.CloseTask(context.Background(), "user-1", "task-1")
+	response, err := service.CloseTask(context.Background(), "user-1", "task-1", "")
 	if err != nil {
 		t.Fatalf("CloseTask() error = %v", err)
 	}
@@ -324,7 +324,7 @@ func TestTaskCommandServiceCloseTaskKeepsDifferentActiveTask(t *testing.T) {
 	}
 	service := newTaskCommandService(t, store)
 
-	response, err := service.CloseTask(context.Background(), "user-1", "task-1")
+	response, err := service.CloseTask(context.Background(), "user-1", "task-1", "")
 	if err != nil {
 		t.Fatalf("CloseTask() error = %v", err)
 	}
@@ -354,12 +354,78 @@ func TestTaskCommandServiceCloseTaskTriggersPruning(t *testing.T) {
 	worktrees := &countingTaskWorkspaceManager{}
 	service := newTaskCommandServiceWithWorkspace(t, store, nil, worktrees)
 
-	if _, err := service.CloseTask(context.Background(), "user-1", "task-1"); err != nil {
+	if _, err := service.CloseTask(context.Background(), "user-1", "task-1", ""); err != nil {
 		t.Fatalf("CloseTask() error = %v", err)
 	}
 
 	if worktrees.pruneCalls != 1 {
 		t.Fatalf("PruneClosed() call count = %d, want %d", worktrees.pruneCalls, 1)
+	}
+}
+
+func TestTaskCommandServiceCloseTaskByUniqueName(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+	}
+	service := newTaskCommandService(t, store)
+
+	response, err := service.CloseTask(context.Background(), "user-1", "", "Release work")
+	if err != nil {
+		t.Fatalf("CloseTask() error = %v", err)
+	}
+
+	want := "Closed task `Release work` (`task-1`). No active task is selected now."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
+	}
+}
+
+func TestTaskCommandServiceCloseTaskByNameRequiresIDWhenAmbiguous(t *testing.T) {
+	t.Parallel()
+
+	service := newTaskCommandService(t, &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+			"user-1:task-2": {
+				TaskID:        "task-2",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 1, 0, 0, 0, time.UTC),
+			},
+		},
+	})
+
+	response, err := service.CloseTask(context.Background(), "user-1", "", "Release work")
+	if err != nil {
+		t.Fatalf("CloseTask() error = %v", err)
+	}
+
+	want := "Multiple open tasks are named `Release work`. Retry with a task ID:\n- `Release work` (`task-1`)\n- `Release work` (`task-2`)\nUse `/release action:task-close task_id:<id>` when the task name is ambiguous."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
 }
 

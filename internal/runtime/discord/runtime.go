@@ -540,7 +540,7 @@ func (r *Runtime) routeCommand(ctx context.Context, request commandRequest) (app
 		case actionTaskSwitch:
 			return r.taskCommand.SwitchTask(ctx, request.UserID, request.TaskID, request.TaskName)
 		case actionTaskClose:
-			return r.taskCommand.CloseTask(ctx, request.UserID, request.TaskID)
+			return r.taskCommand.CloseTask(ctx, request.UserID, request.TaskID, request.TaskName)
 		}
 
 		return app.MessageResponse{

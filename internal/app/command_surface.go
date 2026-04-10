@@ -22,10 +22,10 @@ func (s commandSurface) taskSwitchPlaceholder() string {
 	return fmt.Sprintf("`/%s action:task-switch task_name:<name>`", s.commandName)
 }
 
-func (s commandSurface) taskSwitchIDPlaceholder() string {
-	return fmt.Sprintf("`/%s action:task-switch task_id:<id>`", s.commandName)
-}
-
 func (s commandSurface) taskClose(taskID string) string {
 	return fmt.Sprintf("`/%s action:task-close task_id:%s`", s.commandName, taskID)
+}
+
+func (s commandSurface) taskIDPlaceholder(action string) string {
+	return fmt.Sprintf("`/%s action:%s task_id:<id>`", s.commandName, action)
 }
