@@ -87,6 +87,7 @@ In direct messages, normal-message interaction should work without an extra bot 
 When a qualifying normal message is accepted, it may contain typed text, one or more image attachments, or both.
 If a qualifying trigger is present but the message contains neither text nor a usable image attachment, the bot should stay silent.
 If the turn starts immediately, the bot may first post a short placeholder reply and then edit that same reply as Codex streams progress or partial assistant output.
+When a normal-message reply finishes successfully, the bot may add a small completion marker such as a `✅` reaction to its reply message when Discord permissions allow it.
 If another turn for the same logical conversation is already running, the bot should acknowledge queued acceptance immediately and post the real answer later as a reply to the original triggering message.
 If five waiting messages are already queued for that logical conversation, the bot should return a clear retry-later response instead of queueing more work.
 

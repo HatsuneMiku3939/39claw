@@ -7,15 +7,17 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func presentMessage(discordSession session, channelID string, response app.MessageResponse) error {
+func presentMessage(discordSession session, channelID string, response app.MessageResponse) (string, error) {
 	if response.Ignore {
-		return nil
+		return "", nil
 	}
 
 	chunks := chunkText(response.Text)
 	if len(chunks) == 0 {
-		return nil
+		return "", nil
 	}
+
+	primaryMessageID := ""
 
 	for index, chunk := range chunks {
 		payload := &discordgo.MessageSend{
@@ -26,12 +28,17 @@ func presentMessage(discordSession session, channelID string, response app.Messa
 			payload.Reference = replyReference(channelID, response.ReplyToID)
 		}
 
-		if _, err := discordSession.ChannelMessageSendComplex(channelID, payload); err != nil {
-			return fmt.Errorf("send channel message: %w", err)
+		message, err := discordSession.ChannelMessageSendComplex(channelID, payload)
+		if err != nil {
+			return "", fmt.Errorf("send channel message: %w", err)
+		}
+
+		if index == 0 && message != nil {
+			primaryMessageID = message.ID
 		}
 	}
 
-	return nil
+	return primaryMessageID, nil
 }
 
 func presentInteraction(discordSession session, interaction *discordgo.Interaction, response app.MessageResponse) error {

@@ -18,6 +18,7 @@ import (
 const (
 	defaultShutdownDrainTimeout = 5 * time.Second
 	forcedShutdownWaitTimeout   = time.Second
+	completionReactionEmoji     = "✅"
 )
 
 type Dependencies struct {
@@ -255,7 +256,7 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 		}
 
 		r.logger.Error("prepare image attachments", "error", err, "channel_id", request.ChannelID, "message_id", request.MessageID)
-		if err := r.presentMessageResponse(discordSession, request.ChannelID, app.MessageResponse{
+		if _, err := r.presentMessageResponse(discordSession, request.ChannelID, app.MessageResponse{
 			Text:      imageDownloadErrorMessage,
 			ReplyToID: request.MessageID,
 		}); err != nil {
@@ -312,13 +313,16 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 			return err
 		}
 
-		if err := r.presentMessageResponse(currentSession, request.ChannelID, response); err != nil {
+		messageID, err := r.presentMessageResponse(currentSession, request.ChannelID, response)
+		if err != nil {
 			r.logger.Error(
 				"deferred reply delivery failed",
 				append(logAttrs, "outcome", "failure", "error", err)...,
 			)
 			return err
 		}
+
+		r.addCompletionReaction(currentSession, request.ChannelID, messageID)
 
 		r.logger.Info(
 			"deferred reply delivery succeeded",
@@ -336,15 +340,24 @@ func (r *Runtime) handleMessageCreate(_ *discordgo.Session, event *discordgo.Mes
 		}
 	}
 
+	reactionTargetID := ""
 	var presentErr error
 	if livePresenter.Active() {
 		presentErr = livePresenter.Update(response.Text)
+		if presentErr == nil {
+			reactionTargetID = livePresenter.PrimaryMessageID()
+		}
 	} else {
-		presentErr = r.presentMessageResponse(discordSession, request.ChannelID, response)
+		reactionTargetID, presentErr = r.presentMessageResponse(discordSession, request.ChannelID, response)
 	}
 
 	if presentErr != nil {
 		r.logger.Error("present message response", "error", presentErr, "channel_id", request.ChannelID, "message_id", request.MessageID)
+		return
+	}
+
+	if err == nil && !response.Ignore && !response.Deferred {
+		r.addCompletionReaction(discordSession, request.ChannelID, reactionTargetID)
 	}
 }
 
@@ -455,9 +468,29 @@ func (c *lifecycleContext) Cancel() {
 	})
 }
 
-func (r *Runtime) presentMessageResponse(discordSession session, channelID string, response app.MessageResponse) error {
+func (r *Runtime) presentMessageResponse(discordSession session, channelID string, response app.MessageResponse) (string, error) {
 	response.Text = formatDiscordResponseText(response.Text, r.config.CodexWorkdir)
 	return presentMessage(discordSession, channelID, response)
+}
+
+func (r *Runtime) addCompletionReaction(discordSession session, channelID string, messageID string) {
+	if strings.TrimSpace(channelID) == "" || strings.TrimSpace(messageID) == "" {
+		return
+	}
+
+	if err := discordSession.MessageReactionAdd(channelID, messageID, completionReactionEmoji); err != nil {
+		r.logger.Warn(
+			"add completion reaction",
+			"error",
+			err,
+			"channel_id",
+			channelID,
+			"message_id",
+			messageID,
+			"emoji",
+			completionReactionEmoji,
+		)
+	}
 }
 
 func (r *Runtime) presentInteractionResponse(

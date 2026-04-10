@@ -40,6 +40,17 @@ func (p *liveMessagePresenter) Active() bool {
 	return len(p.messageIDs) > 0
 }
 
+func (p *liveMessagePresenter) PrimaryMessageID() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if len(p.messageIDs) == 0 {
+		return ""
+	}
+
+	return p.messageIDs[0]
+}
+
 func (p *liveMessagePresenter) Update(text string) error {
 	return p.syncText(text)
 }
