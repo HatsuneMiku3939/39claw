@@ -65,3 +65,18 @@ func (c *QueueCoordinator) Complete(key string) (func(), bool) {
 	entry.waiting = entry.waiting[1:]
 	return next, true
 }
+
+func (c *QueueCoordinator) Snapshot(key string) app.QueueSnapshot {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	entry, ok := c.entries[key]
+	if !ok {
+		return app.QueueSnapshot{}
+	}
+
+	return app.QueueSnapshot{
+		InFlight: entry.running,
+		Queued:   len(entry.waiting),
+	}
+}

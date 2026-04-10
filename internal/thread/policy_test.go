@@ -186,6 +186,45 @@ func TestQueueCoordinatorAdmitAndComplete(t *testing.T) {
 	}
 }
 
+func TestQueueCoordinatorSnapshot(t *testing.T) {
+	t.Parallel()
+
+	coordinator := NewQueueCoordinator()
+	key := "daily:2026-04-05#1"
+
+	if snapshot := coordinator.Snapshot(key); snapshot != (app.QueueSnapshot{}) {
+		t.Fatalf("initial snapshot = %+v, want zero value", snapshot)
+	}
+
+	if _, err := coordinator.Admit(key, func() {}); err != nil {
+		t.Fatalf("Admit() first error = %v", err)
+	}
+
+	if _, err := coordinator.Admit(key, func() {}); err != nil {
+		t.Fatalf("Admit() second error = %v", err)
+	}
+
+	if snapshot := coordinator.Snapshot(key); !snapshot.InFlight || snapshot.Queued != 1 {
+		t.Fatalf("queued snapshot = %+v, want in_flight:true queued:1", snapshot)
+	}
+
+	if work, ok := coordinator.Complete(key); !ok || work == nil {
+		t.Fatalf("Complete() = ok:%v nil-work:%v, want ok:true nil-work:false", ok, work == nil)
+	}
+
+	if snapshot := coordinator.Snapshot(key); !snapshot.InFlight || snapshot.Queued != 0 {
+		t.Fatalf("running snapshot = %+v, want in_flight:true queued:0", snapshot)
+	}
+
+	if work, ok := coordinator.Complete(key); ok || work != nil {
+		t.Fatalf("final Complete() = ok:%v nil-work:%v, want ok:false nil-work:true", ok, work == nil)
+	}
+
+	if snapshot := coordinator.Snapshot(key); snapshot != (app.QueueSnapshot{}) {
+		t.Fatalf("final snapshot = %+v, want zero value", snapshot)
+	}
+}
+
 type stubThreadStore struct {
 	activeTask   app.ActiveTask
 	activeTaskOK bool
@@ -197,6 +236,22 @@ func (s stubThreadStore) GetThreadBinding(context.Context, string, string) (app.
 
 func (s stubThreadStore) UpsertThreadBinding(context.Context, app.ThreadBinding) error {
 	return nil
+}
+
+func (s stubThreadStore) GetActiveDailySession(context.Context, string) (app.DailySession, bool, error) {
+	return app.DailySession{}, false, nil
+}
+
+func (s stubThreadStore) GetLatestDailySessionBefore(context.Context, string) (app.DailySession, bool, error) {
+	return app.DailySession{}, false, nil
+}
+
+func (s stubThreadStore) CreateDailySession(context.Context, app.DailySession) (app.DailySession, error) {
+	return app.DailySession{}, nil
+}
+
+func (s stubThreadStore) RotateDailySession(context.Context, string, string) (app.DailySession, error) {
+	return app.DailySession{}, nil
 }
 
 func (s stubThreadStore) CreateTask(context.Context, app.Task) error {

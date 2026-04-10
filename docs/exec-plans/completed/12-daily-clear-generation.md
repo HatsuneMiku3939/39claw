@@ -14,13 +14,13 @@ This change matters because `daily` mode currently keeps one remote Codex thread
 
 - [x] (2026-04-06 00:00Z) Reviewed the current `daily` routing, daily-memory, command-surface, and SQLite design and captured the agreed direction for shared same-day generation rotation.
 - [x] (2026-04-06 00:00Z) Updated architecture, design, README, and product documents so the repository now describes `daily` mode as one active shared generation per day with `action:clear` and generation-scoped bridge notes.
-- [ ] Add explicit `daily_sessions` persistence and migrate legacy `daily` thread bindings from `YYYY-MM-DD` to `YYYY-MM-DD#1`.
-- [ ] Resolve the active `daily` generation through store-backed metadata before visible turns load or persist thread bindings.
-- [ ] Add `action:clear` to the `daily` command surface and route it through a dedicated app-level daily command service.
-- [ ] Extend queue coordination so `action:clear` can reject rotation while the current active generation is busy or queued.
-- [ ] Run the durable-memory preflight once per fresh generation and write `AGENT_MEMORY/YYYY-MM-DD.<generation>.md`.
-- [ ] Add tests for migration, same-day rotation, clear rejection while busy, same-day preflight after clear, and next-day carry-over from the last active prior-day generation.
-- [ ] Run `make test` and `make lint`, then update this plan with proof artifacts and any deferred follow-up work.
+- [x] (2026-04-10 00:15Z) Added `0003_daily_sessions.sql`, created explicit `daily_sessions` persistence, and migrated legacy `daily` thread bindings from bare `YYYY-MM-DD` keys to `YYYY-MM-DD#1`.
+- [x] (2026-04-10 00:20Z) Added store-backed daily-session APIs plus an application-layer resolver so visible `daily` turns always target the active generation key before binding lookup.
+- [x] (2026-04-10 00:25Z) Added `action:clear` to the `daily` command surface and routed it through a dedicated app-level `DailyCommandService`.
+- [x] (2026-04-10 00:30Z) Extended queue coordination with snapshots so `action:clear` rejects rotation while the current active generation is busy or queued.
+- [x] (2026-04-10 00:35Z) Changed the daily-memory preflight to operate per generation and write generation-scoped bridge notes such as `AGENT_MEMORY/YYYY-MM-DD.<generation>.md`.
+- [x] (2026-04-10 00:45Z) Added migration, store, app, runtime, queue, and daily-memory tests for same-day generation reuse, clear rotation, busy clear rejection, same-day preflight after clear, and next-day carry-over from the last active prior-day generation.
+- [x] (2026-04-10 00:50Z) Ran `go test ./...` and `./scripts/lint -c .golangci.yml`; `make` is not installed in this environment, so the repository-equivalent direct commands were used instead.
 
 ## Surprises & Discoveries
 
@@ -32,6 +32,12 @@ This change matters because `daily` mode currently keeps one remote Codex thread
 
 - Observation: The Discord root command already centralizes discovery for both modes. Extending it with `action:clear` is cleaner than introducing a second standalone slash command.
   Evidence: `internal/runtime/discord/commands.go`, `internal/runtime/discord/runtime.go`
+
+- Observation: Persisting `daily_sessions` separately from `thread_bindings` kept Codex thread IDs as the only binding truth while still giving the application layer deterministic generation metadata. That split let legacy key migration stay small and testable.
+  Evidence: `migrations/sqlite/0003_daily_sessions.sql`, `internal/store/sqlite/daily_sessions.go`
+
+- Observation: The same queue snapshot is sufficient for both normal message admission and safe clear rejection; no second queue or daily-specific coordinator was needed.
+  Evidence: `internal/thread/queue.go`, `internal/app/daily_command_service.go`
 
 ## Decision Log
 
@@ -55,9 +61,19 @@ This change matters because `daily` mode currently keeps one remote Codex thread
   Rationale: One date can now have multiple fresh starts, so the bridge note must identify which generation it belongs to while keeping `MEMORY.md` as the single durable summary file.
   Date/Author: 2026-04-06 / Codex
 
+- Decision: Keep `action:clear` success responses explicit about the active generation key instead of only promising that the next mention will be fresh.
+  Rationale: The generation key is the exact state change the command performs, and exposing it makes tests and operator reasoning simpler without changing the user workflow.
+  Date/Author: 2026-04-10 / Codex
+
+- Decision: Let the app-level daily-session resolver create generation `#1`, while keeping same-day rotation itself transactional inside the store.
+  Rationale: First-use creation depends on previous-day lookup policy, while same-day clear must atomically deactivate the current generation and insert the next one. Splitting responsibilities this way keeps each layer narrow.
+  Date/Author: 2026-04-10 / Codex
+
 ## Outcomes & Retrospective
 
-Implementation has not started yet. The intended outcome is a `daily` mode that still behaves like a shared day-based assistant but can intentionally rotate to a fresh same-day Codex thread when conversation length becomes a problem. This plan will be complete when the runtime can persist active daily generations, expose `action:clear`, reject clear while busy, refresh durable memory from the previous recorded generation, and prove the full behavior through automated tests.
+Implementation completed on 2026-04-10. `daily` mode now persists active same-day generations in `daily_sessions`, rewrites legacy bare-date bindings to `#1`, resolves the active generation before visible turns, and exposes `/<instance-command> action:clear` for shared same-day rotation.
+
+The main tradeoff is that normal `daily` message routing still starts from the date bucket returned by `thread.Policy`, but the application layer immediately expands that bucket into generation metadata before any preflight or binding lookup happens. That kept the thread policy contract stable while still moving all visible `daily` behavior onto generation keys such as `2026-04-10#2`.
 
 ## Context and Orientation
 
@@ -109,9 +125,9 @@ Start this plan only after confirming the repository still matches these assumpt
 
 Verify that state with:
 
-    cd /home/filepang/playground/39claw
-    make test
-    make lint
+    cd /home/filepang/workspaces/39claw/39claw
+    go test ./...
+    ./scripts/lint -c .golangci.yml
 
 If the repository has drifted away from that shape, update this ExecPlan first so it remains self-contained and truthful.
 
@@ -250,12 +266,12 @@ Finally, update tests and rerun the full checks. This plan is not complete until
 
 ## Concrete Steps
 
-Run all commands from `/home/filepang/playground/39claw`.
+Run all commands from `/home/filepang/workspaces/39claw/39claw`.
 
 1. Confirm the starting state and baseline health.
 
-    make test
-    make lint
+    go test ./...
+    ./scripts/lint -c .golangci.yml
 
 2. Implement the store and migration changes, then run focused store tests.
 
@@ -271,8 +287,8 @@ Run all commands from `/home/filepang/playground/39claw`.
 
 5. Run the full repository checks.
 
-    make test
-    make lint
+    go test ./...
+    ./scripts/lint -c .golangci.yml
 
 6. Record concise proof artifacts in this plan before marking it complete.
 
@@ -292,8 +308,8 @@ This plan is complete when all of the following are true:
 - the first visible message on a new local day starts generation `#1` and uses the last active prior-day generation as the preflight source
 - bridge notes are written to `AGENT_MEMORY/YYYY-MM-DD.<generation>.md`
 - `MEMORY.md` remains the primary durable-memory file
-- `make test` passes
-- `make lint` passes
+- `go test ./...` passes
+- `./scripts/lint -c .golangci.yml` passes
 
 The most important human-readable proof scenario is:
 
@@ -334,13 +350,13 @@ Useful bridge note paths:
     AGENT_MEMORY/2026-04-06.2.md
     AGENT_MEMORY/2026-04-07.1.md
 
-Suggested success response for `action:clear`:
+Implemented success response for `action:clear`:
 
-    Started a fresh shared daily session for today. Your next mention will use a new thread.
+    Started a fresh shared daily conversation for today. The active generation is now `YYYY-MM-DD#2`.
 
-Suggested rejection response for `action:clear` while busy:
+Implemented rejection response for `action:clear` while busy:
 
-    The current shared daily session is still busy. Please wait for queued work to finish, then retry `action:clear`.
+    Today's shared daily conversation is still busy. Wait for pending replies to finish, then retry `/<instance-command> action:clear`.
 
 ## Interfaces and Dependencies
 
@@ -361,8 +377,8 @@ Extend the app-facing store contract with daily-session methods equivalent to:
 
     GetActiveDailySession(ctx context.Context, localDate string) (DailySession, bool, error)
     GetLatestDailySessionBefore(ctx context.Context, localDate string) (DailySession, bool, error)
-    CreateDailySession(ctx context.Context, session DailySession) error
-    RotateDailySession(ctx context.Context, localDate string, next DailySession) error
+    CreateDailySession(ctx context.Context, session DailySession) (DailySession, error)
+    RotateDailySession(ctx context.Context, localDate string, activationReason string) (DailySession, error)
 
 Extend the queue coordinator with a lightweight status shape:
 
@@ -384,3 +400,4 @@ Add an app-level daily command service interface shaped like:
 Keep the Discord runtime thin. It should normalize command input, call the correct application service, and present the response. All same-day generation and busy-clear business rules belong in the application and store layers.
 
 Revision Note: 2026-04-06 / Codex - Created this active ExecPlan after agreeing that `daily` clear rotates the whole shared bot-instance conversation, not per-user state, and that busy same-day generations must reject clear requests instead of rotating immediately.
+Revision Note: 2026-04-10 / Codex - Completed the daily-session migration, generation-aware routing, queue-safe clear command, generation-scoped daily-memory preflight, and the full test coverage for same-day and next-day rotation paths.

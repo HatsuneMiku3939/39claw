@@ -22,6 +22,13 @@ func registeredCommands(cfg config.Config) []*discordgo.ApplicationCommand {
 		},
 	}
 
+	if cfg.Mode == config.ModeDaily {
+		actionChoices = append(
+			actionChoices,
+			&discordgo.ApplicationCommandOptionChoice{Name: actionClear, Value: actionClear},
+		)
+	}
+
 	if cfg.Mode == config.ModeTask {
 		actionChoices = append(
 			actionChoices,
@@ -79,6 +86,12 @@ func helpResponse(commandName string, mode config.Mode) app.MessageResponse {
 		fmt.Sprintf("- `/%s action:%s` shows this help message.", commandName, actionHelp),
 	}
 
+	if mode == config.ModeDaily {
+		lines = append(lines,
+			fmt.Sprintf("- `/%s action:%s` starts a fresh shared daily generation for today when the current one is idle.", commandName, actionClear),
+		)
+	}
+
 	if mode == config.ModeTask {
 		lines = append(lines,
 			fmt.Sprintf("- `/%s action:%s` shows the active task.", commandName, actionTaskCurrent),
@@ -104,7 +117,7 @@ func taskUnavailableDailyMode(commandName string) string {
 
 func unsupportedActionText(commandName string, mode config.Mode) string {
 	if mode != config.ModeTask {
-		return fmt.Sprintf("Unsupported action. Use `/%s action:%s`.", commandName, actionHelp)
+		return fmt.Sprintf("Unsupported action. Use `/%s action:%s` or `/%s action:%s`.", commandName, actionHelp, commandName, actionClear)
 	}
 
 	return fmt.Sprintf(

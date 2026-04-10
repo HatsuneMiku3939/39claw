@@ -157,13 +157,24 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		ThreadOptions: threadOptions,
 	})
 
+	coordinator := thread.NewQueueCoordinator()
 	var dailyMemory app.DailyMemoryRefresher
+	var dailyCommand app.DailyCommandService
 	if cfg.Mode == config.ModeDaily {
 		dailyMemory = dailymemory.Refresher{
-			Timezone: cfg.Timezone,
-			Store:    store,
-			Gateway:  gateway,
-			Workdir:  cfg.CodexWorkdir,
+			Store:   store,
+			Gateway: gateway,
+			Workdir: cfg.CodexWorkdir,
+		}
+
+		dailyCommand, err = app.NewDailyCommandService(app.DailyCommandServiceDependencies{
+			CommandName: cfg.DiscordCommandName,
+			Timezone:    cfg.Timezone,
+			Store:       store,
+			Coordinator: coordinator,
+		})
+		if err != nil {
+			return fmt.Errorf("build daily command service: %w", err)
 		}
 	}
 
@@ -193,7 +204,7 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		WorkspaceManager: workspaceManager,
 		DailyMemory:      dailyMemory,
 		Gateway:          gateway,
-		Coordinator:      thread.NewQueueCoordinator(),
+		Coordinator:      coordinator,
 	})
 	if err != nil {
 		return fmt.Errorf("build message service: %w", err)
@@ -209,10 +220,11 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	}
 
 	runtime, err := newDiscordRuntime(runtimediscord.Dependencies{
-		Config:      cfg,
-		Logger:      logger,
-		Message:     messageService,
-		TaskCommand: taskService,
+		Config:       cfg,
+		Logger:       logger,
+		Message:      messageService,
+		DailyCommand: dailyCommand,
+		TaskCommand:  taskService,
 	})
 	if err != nil {
 		return fmt.Errorf("build discord runtime: %w", err)

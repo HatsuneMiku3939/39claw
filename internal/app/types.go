@@ -35,6 +35,17 @@ type ThreadBinding struct {
 	UpdatedAt        time.Time
 }
 
+type DailySession struct {
+	LocalDate                string
+	Generation               int
+	LogicalThreadKey         string
+	PreviousLogicalThreadKey string
+	ActivationReason         string
+	IsActive                 bool
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+}
+
 type TaskStatus string
 
 const (
@@ -111,4 +122,9 @@ type QueueAdmission struct {
 	ExecuteNow bool
 	Queued     bool
 	Position   int
+}
+
+type QueueSnapshot struct {
+	InFlight bool
+	Queued   int
 }

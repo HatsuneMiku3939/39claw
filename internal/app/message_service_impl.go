@@ -180,15 +180,16 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 }
 
 type preparedMessage struct {
-	logicalKey string
-	userID     string
-	taskID     string
-	channelID  string
-	replyToID  string
-	receivedAt time.Time
-	input      CodexTurnInput
-	sink       DeferredReplySink
-	cleanup    func()
+	logicalKey   string
+	dailySession DailySession
+	userID       string
+	taskID       string
+	channelID    string
+	replyToID    string
+	receivedAt   time.Time
+	input        CodexTurnInput
+	sink         DeferredReplySink
+	cleanup      func()
 }
 
 func (s *DefaultMessageService) prepareMessage(
@@ -222,6 +223,16 @@ func (s *DefaultMessageService) prepareMessage(
 		},
 		sink:    sink,
 		cleanup: cleanup,
+	}
+
+	if s.mode == config.ModeDaily {
+		session, err := ResolveActiveDailySession(ctx, s.store, logicalKey)
+		if err != nil {
+			return preparedMessage{}, MessageResponse{}, false, fmt.Errorf("resolve active daily session: %w", err)
+		}
+
+		prepared.logicalKey = session.LogicalThreadKey
+		prepared.dailySession = session
 	}
 
 	if s.mode == config.ModeTask {
@@ -262,7 +273,7 @@ func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prep
 	}
 
 	if s.mode == config.ModeDaily {
-		if err := s.dailyMemory.RefreshBeforeFirstDailyTurn(ctx, prepared.logicalKey, prepared.receivedAt); err != nil {
+		if err := s.dailyMemory.RefreshBeforeFirstDailyTurn(ctx, prepared.dailySession); err != nil {
 			slog.Error("refresh daily memory bridge", "logical_key", prepared.logicalKey, "error", err)
 		}
 	}

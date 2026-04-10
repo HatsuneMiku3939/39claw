@@ -12,6 +12,7 @@ const (
 	optionTaskID   = "task_id"
 
 	actionHelp        = "help"
+	actionClear       = "clear"
 	actionTaskCurrent = "task-current"
 	actionTaskList    = "task-list"
 	actionTaskNew     = "task-new"

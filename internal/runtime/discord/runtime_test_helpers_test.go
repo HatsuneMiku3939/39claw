@@ -21,7 +21,16 @@ import (
 
 func newTestRuntime(t *testing.T, mode config.Mode, fakeSession *fakeSession) *Runtime {
 	t.Helper()
-	return newTestRuntimeWithTimeout(t, mode, fakeSession, &fakeMessageService{}, &fakeTaskCommandService{}, http.DefaultClient, 0)
+	return newTestRuntimeWithTimeout(
+		t,
+		mode,
+		fakeSession,
+		&fakeMessageService{},
+		&fakeDailyCommandService{},
+		&fakeTaskCommandService{},
+		http.DefaultClient,
+		0,
+	)
 }
 
 func newTestRuntimeWithServices(
@@ -32,7 +41,16 @@ func newTestRuntimeWithServices(
 	taskService app.TaskCommandService,
 ) *Runtime {
 	t.Helper()
-	return newTestRuntimeWithTimeout(t, mode, fakeSession, messageService, taskService, http.DefaultClient, 0)
+	return newTestRuntimeWithTimeout(
+		t,
+		mode,
+		fakeSession,
+		messageService,
+		&fakeDailyCommandService{},
+		taskService,
+		http.DefaultClient,
+		0,
+	)
 }
 
 func newTestRuntimeWithServicesAndClient(
@@ -44,7 +62,16 @@ func newTestRuntimeWithServicesAndClient(
 	httpClient attachmentHTTPClient,
 ) *Runtime {
 	t.Helper()
-	return newTestRuntimeWithTimeout(t, mode, fakeSession, messageService, taskService, httpClient, 0)
+	return newTestRuntimeWithTimeout(
+		t,
+		mode,
+		fakeSession,
+		messageService,
+		&fakeDailyCommandService{},
+		taskService,
+		httpClient,
+		0,
+	)
 }
 
 func newTestRuntimeWithTimeout(
@@ -52,6 +79,7 @@ func newTestRuntimeWithTimeout(
 	mode config.Mode,
 	fakeSession *fakeSession,
 	messageService app.MessageService,
+	dailyService app.DailyCommandService,
 	taskService app.TaskCommandService,
 	httpClient attachmentHTTPClient,
 	shutdownDrainTimeout time.Duration,
@@ -67,6 +95,7 @@ func newTestRuntimeWithTimeout(
 		},
 		Logger:               slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Message:              messageService,
+		DailyCommand:         dailyService,
 		TaskCommand:          taskService,
 		HTTPClient:           httpClient,
 		ShutdownDrainTimeout: shutdownDrainTimeout,
@@ -515,17 +544,59 @@ func (s *fakeTaskCommandService) CloseTask(ctx context.Context, userID string, t
 	return s.closeResponse, nil
 }
 
+type fakeDailyCommandService struct {
+	clearCalls []struct {
+		userID     string
+		receivedAt time.Time
+	}
+	clearResponse app.MessageResponse
+	clearErr      error
+}
+
+func (s *fakeDailyCommandService) Clear(ctx context.Context, userID string, receivedAt time.Time) (app.MessageResponse, error) {
+	s.clearCalls = append(s.clearCalls, struct {
+		userID     string
+		receivedAt time.Time
+	}{
+		userID:     userID,
+		receivedAt: receivedAt,
+	})
+
+	if s.clearErr != nil {
+		return app.MessageResponse{}, s.clearErr
+	}
+
+	return s.clearResponse, nil
+}
+
+type stubQueueCoordinator struct {
+	snapshot app.QueueSnapshot
+}
+
+func (c *stubQueueCoordinator) Admit(string, func()) (app.QueueAdmission, error) {
+	return app.QueueAdmission{ExecuteNow: true}, nil
+}
+
+func (c *stubQueueCoordinator) Complete(string) (func(), bool) {
+	return nil, false
+}
+
+func (c *stubQueueCoordinator) Snapshot(string) app.QueueSnapshot {
+	return c.snapshot
+}
+
 type noopDailyMemoryRefresher struct{}
 
-func (noopDailyMemoryRefresher) RefreshBeforeFirstDailyTurn(context.Context, string, time.Time) error {
+func (noopDailyMemoryRefresher) RefreshBeforeFirstDailyTurn(context.Context, app.DailySession) error {
 	return nil
 }
 
 type memoryThreadStore struct {
-	mu          sync.Mutex
-	bindings    map[string]app.ThreadBinding
-	tasks       map[string]app.Task
-	activeTasks map[string]app.ActiveTask
+	mu            sync.Mutex
+	bindings      map[string]app.ThreadBinding
+	dailySessions map[string]app.DailySession
+	tasks         map[string]app.Task
+	activeTasks   map[string]app.ActiveTask
 }
 
 func (s *memoryThreadStore) GetThreadBinding(_ context.Context, mode string, logicalThreadKey string) (app.ThreadBinding, bool, error) {
@@ -550,6 +621,105 @@ func (s *memoryThreadStore) UpsertThreadBinding(_ context.Context, binding app.T
 
 	s.bindings[binding.Mode+":"+binding.LogicalThreadKey] = binding
 	return nil
+}
+
+func (s *memoryThreadStore) GetActiveDailySession(_ context.Context, localDate string) (app.DailySession, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, session := range s.dailySessions {
+		if session.LocalDate == localDate && session.IsActive {
+			return session, true, nil
+		}
+	}
+
+	return app.DailySession{}, false, nil
+}
+
+func (s *memoryThreadStore) GetLatestDailySessionBefore(_ context.Context, localDate string) (app.DailySession, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var latest app.DailySession
+	ok := false
+	for _, session := range s.dailySessions {
+		if !session.IsActive || session.LocalDate >= localDate {
+			continue
+		}
+
+		if !ok || session.LocalDate > latest.LocalDate || (session.LocalDate == latest.LocalDate && session.Generation > latest.Generation) {
+			latest = session
+			ok = true
+		}
+	}
+
+	return latest, ok, nil
+}
+
+func (s *memoryThreadStore) CreateDailySession(_ context.Context, session app.DailySession) (app.DailySession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, existing := range s.dailySessions {
+		if existing.LocalDate == session.LocalDate && existing.IsActive {
+			return existing, nil
+		}
+	}
+
+	if s.dailySessions == nil {
+		s.dailySessions = make(map[string]app.DailySession)
+	}
+
+	if session.CreatedAt.IsZero() {
+		session.CreatedAt = time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC)
+	}
+	if session.UpdatedAt.IsZero() {
+		session.UpdatedAt = session.CreatedAt
+	}
+	session.IsActive = true
+	s.dailySessions[session.LocalDate+":"+session.LogicalThreadKey] = session
+	return session, nil
+}
+
+func (s *memoryThreadStore) RotateDailySession(_ context.Context, localDate string, activationReason string) (app.DailySession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.dailySessions == nil {
+		return app.DailySession{}, sql.ErrNoRows
+	}
+
+	var activeKey string
+	var active app.DailySession
+	ok := false
+	for key, session := range s.dailySessions {
+		if session.LocalDate == localDate && session.IsActive {
+			activeKey = key
+			active = session
+			ok = true
+			break
+		}
+	}
+
+	if !ok {
+		return app.DailySession{}, sql.ErrNoRows
+	}
+
+	active.IsActive = false
+	s.dailySessions[activeKey] = active
+
+	next := app.DailySession{
+		LocalDate:                localDate,
+		Generation:               active.Generation + 1,
+		LogicalThreadKey:         app.BuildDailyLogicalKey(localDate, active.Generation+1),
+		PreviousLogicalThreadKey: active.LogicalThreadKey,
+		ActivationReason:         activationReason,
+		IsActive:                 true,
+		CreatedAt:                time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		UpdatedAt:                time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}
+	s.dailySessions[next.LocalDate+":"+next.LogicalThreadKey] = next
+	return next, nil
 }
 
 func (s *memoryThreadStore) CreateTask(_ context.Context, task app.Task) error {
