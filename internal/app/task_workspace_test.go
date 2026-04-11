@@ -2,10 +2,13 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -313,6 +316,214 @@ func TestGitTaskWorkspaceManagerEnsureReadyUsesCachedRemoteRefsWhenFetchFails(t 
 
 	if secondReadyTask.BaseRef != "origin/master" {
 		t.Fatalf("second BaseRef = %q, want %q", secondReadyTask.BaseRef, "origin/master")
+	}
+}
+
+func TestGitTaskWorkspaceManagerEnsureReadySerializesManagedRepositoryMutation(t *testing.T) {
+	t.Parallel()
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is required for worktree integration tests")
+	}
+
+	sourceRepo := createRemoteBackedGitRepository(t, "main")
+	dataDir := t.TempDir()
+	traceDir := t.TempDir()
+
+	wrapperPath := filepath.Join(t.TempDir(), "git-wrapper.sh")
+	wrapperScript := fmt.Sprintf(`#!/usr/bin/env bash
+set -euo pipefail
+
+real_git=%q
+trace_dir=%q
+managed_root=%q
+original_args=("$@")
+parsed_args=("$@")
+instrument=0
+
+if [[ ${#parsed_args[@]} -ge 3 && "${parsed_args[0]}" == "-C" ]]; then
+	repository_path="${parsed_args[1]}"
+	parsed_args=("${parsed_args[@]:2}")
+
+	if [[ "${repository_path}" == "${managed_root}"/* ]]; then
+		case "${parsed_args[0]:-}" in
+			config|fetch|worktree)
+				instrument=1
+				;;
+			remote)
+				case "${parsed_args[1]:-}" in
+					add|set-url|set-head)
+						instrument=1
+						;;
+				esac
+				;;
+		esac
+	fi
+elif [[ ${#parsed_args[@]} -ge 3 && "${parsed_args[0]}" == "init" && "${parsed_args[1]}" == "--bare" ]]; then
+	if [[ "${parsed_args[2]}" == "${managed_root}"/* ]]; then
+		instrument=1
+	fi
+fi
+
+acquire_state_lock() {
+	while ! mkdir "${trace_dir}/state.lock" 2>/dev/null; do
+		sleep 0.01
+	done
+}
+
+release_state_lock() {
+	rmdir "${trace_dir}/state.lock"
+}
+
+enter_critical() {
+	acquire_state_lock
+
+	local current=0
+	if [[ -f "${trace_dir}/current" ]]; then
+		current=$(cat "${trace_dir}/current")
+	fi
+	current=$((current + 1))
+	printf '%%s\n' "${current}" > "${trace_dir}/current"
+
+	local max_seen=0
+	if [[ -f "${trace_dir}/max" ]]; then
+		max_seen=$(cat "${trace_dir}/max")
+	fi
+	if (( current > max_seen )); then
+		printf '%%s\n' "${current}" > "${trace_dir}/max"
+	fi
+
+	release_state_lock
+}
+
+leave_critical() {
+	acquire_state_lock
+
+	local current=0
+	if [[ -f "${trace_dir}/current" ]]; then
+		current=$(cat "${trace_dir}/current")
+	fi
+	if (( current > 0 )); then
+		current=$((current - 1))
+	fi
+	printf '%%s\n' "${current}" > "${trace_dir}/current"
+
+	release_state_lock
+}
+
+if (( instrument == 1 )); then
+	enter_critical
+	sleep 0.2
+fi
+
+set +e
+"${real_git}" "${original_args[@]}"
+status=$?
+set -e
+
+if (( instrument == 1 )); then
+	leave_critical
+fi
+
+exit "${status}"
+`, realGit, traceDir, filepath.Join(dataDir, "repos"))
+	if err := os.WriteFile(wrapperPath, []byte(wrapperScript), 0o755); err != nil {
+		t.Fatalf("WriteFile(git wrapper) error = %v", err)
+	}
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:         "task-1",
+				DiscordUserID:  "user-1",
+				TaskName:       "Task 1",
+				Status:         app.TaskStatusOpen,
+				BranchName:     app.DefaultTaskBranchName("Task 1", "task-1"),
+				WorktreeStatus: app.TaskWorktreeStatusPending,
+				CreatedAt:      time.Date(2026, time.April, 7, 0, 0, 0, 0, time.UTC),
+			},
+			"user-1:task-2": {
+				TaskID:         "task-2",
+				DiscordUserID:  "user-1",
+				TaskName:       "Task 2",
+				Status:         app.TaskStatusOpen,
+				BranchName:     app.DefaultTaskBranchName("Task 2", "task-2"),
+				WorktreeStatus: app.TaskWorktreeStatusPending,
+				CreatedAt:      time.Date(2026, time.April, 7, 0, 1, 0, 0, time.UTC),
+			},
+		},
+	}
+
+	manager, err := app.NewTaskWorkspaceManager(context.Background(), app.TaskWorkspaceManagerDependencies{
+		Store:            store,
+		SourceRepository: sourceRepo,
+		DataDir:          dataDir,
+		GitExecutable:    wrapperPath,
+		Clock: func() time.Time {
+			return time.Date(2026, time.April, 7, 1, 0, 0, 0, time.UTC)
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewTaskWorkspaceManager() error = %v", err)
+	}
+
+	type ensureResult struct {
+		task app.Task
+		err  error
+	}
+
+	start := make(chan struct{})
+	results := make(chan ensureResult, 2)
+	var wg sync.WaitGroup
+
+	for _, taskID := range []string{"task-1", "task-2"} {
+		taskID := taskID
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			task, ok, err := store.GetTask(context.Background(), "user-1", taskID)
+			if err != nil {
+				results <- ensureResult{err: err}
+				return
+			}
+			if !ok {
+				results <- ensureResult{err: context.Canceled}
+				return
+			}
+
+			<-start
+			readyTask, ensureErr := manager.EnsureReady(context.Background(), task)
+			results <- ensureResult{task: readyTask, err: ensureErr}
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(results)
+
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("EnsureReady() error = %v", result.err)
+		}
+		if result.task.WorktreeStatus != app.TaskWorktreeStatusReady {
+			t.Fatalf("WorktreeStatus = %q, want %q", result.task.WorktreeStatus, app.TaskWorktreeStatusReady)
+		}
+	}
+
+	maxActiveBytes, err := os.ReadFile(filepath.Join(traceDir, "max"))
+	if err != nil {
+		t.Fatalf("ReadFile(max) error = %v", err)
+	}
+
+	maxActive, err := strconv.Atoi(strings.TrimSpace(string(maxActiveBytes)))
+	if err != nil {
+		t.Fatalf("Atoi(max) error = %v", err)
+	}
+
+	if maxActive != 1 {
+		t.Fatalf("max concurrent managed repository mutations = %d, want %d", maxActive, 1)
 	}
 }
 

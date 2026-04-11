@@ -134,6 +134,7 @@ If `action:clear` is invoked while the current active daily generation still has
 When a bot instance runs in `task` mode, `CLAW_CODEX_WORKDIR` must be a Git repository with an `origin` remote.
 `task-new` creates task metadata only and reserves a branch name derived from the task name with Git-safe normalization; if normalization produces no usable suffix, it falls back to the task ID. The first normal message for a pending or failed task creates the task worktree lazily from a managed bare parent under `${CLAW_DATADIR}/repos`, preferring the remote default branch by trying `origin/HEAD`, then `origin/main`, then `origin/master`, and only then falling back to local `main` or `master` inside that managed repository.
 Before detecting that base ref, 39claw should synchronize the managed bare parent against the source checkout's `origin` configuration and try `git fetch origin --prune`; a fetch failure should not block task execution by itself when cached remote refs are already available.
+Those managed-parent mutation steps should be serialized per managed repository path within the running process so concurrent task starts do not overlap on one shared bare parent.
 Once the task worktree is ready, Codex runs with the task-specific `worktree_path` as the effective working directory for that turn.
 Closed tasks keep their task branches in the managed bare parent, but only the fifteen most recently closed ready tasks keep their worktrees; older closed ready worktrees are force-pruned.
 
