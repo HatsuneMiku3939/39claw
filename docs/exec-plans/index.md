@@ -25,7 +25,7 @@ Plans in this directory should be written and maintained in line with `.agents/P
 
 These plans are intended to be executed in the order listed below. Most plans follow numeric order, but infrastructure prerequisites may require picking up a later-numbered plan first when it explicitly prepares the repository for another active plan.
 
-There are no active ExecPlans right now.
+- [Add one-shot task override routing for normal task-mode messages](./active/17-one-shot-task-override.md)
 
 ## Recently Completed Plans
 
