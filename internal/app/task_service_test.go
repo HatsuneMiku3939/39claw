@@ -106,12 +106,12 @@ func TestTaskCommandServiceCreateTaskMakesTaskActive(t *testing.T) {
 		return "01JABCDEF0123456789TASK000"
 	})
 
-	response, err := service.CreateTask(context.Background(), "user-1", "  Release work  ")
+	response, err := service.CreateTask(context.Background(), "user-1", "  release-work  ")
 	if err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 
-	want := "Created task `Release work` (`01JABCDEF0123456789TASK000`) and made it active. Your next message will continue this task."
+	want := "Created task `release-work` (`01JABCDEF0123456789TASK000`) and made it active. Your next message will continue this task."
 	if response.Text != want {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
@@ -125,8 +125,8 @@ func TestTaskCommandServiceCreateTaskMakesTaskActive(t *testing.T) {
 		t.Fatal("GetTask() ok = false, want true")
 	}
 
-	if task.TaskName != "Release work" {
-		t.Fatalf("TaskName = %q, want %q", task.TaskName, "Release work")
+	if task.TaskName != "release-work" {
+		t.Fatalf("TaskName = %q, want %q", task.TaskName, "release-work")
 	}
 
 	if task.BranchName != "task/release-work" {
@@ -148,6 +148,47 @@ func TestTaskCommandServiceCreateTaskMakesTaskActive(t *testing.T) {
 
 	if activeTask.TaskID != "01JABCDEF0123456789TASK000" {
 		t.Fatalf("TaskID = %q, want %q", activeTask.TaskID, "01JABCDEF0123456789TASK000")
+	}
+}
+
+func TestTaskCommandServiceCreateTaskRejectsInvalidSlug(t *testing.T) {
+	t.Parallel()
+
+	service := newTaskCommandService(t, &memoryThreadStore{})
+
+	response, err := service.CreateTask(context.Background(), "user-1", "Release work")
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	if response.Text != app.TaskNameRulesDescription {
+		t.Fatalf("Text = %q, want %q", response.Text, app.TaskNameRulesDescription)
+	}
+}
+
+func TestTaskCommandServiceCreateTaskRejectsDuplicateOpenName(t *testing.T) {
+	t.Parallel()
+
+	service := newTaskCommandService(t, &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "release-work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+		},
+	})
+
+	response, err := service.CreateTask(context.Background(), "user-1", "release-work")
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	want := "An open task named `release-work` already exists. Use `/release action:task-switch task_name:release-work` to switch to it or `/release action:task-switch task_id:<id>` to pick by task ID when needed."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
 }
 

@@ -210,6 +210,28 @@ func (s *Store) ListOpenTasks(ctx context.Context, discordUserID string) ([]app.
 	return tasks, nil
 }
 
+func (s *Store) HasClosedTaskWithName(ctx context.Context, discordUserID string, taskName string) (bool, error) {
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT 1
+		FROM tasks
+		WHERE discord_user_id = ? AND task_name = ? AND status = ?
+		LIMIT 1`,
+		discordUserID,
+		taskName,
+		string(app.TaskStatusClosed),
+	)
+
+	var matched int
+	if err := row.Scan(&matched); errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("query closed task by name: %w", err)
+	}
+
+	return true, nil
+}
+
 func (s *Store) UpdateTask(ctx context.Context, task app.Task) error {
 	now := s.clock()
 	if task.UpdatedAt.IsZero() {

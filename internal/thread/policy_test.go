@@ -2,6 +2,7 @@ package thread
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -71,6 +72,57 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 			wantErr: app.ErrNoActiveTask,
 		},
 		{
+			name: "task override uses exact open task name",
+			mode: config.ModeTask,
+			store: stubThreadStore{
+				openTasks: []app.Task{
+					{TaskID: "task-2", DiscordUserID: "user-1", TaskName: "docs-update", Status: app.TaskStatusOpen},
+				},
+			},
+			request: app.MessageRequest{
+				UserID:           "user-1",
+				TaskOverrideName: "docs-update",
+			},
+			want: "user-1:task-2",
+		},
+		{
+			name: "task override reports closed task",
+			mode: config.ModeTask,
+			store: stubThreadStore{
+				closedTaskByName: map[string]bool{"docs-update": true},
+			},
+			request: app.MessageRequest{
+				UserID:           "user-1",
+				TaskOverrideName: "docs-update",
+			},
+			wantErr: app.ErrTaskOverrideClosed,
+		},
+		{
+			name: "task override reports ambiguous open task names",
+			mode: config.ModeTask,
+			store: stubThreadStore{
+				openTasks: []app.Task{
+					{TaskID: "task-2", DiscordUserID: "user-1", TaskName: "docs-update", Status: app.TaskStatusOpen},
+					{TaskID: "task-3", DiscordUserID: "user-1", TaskName: "docs-update", Status: app.TaskStatusOpen},
+				},
+			},
+			request: app.MessageRequest{
+				UserID:           "user-1",
+				TaskOverrideName: "docs-update",
+			},
+			wantErr: app.ErrTaskOverrideAmbiguous,
+		},
+		{
+			name:  "task override reports missing task",
+			mode:  config.ModeTask,
+			store: stubThreadStore{},
+			request: app.MessageRequest{
+				UserID:           "user-1",
+				TaskOverrideName: "docs-update",
+			},
+			wantErr: app.ErrTaskOverrideNotFound,
+		},
+		{
 			name:     "task mode requires store",
 			mode:     config.ModeTask,
 			store:    nil,
@@ -107,7 +159,7 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 					t.Fatalf("ResolveMessageKey() error = nil, want %v", tt.wantErr)
 				}
 
-				if err != tt.wantErr {
+				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("ResolveMessageKey() error = %v, want %v", err, tt.wantErr)
 				}
 
@@ -226,8 +278,10 @@ func TestQueueCoordinatorSnapshot(t *testing.T) {
 }
 
 type stubThreadStore struct {
-	activeTask   app.ActiveTask
-	activeTaskOK bool
+	activeTask       app.ActiveTask
+	activeTaskOK     bool
+	openTasks        []app.Task
+	closedTaskByName map[string]bool
 }
 
 func (s stubThreadStore) GetThreadBinding(context.Context, string, string) (app.ThreadBinding, bool, error) {
@@ -271,7 +325,11 @@ func (s stubThreadStore) UpdateTask(context.Context, app.Task) error {
 }
 
 func (s stubThreadStore) ListOpenTasks(context.Context, string) ([]app.Task, error) {
-	return nil, nil
+	return append([]app.Task(nil), s.openTasks...), nil
+}
+
+func (s stubThreadStore) HasClosedTaskWithName(_ context.Context, _ string, taskName string) (bool, error) {
+	return s.closedTaskByName[taskName], nil
 }
 
 func (s stubThreadStore) ListClosedReadyTasks(context.Context) ([]app.Task, error) {

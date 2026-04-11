@@ -160,8 +160,12 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 			admission.Position,
 		)
 		cleanup = nil
+		queuedMessage := queuedAcknowledgementMessage(admission.Position)
+		if prepared.taskOverrideName != "" {
+			queuedMessage = queuedAcknowledgementMessageForTask(prepared.taskOverrideName, admission.Position)
+		}
 		return MessageResponse{
-			Text:      queuedAcknowledgementMessage(admission.Position),
+			Text:      queuedMessage,
 			ReplyToID: request.MessageID,
 			Deferred:  true,
 		}, nil
@@ -181,16 +185,17 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 }
 
 type preparedMessage struct {
-	logicalKey   string
-	dailySession DailySession
-	userID       string
-	taskID       string
-	channelID    string
-	replyToID    string
-	receivedAt   time.Time
-	input        CodexTurnInput
-	sink         DeferredReplySink
-	cleanup      func()
+	logicalKey       string
+	dailySession     DailySession
+	userID           string
+	taskID           string
+	taskOverrideName string
+	channelID        string
+	replyToID        string
+	receivedAt       time.Time
+	input            CodexTurnInput
+	sink             DeferredReplySink
+	cleanup          func()
 }
 
 func (s *DefaultMessageService) prepareMessage(
@@ -199,11 +204,55 @@ func (s *DefaultMessageService) prepareMessage(
 	sink DeferredReplySink,
 	cleanup func(),
 ) (preparedMessage, MessageResponse, bool, error) {
+	if s.mode == config.ModeTask {
+		override := ParseTaskOverride(request.Content, len(request.ImagePaths) > 0)
+		if override.RejectMessage != "" {
+			return preparedMessage{}, MessageResponse{
+				Text:      override.RejectMessage,
+				ReplyToID: request.MessageID,
+			}, true, nil
+		}
+
+		request.Content = override.Prompt
+		request.TaskOverrideName = override.TaskName
+	}
+
 	logicalKey, err := s.policy.ResolveMessageKey(ctx, request)
 	if err != nil {
-		if errors.Is(err, ErrNoActiveTask) {
+		switch {
+		case errors.Is(err, ErrNoActiveTask):
 			return preparedMessage{}, MessageResponse{
 				Text:      s.noActiveTaskMessage(),
+				ReplyToID: request.MessageID,
+			}, true, nil
+		case errors.Is(err, ErrTaskOverrideNotFound):
+			return preparedMessage{}, MessageResponse{
+				Text: fmt.Sprintf(
+					"No open task named `%s` was found for this message. Use %s to find an open task or %s to create another one.",
+					request.TaskOverrideName,
+					s.commands.taskList(),
+					s.commands.taskNewPlaceholder(),
+				),
+				ReplyToID: request.MessageID,
+			}, true, nil
+		case errors.Is(err, ErrTaskOverrideClosed):
+			return preparedMessage{}, MessageResponse{
+				Text: fmt.Sprintf(
+					"Task `%s` is closed. Use %s to find an open task or %s to select another active task first.",
+					request.TaskOverrideName,
+					s.commands.taskList(),
+					s.commands.taskSwitchPlaceholder(),
+				),
+				ReplyToID: request.MessageID,
+			}, true, nil
+		case errors.Is(err, ErrTaskOverrideAmbiguous):
+			return preparedMessage{}, MessageResponse{
+				Text: fmt.Sprintf(
+					"Multiple open tasks are named `%s`. Use %s to pick the right task first, then resend the message without `task:%s`.",
+					request.TaskOverrideName,
+					s.commands.taskIDPlaceholder("task-switch"),
+					request.TaskOverrideName,
+				),
 				ReplyToID: request.MessageID,
 			}, true, nil
 		}
@@ -212,11 +261,12 @@ func (s *DefaultMessageService) prepareMessage(
 	}
 
 	prepared := preparedMessage{
-		logicalKey: logicalKey,
-		userID:     request.UserID,
-		channelID:  request.ChannelID,
-		replyToID:  request.MessageID,
-		receivedAt: request.ReceivedAt,
+		logicalKey:       logicalKey,
+		userID:           request.UserID,
+		channelID:        request.ChannelID,
+		replyToID:        request.MessageID,
+		receivedAt:       request.ReceivedAt,
+		taskOverrideName: request.TaskOverrideName,
 		input: CodexTurnInput{
 			Prompt:       request.Content,
 			ImagePaths:   append([]string(nil), request.ImagePaths...),
@@ -389,8 +439,13 @@ func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prep
 		}
 	}
 
+	responseText := result.ResponseText
+	if prepared.taskOverrideName != "" {
+		responseText = taskOverrideConfirmationText(prepared.taskOverrideName, responseText)
+	}
+
 	return MessageResponse{
-		Text:      result.ResponseText,
+		Text:      responseText,
 		ReplyToID: prepared.replyToID,
 	}, nil
 }
@@ -535,6 +590,18 @@ func queuedAcknowledgementMessage(position int) string {
 	)
 }
 
+func queuedAcknowledgementMessageForTask(taskName string, position int) string {
+	return fmt.Sprintf(
+		"A response is already running for task `%s`. Your message has been queued at position %d.",
+		taskName,
+		position,
+	)
+}
+
+func taskOverrideConfirmationText(taskName string, responseText string) string {
+	return fmt.Sprintf("Task override: `%s`\n\n%s", taskName, responseText)
+}
+
 func runCleanup(cleanup func()) {
 	if cleanup != nil {
 		cleanup()
@@ -577,6 +644,10 @@ func (s *DefaultMessageService) messageLogger(prepared preparedMessage) *slog.Lo
 
 	if prepared.taskID != "" {
 		attrs = append(attrs, "task_id", prepared.taskID)
+	}
+
+	if prepared.taskOverrideName != "" {
+		attrs = append(attrs, "task_override_name", prepared.taskOverrideName)
 	}
 
 	return s.logger.With(attrs...)

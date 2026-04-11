@@ -13,10 +13,10 @@ This change matters because the current task workflow makes users switch the act
 ## Progress
 
 - [x] (2026-04-11 06:58Z) Reviewed issue `#85`, the merged documentation-first PR `#86`, the current message mapper, task routing policy, queue admission path, task command service, and SQLite store helpers; wrote this initial active ExecPlan.
-- [ ] Add task-name validation helpers, override parsing helpers, and exact-name store lookups that support new slug-based tasks plus legacy compatibility via `task_id`.
-- [ ] Route task-mode normal messages through an effective task selected from either the active task or a one-shot `task:<name>` prefix, while stripping the prefix from the prompt sent to Codex.
-- [ ] Tighten task creation and task help text around immutable slug-style task names and add explicit user-facing confirmation and rejection responses for override-driven turns.
-- [ ] Add focused store, app, thread-policy, and Discord-runtime tests for success, queue freezing, attachment-only overrides, and rejection paths; then run `make test` and `make lint`.
+- [x] (2026-04-11 07:35Z) Added reusable task-name validation and one-shot override parsing helpers in `internal/app`, plus a closed-task-name lookup in the SQLite store and test doubles.
+- [x] (2026-04-11 07:47Z) Routed task-mode normal messages through an effective task selected from either the active task or a one-shot `task:<name>` prefix, stripping the prefix before the Codex turn and preserving the override target through queue admission, worktree selection, and thread binding reuse.
+- [x] (2026-04-11 07:55Z) Tightened task creation to require slug-style names for new tasks, rejected duplicate open task names, and updated task help text plus override-specific acknowledgment and rejection responses.
+- [x] (2026-04-11 08:03Z) Added focused helper, policy, message-service, and runtime contract tests for override success and rejection paths; verified targeted packages with `go test ./internal/app ./internal/thread ./internal/runtime/discord ./internal/store/sqlite ./internal/dailymemory`.
 
 ## Surprises & Discoveries
 
@@ -32,6 +32,9 @@ This change matters because the current task workflow makes users switch the act
 - Observation: The SQLite migration runner only applies SQL files from `migrations/sqlite/`. It does not have a built-in hook for running Go-based data-rewrite logic during migration, which makes silent backfill of arbitrary legacy free-form task names an awkward fit for this feature.
   Evidence: `internal/store/sqlite/migrate.go`
 
+- Observation: Queue freezing did not require new coordinator behavior. Once `prepareMessage` resolves the overridden logical key before admission, the existing queued execution path already keeps using the chosen task even if the saved active task still points elsewhere.
+  Evidence: `internal/app/message_service_impl.go`, `internal/app/message_service_test.go` (`TestMessageServiceHandleMessageQueuesTaskOverrideAgainstSelectedTask`)
+
 ## Decision Log
 
 - Decision: Parse one-shot override syntax in the app-layer message preparation path and carry the selected task name through `app.MessageRequest`, instead of teaching the Discord runtime to resolve tasks directly.
@@ -46,9 +49,17 @@ This change matters because the current task workflow makes users switch the act
   Rationale: The user-visible behavior can be delivered by validating new writes and resolving overrides against exact open-task names. Adding a second persisted routing identifier would broaden the change substantially and would require more documentation churn than the issue calls for.
   Date/Author: 2026-04-11 / Codex
 
+- Decision: Confirm override-driven turns in visible reply text and in queued acknowledgments, but keep the confirmation as a lightweight prefix rather than a larger structured wrapper.
+  Rationale: The product requirement is immediate, readable proof of which task handled the one-shot turn. A short prefix satisfies that proof requirement without reformatting the rest of the Codex response or changing downstream reply handling.
+  Date/Author: 2026-04-11 / Codex
+
 ## Outcomes & Retrospective
 
-This plan is not implemented yet. The documentation contract is already merged in PR `#86`, so the remaining work is code, tests, and validation. The main implementation risk is the transition from legacy free-form task names to the new slug-only contract. This plan keeps that transition explicit by validating new tasks strictly while preserving `task_id` as a narrow compatibility escape hatch for older records.
+Implementation is complete on the working branch. The app layer now parses `task:<name>` at message preparation time, carries the override through `MessageRequest.TaskOverrideName`, resolves exact open-task matches in the routing policy, and reuses the resulting logical key for queue admission, worktree preparation, and thread binding persistence. Queued override turns now acknowledge the selected task by name, and final override responses prepend a short confirmation line before the Codex answer.
+
+The compatibility boundary stayed intentionally narrow. New tasks must use the documented immutable slug contract and duplicate open names are rejected, while older non-slug tasks remain reachable through `task_id` for command workflows. This avoided a data migration while still making one-shot routing deterministic for new tasks.
+
+Remaining work outside this plan is only repository-level validation and PR review. Before merge, run the standard `make test` and `make lint` commands from the repository root and include the results in the implementation PR.
 
 ## Context and Orientation
 

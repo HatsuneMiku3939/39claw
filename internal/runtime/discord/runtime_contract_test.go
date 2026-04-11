@@ -260,13 +260,13 @@ func TestRuntimeContractTaskCommandUsesRealServiceAndEphemeralResponse(t *testin
 		CommandName: "release",
 		UserID:      "user-1",
 		Action:      actionTaskNew,
-		TaskName:    "Release work",
+		TaskName:    "release-work",
 	})
 
 	runtimeharness.RequireDeliveries(t, fakeSession.Deliveries(),
 		runtimeharness.Expectation{
 			Kind:      runtimeharness.DeliveryKindInteractionResponse,
-			Text:      "Created task `Release work` (`task-1`) and made it active. Your next message will continue this task.",
+			Text:      "Created task `release-work` (`task-1`) and made it active. Your next message will continue this task.",
 			Ephemeral: runtimeharness.Bool(true),
 		},
 	)

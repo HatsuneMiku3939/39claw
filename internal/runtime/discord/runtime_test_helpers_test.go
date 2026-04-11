@@ -864,6 +864,19 @@ func (s *memoryThreadStore) ListOpenTasks(_ context.Context, userID string) ([]a
 	return tasks, nil
 }
 
+func (s *memoryThreadStore) HasClosedTaskWithName(_ context.Context, userID string, taskName string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, task := range s.tasks {
+		if task.DiscordUserID == userID && task.TaskName == taskName && task.Status == app.TaskStatusClosed {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (s *memoryThreadStore) ListClosedReadyTasks(_ context.Context) ([]app.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

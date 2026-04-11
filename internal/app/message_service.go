@@ -34,6 +34,7 @@ type ThreadStore interface {
 	GetTask(ctx context.Context, discordUserID string, taskID string) (Task, bool, error)
 	UpdateTask(ctx context.Context, task Task) error
 	ListOpenTasks(ctx context.Context, discordUserID string) ([]Task, error)
+	HasClosedTaskWithName(ctx context.Context, discordUserID string, taskName string) (bool, error)
 	ListClosedReadyTasks(ctx context.Context) ([]Task, error)
 	SetActiveTask(ctx context.Context, activeTask ActiveTask) error
 	GetActiveTask(ctx context.Context, discordUserID string) (ActiveTask, bool, error)
