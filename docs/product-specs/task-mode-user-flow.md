@@ -37,11 +37,16 @@ Once a task is active, the user should be able to continue that line of work ove
 Changing the active task should be treated as a meaningful context change.
 The product should make that behavior understandable to the user.
 
-### 4. Missing context should produce actionable guidance
+### 4. Temporary task routing should be explicit and non-sticky
+
+When a user wants to send one message to a different task without changing their default task, the product may support that only through an explicit one-shot syntax such as `task:<name>`.
+That one-shot route should affect only the current message and should not silently change the saved active task.
+
+### 5. Missing context should produce actionable guidance
 
 If the user tries to work without an active task, the response should tell them what to do next in simple language and point them toward the `/<instance-command> action:task-*` command flow.
 
-### 5. Task work should be isolated
+### 6. Task work should be isolated
 
 Each task should run inside its own repository workspace rather than sharing one mutable checkout with other tasks.
 That isolation should make task switching feel like switching work streams, not only switching chat memory.
@@ -69,7 +74,7 @@ Expected flow:
 
 1. The user uses `/<instance-command> action:task-new task_name:<name>`, `/<instance-command> action:task-switch task_name:<name>`, or `/<instance-command> action:task-current` plus other task actions to establish the desired task context.
 2. 39claw records that task as the active context for the user within the current bot instance.
-3. A newly created task reserves its own task branch identity even before worktree creation, using a Git-safe slug derived from `task_name` and falling back to `task_id` only when the name cannot produce a usable branch suffix.
+3. A newly created task reserves its own task branch identity even before worktree creation, using the validated `task_name` slug directly as immutable task identity metadata.
 4. The next normal message routes to the thread associated with that task.
 5. If the task has no ready worktree yet, 39claw prepares the task workspace lazily before running Codex.
 6. If the task has no bound thread yet, 39claw creates one.
@@ -79,6 +84,22 @@ Expected user perception:
 - “I chose the work context.”
 - “The bot now knows what I mean by continuing this task.”
 - “This task has its own workspace.”
+
+### Scenario: User sends one message to a different task without switching
+
+Expected flow:
+
+1. The user already has an active task.
+2. The user sends a normal message that starts with `task:<name>`, either followed by body text on the same line or on the next line.
+3. 39claw validates that `<name>` is a routing-safe task slug and matches one open task for that user.
+4. 39claw freezes that overridden task for queue admission, thread lookup, and worktree selection for the current message only.
+5. 39claw keeps the saved active task unchanged after the reply is delivered.
+
+Expected user perception:
+
+- “I temporarily targeted another task without moving my default context.”
+- “Queued work stayed attached to the task I named.”
+- “My normal task selection did not change behind my back.”
 
 ### Scenario: User continues an active task on a later day
 
@@ -165,21 +186,25 @@ For `task` mode to feel usable, v1 should support at least:
 - `/<instance-command> action:task-list`
   - show open task names and IDs, plus each task's current worktree branch when available
 - `/<instance-command> action:task-new task_name:<name>`
-  - create a new task and switch the active task to it
+  - create a new task from a routing-safe slug name and switch the active task to it
 - `/<instance-command> action:task-switch task_name:<name>`
-  - switch the active task to the uniquely named open task, with `task_id` used only when the name is ambiguous
+  - switch the active task to the uniquely named open task
 - `/<instance-command> action:task-close task_name:<name>`
-  - close the uniquely named open task, with `task_id` used only when the name is ambiguous
+  - close the uniquely named open task
 - `/<instance-command> action:task-reset-context`
   - keep the current active task and worktree but discard only the saved Codex conversation continuity for that task
+- one-shot `task:<name>` override syntax on normal messages
+  - route only the current message to the named open task without changing the active task
 
 The root-command action surface should stay explicit and stable enough that users can learn it as the standard task-control surface for `task` mode.
+The task-name syntax should also stay explicit and stable enough that users can type it reliably inside normal Discord messages.
 
 ## UX Requirements
 
 ### Context safety
 
 The bot should favor correctness of task routing over convenience when the active task is ambiguous or missing.
+That same rule applies to one-shot overrides: invalid names or unresolved targets must be rejected instead of being guessed.
 
 ### Explainability
 
@@ -215,6 +240,7 @@ When no active task exists, the bot should:
 
 If a user closes a task and then immediately sends a normal message, the bot should treat that as a missing-active-task case.
 In `task` mode, normal messages should not trigger task creation or implicit recovery on their own.
+One-shot `task:<name>` syntax is the only accepted shortcut for temporarily routing a normal message without changing the active task.
 
 ### Stale or invalid task binding
 
@@ -235,6 +261,16 @@ The bot should explain that the user needs to wait for pending replies to finish
 If the product is not certain which task should receive a message, it should prefer asking for explicit user action rather than guessing and contaminating the wrong context.
 That same safety rule applies to queued work: the task context must be frozen at queue-admission time rather than re-read later.
 
+### Invalid override syntax
+
+When a normal message starts with `task:<name>`, the bot should reject it explicitly when:
+
+- the task-name format is invalid
+- no matching open task exists
+- the named task is closed
+- the message contains neither body text nor attachments
+- policy checks fail for the overridden task context
+
 ### Closed-task workspace retention
 
 Closing a task should not imply immediate deletion of its task branch.
@@ -253,7 +289,9 @@ The most recent closed task workspaces should remain available longer than older
 
 - Active task state is always user-scoped within a bot instance in v1.
 - The active task should remain active until the user explicitly closes it or switches to another task.
+- Task names are immutable routing-safe slugs that stay unique among a user's open tasks.
 - If a task is closed and the user then sends a normal message, the bot should respond with missing-active-task guidance rather than routing the message normally.
+- A leading `task:<name>` prefix may route one normal message to another open task, but it never changes the saved active task.
 - `task` mode assumes the configured workdir is a Git repository with an `origin` remote.
 - New tasks create metadata first and prepare their task worktree lazily on the first normal message.
 - Closed-task retention keeps only the fifteen most recently closed ready task worktrees.

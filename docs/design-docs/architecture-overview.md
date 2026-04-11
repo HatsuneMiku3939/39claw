@@ -24,7 +24,7 @@ This leads to two distinct mode families on the same foundation:
 - `daily`
   - knowledge-oriented interaction against repository instructions and documentation, with one active shared generation per local day plus a runtime-managed durable-memory bridge under `AGENT_MEMORY/`
 - `task`
-  - execution-oriented interaction against an operator-visible Git checkout with an `origin` remote, where 39claw manages a separate bare parent repository and each task eventually runs inside its own task-specific worktree
+  - execution-oriented interaction against an operator-visible Git checkout with an `origin` remote, where 39claw manages a separate bare parent repository, each task uses an immutable slug name, and each task eventually runs inside its own task-specific worktree
 
 The detailed rationale for these modes lives in `ARCHITECTURE.md` and `thread-modes.md`.
 
@@ -54,6 +54,7 @@ Processes one user turn end to end by resolving the thread target, coordinating 
 
 Converts Discord context into a logical thread bucket according to the globally configured mode.
 In `daily` mode, the policy still resolves only the local date and the application layer expands that bucket into the active generation key.
+In `task` mode, the policy must resolve the effective task from either the saved active task or a one-shot `task:<name>` override present at the first meaningful token.
 
 ### Thread Store
 

@@ -71,6 +71,9 @@ Those are separate concerns and must not be collapsed into one field.
 ## Task Creation
 
 `/<instance-command> action:task-new task_name:<name>` creates the task record and sets it active.
+The submitted `task_name` is the canonical immutable task slug, not a free-form label.
+It must use lowercase ASCII letters, digits, and single interior hyphens only, stay 3 to 32 characters long, start with a letter, end with a letter or digit, and avoid consecutive hyphens.
+Open task names must be unique for the requesting user.
 
 Task creation does not create a worktree immediately.
 Instead, it records the metadata needed for later creation:
@@ -82,8 +85,8 @@ Instead, it records the metadata needed for later creation:
 - `status=open`
 - `worktree_status=pending`
 
-The branch name should be generated once at task creation time from a Git-safe slug of `task_name` and treated as immutable task identity metadata.
-If the task name collapses to an unusable value after normalization, the implementation should fall back to the task ID so branch reservation still succeeds.
+The branch name should be generated once at task creation time directly from the validated task slug and treated as immutable task identity metadata.
+Because `task_name` is already constrained to a routing-safe slug, task creation should reject invalid names instead of normalizing or falling back to the task ID.
 
 ## Lazy Worktree Creation
 
@@ -115,6 +118,23 @@ It does not:
 - eagerly prepare the destination task worktree
 
 The next normal message determines whether the destination task needs lazy worktree creation before Codex runs.
+
+## One-Shot Task Override
+
+In `task` mode, a normal message may begin with a one-shot `task:<name>` prefix that temporarily targets another open task.
+
+That prefix:
+
+- is recognized only at the first meaningful token in the message
+- may appear after leading whitespace
+- may appear after the bot mention in guild channels
+- may be followed by message body text on the same line or the next line
+- may appear alone when the message still has one or more attachments
+
+When the prefix is valid, 39claw resolves the named open task, freezes that task at queue-admission time, and uses that task's thread binding and worktree selection only for the current message.
+The saved active task remains unchanged.
+
+When the prefix is invalid, names a missing or closed task, or leaves the message without both body text and attachments, 39claw must reject the message explicitly instead of guessing a target task.
 
 ## Task Context Reset
 

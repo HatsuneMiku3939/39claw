@@ -272,11 +272,15 @@ thread_key = user + task_id
 Behavior:
 
 - `task` mode requires `CLAW_CODEX_WORKDIR` to be a Git repository with an `origin` remote
-- normal messages require an active task context
+- task names are immutable routing-safe slugs that use only lowercase ASCII letters, digits, and single interior hyphens, stay 3 to 32 characters long, start with a letter, end with a letter or digit, and remain unique among the requesting user's open tasks
+- normal messages require an active task context unless the first meaningful token provides a one-shot `task:<name>` override
 - each task reserves its own branch identity in a managed bare parent repository under `${CLAW_DATADIR}/repos`
-- messages route to the thread bound to the active task
+- messages route to the thread bound to the active task or to the overridden task selected by a one-shot `task:<name>` prefix
 - the first normal message for a task may lazily create the managed bare parent and the task worktree before Codex runs
-- changing the active task changes the target thread
+- changing the active task changes the default target thread for later normal messages that do not provide an override
+- a valid one-shot `task:<name>` override applies only to the current message and does not change the saved active task
+- queue admission, saved thread binding lookup, and task-worktree selection must all use the same effective task chosen for that message
+- invalid, missing, or closed one-shot override targets are rejected explicitly instead of being guessed
 - `/<instance-command> action:task-reset-context` keeps the active task and worktree unchanged but removes only the saved Codex thread continuity for that task
 - `action:task-reset-context` is rejected while the active task still has in-flight or queued work
 - each task maps to a distinct Codex conversation thread, so switching tasks also switches execution context and working directory once the task worktree exists

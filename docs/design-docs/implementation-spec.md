@@ -93,7 +93,9 @@ The storage model uses four tables:
 - `tasks`
   - stores `task_id`, `discord_user_id`, `task_name`, `status`, `branch_name`, nullable `base_ref`, nullable `worktree_path`, `worktree_status`, `created_at`, `updated_at`, nullable `closed_at`, nullable `worktree_created_at`, nullable `worktree_pruned_at`, and nullable `last_used_at`
   - uses ULID strings for `task_id`
-  - allows duplicate task names for the same user
+  - stores `task_name` as the canonical immutable routing-safe slug for the task
+  - requires task names to match `^[a-z](?:[a-z0-9-]{1,30}[a-z0-9])?$` without consecutive hyphens
+  - requires each user's open task names to be unique, while still allowing a closed task's former name to be reused later
 - `active_tasks`
   - stores `discord_user_id`, `task_id`, and `updated_at`
   - enforces one active task per Discord user within a bot instance
@@ -108,6 +110,10 @@ The logical thread key defaults are:
 
 - `daily`: configured local date formatted as `YYYY-MM-DD` for the outer bucket, with the active visible thread key normalized to `YYYY-MM-DD#<generation>`
 - `task`: `discord_user_id + task_id`
+
+In `task` mode, the effective task for a normal message is the saved active task unless the first meaningful token supplies a one-shot `task:<name>` override.
+That override may follow leading whitespace or the guild-channel bot mention, may be followed by body text on the same line or the next line, and applies only to the current message.
+Queue admission, thread binding lookup, and worktree selection must freeze that effective task at acceptance time so later task switches do not reroute already-accepted work.
 
 When the bot runs in `daily` mode, 39claw also manages a durable memory projection inside `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY`.
 `MEMORY.md` is the primary durable-memory file, and `YYYY-MM-DD.<generation>.md` stores the bridge note created during the first-message preflight for a new daily generation.
@@ -232,13 +238,16 @@ Most of these outcomes should be proven through automated contract coverage plus
 - In `daily` mode, startup does not create or rewrite `AGENTS.md`.
 - A guild mention or direct message with text plus image attachments reaches Codex as multipart input.
 - A guild mention or direct message with only one or more usable image attachments is accepted and answered.
-- In `task` mode, a normal mention without an active task returns guidance instead of routing to Codex.
+- In `task` mode, a normal mention without an active task returns guidance instead of routing to Codex unless that message provides a valid one-shot `task:<name>` override.
 - `/<instance-command> action:task-current` shows the active task for the requesting user.
-- `/<instance-command> action:task-new task_name:<name>` creates a task and sets it active for the requesting user.
+- `/<instance-command> action:task-new task_name:<name>` creates a task with a routing-safe slug name and sets it active for the requesting user.
 - The first normal message for a new task creates or refreshes a managed bare parent under `${CLAW_DATADIR}/repos`, then creates a task worktree lazily under `${CLAW_DATADIR}/worktrees/<task_id>`, and then runs Codex inside that worktree.
-- `/<instance-command> action:task-switch task_name:<name>` changes the routing target for subsequent normal messages, with `task_id` reserved for ambiguity fallback.
-- `/<instance-command> action:task-close task_name:<name>` closes the task and clears active state when the closed task was active, with `task_id` reserved for ambiguity fallback.
+- `/<instance-command> action:task-switch task_name:<name>` changes the default routing target for later normal messages that do not provide an override, with `task_id` reserved only for compatibility with pre-slug tasks during migration.
+- `/<instance-command> action:task-close task_name:<name>` closes the uniquely named open task and clears active state when the closed task was active.
 - `/<instance-command> action:task-reset-context` keeps the active task and worktree but clears only the saved Codex thread continuity for that task.
+- In `task` mode, `task:<name> <body>` and `task:<name>` followed by a newline route only the current message to the named open task without changing the active task.
+- In `task` mode, `task:<name>` with attachments but no body is valid, while a message that has neither body nor attachments is rejected.
+- Invalid task-name format, missing tasks, closed tasks, and policy failures in one-shot override handling return explicit user-facing guidance instead of guessing a target.
 - Closed-task worktree retention keeps only the fifteen most recently closed ready worktrees and never deletes the task branches held by the managed bare parent.
 - Existing `daily` and `task` bindings survive process restart through SQLite-backed state.
 - Guild non-mention chatter is ignored, unsupported non-image-only qualifying posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.
