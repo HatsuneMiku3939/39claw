@@ -13,11 +13,11 @@ This change matters because `task` mode deliberately couples long-lived work to 
 ## Progress
 
 - [x] (2026-04-11 02:32Z) Reviewed issue `#80`, the current task-mode routing and command surface, the existing queue behavior, and the prior `daily` clear-generation ExecPlan; wrote this initial active ExecPlan.
-- [ ] Update architecture, design, and product documents so the repository explicitly distinguishes task identity continuity, task workspace continuity, and Codex thread continuity.
-- [ ] Add a persistence primitive that can remove a saved thread binding for one logical task key without touching task metadata or worktree state.
-- [ ] Implement `action:task-reset-context` in the app layer and root-command routing, including explicit idle-success and busy-rejection responses.
-- [ ] Add store, app, and runtime tests that prove the reset path, no-op fresh-state behavior, busy rejection, and next-message fresh-thread behavior.
-- [ ] Run repository validation with `make test` and `make lint`, or the repository-equivalent direct commands if `make` is unavailable in the execution environment, and record the result in this plan.
+- [x] (2026-04-11 03:18Z) Updated architecture, design, and product documents so the repository now distinguishes task identity continuity, task workspace continuity, and Codex thread continuity, and documents `action:task-reset-context` explicitly.
+- [x] (2026-04-11 03:20Z) Added a thread-binding deletion primitive to the app and SQLite store layers without changing task or worktree persistence schemas.
+- [x] (2026-04-11 03:24Z) Implemented `action:task-reset-context` in the task command service, root command registration, and Discord routing, including explicit success, no-op, and busy-rejection responses.
+- [x] (2026-04-11 03:28Z) Added store, app, and runtime tests that prove the reset path, no-op fresh-state behavior, busy rejection, and next-message fresh-thread behavior.
+- [x] (2026-04-11 03:31Z) Ran `make test` and `make lint`; both passed after formatting the touched Go files with `gofmt`.
 
 ## Surprises & Discoveries
 
@@ -35,6 +35,9 @@ This change matters because `task` mode deliberately couples long-lived work to 
 
 - Observation: The current task execution path already creates a fresh remote thread automatically whenever no binding exists for the task logical key. That means deleting the saved binding is enough to trigger a clean restart without changing the task record or worktree path.
   Evidence: `internal/app/message_service_impl.go`
+
+- Observation: No schema migration was needed for this feature because the existing `thread_bindings` table already had the right key shape; only the CRUD surface needed a delete operation.
+  Evidence: `internal/store/sqlite/store.go`, `internal/store/sqlite/store_test.go`
 
 ## Decision Log
 
@@ -56,7 +59,9 @@ This change matters because `task` mode deliberately couples long-lived work to 
 
 ## Outcomes & Retrospective
 
-This plan is not implemented yet. At plan-creation time, the repository already has the needed task identity, worktree, queue, and thread-binding foundations, but it does not yet have a task-specific context-reset action or a binding-deletion primitive. The main goal of this plan is to land that feature without widening it into destructive task closure, workspace recreation, or branch reset behavior.
+Implementation completed on 2026-04-11. The repository now exposes `action:task-reset-context` in `task` mode, deletes only the saved task thread binding when reset succeeds, rejects reset while the active task still has running or queued work, and keeps the active task selection plus task worktree unchanged.
+
+The main tradeoff is that task reset is intentionally narrow: it does not rebuild or repair the task worktree, and it does not target arbitrary non-active tasks. That keeps the feature easy to explain and reuses the existing “missing binding means start a fresh thread” path instead of adding a second thread-rotation mechanism.
 
 ## Context and Orientation
 
@@ -277,10 +282,10 @@ Run all commands from `/home/filepang/.local/share/39claw/39claw/worktrees/01KNX
         go test ./...
         ./scripts/lint -c .golangci.yml
 
-    Expected result:
+    Observed result:
 
-        all Go tests pass
-        lint passes with 0 issues
+        all Go tests passed
+        lint passed with 0 issues
 
 2. Update the task-reset contract documents.
 
@@ -313,9 +318,9 @@ Run all commands from `/home/filepang/.local/share/39claw/39claw/worktrees/01KNX
         go test ./internal/app -run 'Test(TaskCommandServiceResetContext|MessageServiceHandleMessageTaskStartsFreshThreadAfterReset)'
         go test ./internal/runtime/discord -run 'Test(RuntimeTaskResetContext|RegisteredCommandsTaskModeIncludesResetContext|RegisteredCommandsDailyModeOmitsTaskResetContext)'
 
-    Expected result:
+    Observed result:
 
-        each focused package passes with the new reset-context coverage
+        the focused packages passed while iterating, including the new reset-context coverage
 
 5. Run the full repository checks after implementation.
 
@@ -326,6 +331,11 @@ Run all commands from `/home/filepang/.local/share/39claw/39claw/worktrees/01KNX
 
         go test ./...
         ./scripts/lint -c .golangci.yml
+
+    Observed result:
+
+        all Go tests passed
+        lint passed with 0 issues
 
 6. Capture a short proof transcript in this plan once implementation lands.
 
@@ -442,3 +452,4 @@ Keep the existing dependencies:
 - `TaskWorkspaceManager` remains unchanged by this feature because reset must not mutate worktree state
 
 Revision Note: 2026-04-11 02:32Z / Codex - Created this active ExecPlan for issue `#80` after reviewing the current task-mode routing, queue, command, and persistence architecture and choosing the smallest coherent design: delete the saved task thread binding while preserving active-task and worktree state.
+Revision Note: 2026-04-11 03:31Z / Codex - Updated this ExecPlan after implementation landed so the living sections, concrete steps, and retrospective now reflect the shipped `task-reset-context` behavior and its passing validation commands.

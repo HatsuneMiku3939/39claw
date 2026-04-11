@@ -129,6 +129,8 @@ The root command should support user-facing actions for:
   - switch the active task to the uniquely named open task, with `task_id` available only when the name is ambiguous
 - `/<instance-command> action:task-close task_name:<name>`
   - close the uniquely named open task, with `task_id` available only when the name is ambiguous
+- `/<instance-command> action:task-reset-context`
+  - keep the active task and worktree unchanged while discarding only the saved Codex conversation continuity for that task
 
 Every instance should also support:
 
@@ -167,6 +169,13 @@ For `action:task-new`, the success response should set the expectation that the 
 
 For `action:task-close`, the success response does not need to describe background worktree pruning in detail, but the product behavior should remain consistent with the task retention policy.
 
+For `action:task-reset-context`, the success response should say clearly that:
+
+- the active task did not change
+- the workspace did not change
+- only Codex conversation continuity was restarted
+- the next normal message will start a fresh thread for that same task
+
 When `action:help` succeeds, the response should give a concise list of supported actions and a short explanation of when to use them.
 
 When `action:clear` succeeds in `daily` mode, the response should tell the user that the next mention will use a fresh shared same-day thread.
@@ -181,6 +190,8 @@ When a task action fails, the response should:
 - suggest the next action when possible
 
 If a task action is invoked against a bot instance running in `daily` mode, the bot should explain that task actions are not available for that instance rather than pretending the command was accepted.
+
+If `action:task-reset-context` is requested while the active task still has running or queued work, the bot should reject the request and tell the user to retry after pending replies finish.
 
 ## Ambiguous Input Handling
 

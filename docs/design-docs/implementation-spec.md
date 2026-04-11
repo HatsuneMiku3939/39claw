@@ -54,13 +54,13 @@ The following internal contracts should be treated as stable v1 design targets e
 - `ThreadPolicy`
   - resolves a logical thread key from the configured mode and the current message or task context
 - `ThreadStore`
-  - loads and upserts thread bindings and manages task records plus active task state
+  - loads, upserts, and deletes thread bindings and manages task records plus active task state
 - `CodexGateway`
   - runs a turn against an existing Codex thread when a thread ID is present
   - creates the first remote thread implicitly when the first turn runs without a saved thread ID
   - returns a normalized final response plus the thread ID that should be persisted
 - `TaskCommandService`
-  - implements the `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, and `action:task-close` workflow behind the configured root command
+  - implements the `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, `action:task-close`, and `action:task-reset-context` workflow behind the configured root command
 - `DailyCommandService`
   - implements the `action:clear` workflow behind the configured root command when the bot instance runs in `daily` mode
 
@@ -102,6 +102,7 @@ Task status is `open` or `closed`.
 Task worktree status is `pending`, `ready`, `failed`, or `pruned`.
 Closing a task marks it `closed` and removes its `active_tasks` mapping when that task is currently active.
 `action:task-list` should show open tasks and clearly mark the active task for the requesting user.
+Deleting a task-mode thread binding must not change the task record, active-task mapping, branch name, or worktree path. That operation is how `action:task-reset-context` clears only Codex conversation continuity.
 
 The logical thread key defaults are:
 
@@ -123,7 +124,7 @@ That root command should always expose `action:help`.
 Task-control command responses are ephemeral by default.
 When a bot instance runs in `daily` mode, task actions must return a clear not-available response instead of pretending the command worked.
 When a bot instance runs in `daily` mode, the root command should also expose `action:clear`.
-When a bot instance runs in `task` mode, the root command should expose `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, and `action:task-close`.
+When a bot instance runs in `task` mode, the root command should expose `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, `action:task-close`, and `action:task-reset-context`.
 
 When a bot instance runs in `task` mode, normal messages without an active task must not be routed to Codex.
 They should return actionable guidance that points the user to `action:task-new`, `action:task-list`, or `action:task-switch` on the configured root command.
@@ -136,6 +137,7 @@ When a bot instance runs in `task` mode, `CLAW_CODEX_WORKDIR` must be a Git repo
 Before detecting that base ref, 39claw should synchronize the managed bare parent against the source checkout's `origin` configuration and try `git fetch origin --prune`; a fetch failure should not block task execution by itself when cached remote refs are already available.
 Those managed-parent mutation steps should be serialized per managed repository path within the running process so concurrent task starts do not overlap on one shared bare parent.
 Once the task worktree is ready, Codex runs with the task-specific `worktree_path` as the effective working directory for that turn.
+`action:task-reset-context` deletes the saved thread binding for the active task only when that task has no in-flight or queued work, so the next normal message starts a fresh Codex thread in the same worktree.
 Closed tasks keep their task branches in the managed bare parent, but only the fifteen most recently closed ready tasks keep their worktrees; older closed ready worktrees are force-pruned.
 
 Unsupported guild-channel non-mention chatter is ignored.
@@ -236,6 +238,7 @@ Most of these outcomes should be proven through automated contract coverage plus
 - The first normal message for a new task creates or refreshes a managed bare parent under `${CLAW_DATADIR}/repos`, then creates a task worktree lazily under `${CLAW_DATADIR}/worktrees/<task_id>`, and then runs Codex inside that worktree.
 - `/<instance-command> action:task-switch task_name:<name>` changes the routing target for subsequent normal messages, with `task_id` reserved for ambiguity fallback.
 - `/<instance-command> action:task-close task_name:<name>` closes the task and clears active state when the closed task was active, with `task_id` reserved for ambiguity fallback.
+- `/<instance-command> action:task-reset-context` keeps the active task and worktree but clears only the saved Codex thread continuity for that task.
 - Closed-task worktree retention keeps only the fifteen most recently closed ready worktrees and never deletes the task branches held by the managed bare parent.
 - Existing `daily` and `task` bindings survive process restart through SQLite-backed state.
 - Guild non-mention chatter is ignored, unsupported non-image-only qualifying posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.

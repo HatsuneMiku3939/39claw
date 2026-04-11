@@ -522,7 +522,7 @@ func (r *Runtime) routeCommand(ctx context.Context, request commandRequest) (app
 		}
 
 		return r.dailyCommand.Clear(ctx, request.UserID, time.Now())
-	case actionTaskCurrent, actionTaskList, actionTaskNew, actionTaskSwitch, actionTaskClose:
+	case actionTaskCurrent, actionTaskList, actionTaskNew, actionTaskSwitch, actionTaskClose, actionTaskResetContext:
 		if r.config.Mode != config.ModeTask {
 			return app.MessageResponse{
 				Text:      taskUnavailableDailyMode(r.config.DiscordCommandName),
@@ -541,6 +541,8 @@ func (r *Runtime) routeCommand(ctx context.Context, request commandRequest) (app
 			return r.taskCommand.SwitchTask(ctx, request.UserID, request.TaskID, request.TaskName)
 		case actionTaskClose:
 			return r.taskCommand.CloseTask(ctx, request.UserID, request.TaskID, request.TaskName)
+		case actionTaskResetContext:
+			return r.taskCommand.ResetContext(ctx, request.UserID)
 		}
 
 		return app.MessageResponse{

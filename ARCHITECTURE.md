@@ -277,6 +277,8 @@ Behavior:
 - messages route to the thread bound to the active task
 - the first normal message for a task may lazily create the managed bare parent and the task worktree before Codex runs
 - changing the active task changes the target thread
+- `/<instance-command> action:task-reset-context` keeps the active task and worktree unchanged but removes only the saved Codex thread continuity for that task
+- `action:task-reset-context` is rejected while the active task still has in-flight or queued work
 - each task maps to a distinct Codex conversation thread, so switching tasks also switches execution context and working directory once the task worktree exists
 
 Minimum v1 UX requirements:
@@ -284,7 +286,8 @@ Minimum v1 UX requirements:
 - create a task
 - select the active task
 - inspect the active task
-- clear or close the active task
+- reset the active task's Codex conversation continuity without recreating its workspace
+- close the active task
 
 Properties:
 

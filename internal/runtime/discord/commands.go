@@ -37,6 +37,7 @@ func registeredCommands(cfg config.Config) []*discordgo.ApplicationCommand {
 			&discordgo.ApplicationCommandOptionChoice{Name: actionTaskNew, Value: actionTaskNew},
 			&discordgo.ApplicationCommandOptionChoice{Name: actionTaskSwitch, Value: actionTaskSwitch},
 			&discordgo.ApplicationCommandOptionChoice{Name: actionTaskClose, Value: actionTaskClose},
+			&discordgo.ApplicationCommandOptionChoice{Name: actionTaskResetContext, Value: actionTaskResetContext},
 		)
 	}
 
@@ -99,6 +100,7 @@ func helpResponse(commandName string, mode config.Mode) app.MessageResponse {
 			fmt.Sprintf("- `/%s action:%s task_name:<name>` creates and activates a task.", commandName, actionTaskNew),
 			fmt.Sprintf("- `/%s action:%s task_name:<name>` changes the active task and falls back to `task_id` when the name is ambiguous.", commandName, actionTaskSwitch),
 			fmt.Sprintf("- `/%s action:%s task_name:<name>` closes a task and falls back to `task_id` when the name is ambiguous.", commandName, actionTaskClose),
+			fmt.Sprintf("- `/%s action:%s` resets only the saved Codex conversation continuity for the active task.", commandName, actionTaskResetContext),
 		)
 	}
 
@@ -121,7 +123,7 @@ func unsupportedActionText(commandName string, mode config.Mode) string {
 	}
 
 	return fmt.Sprintf(
-		"Unsupported action. Use `/%s action:%s`, `/%s action:%s`, `/%s action:%s`, `/%s action:%s task_name:<name>`, `/%s action:%s task_name:<name>`, or `/%s action:%s task_name:<name>`.",
+		"Unsupported action. Use `/%s action:%s`, `/%s action:%s`, `/%s action:%s`, `/%s action:%s task_name:<name>`, `/%s action:%s task_name:<name>`, `/%s action:%s task_name:<name>`, or `/%s action:%s`.",
 		commandName,
 		actionHelp,
 		commandName,
@@ -134,5 +136,7 @@ func unsupportedActionText(commandName string, mode config.Mode) string {
 		actionTaskSwitch,
 		commandName,
 		actionTaskClose,
+		commandName,
+		actionTaskResetContext,
 	)
 }

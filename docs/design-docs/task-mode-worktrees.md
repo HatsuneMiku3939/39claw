@@ -116,6 +116,21 @@ It does not:
 
 The next normal message determines whether the destination task needs lazy worktree creation before Codex runs.
 
+## Task Context Reset
+
+`/<instance-command> action:task-reset-context` keeps the active task record and any existing task worktree exactly as they are, but removes the saved Codex thread binding for that task.
+
+That command does not:
+
+- recreate the worktree
+- delete the worktree
+- change the task branch
+- change which task is active
+
+It only changes Codex conversation continuity. The next normal message for that active task starts a fresh Codex thread in the same worktree.
+
+The command is rejected while that task has in-flight or queued work so no reply arrives after the user believes the context was reset.
+
 ## Task Closing and Worktree Retention
 
 Closing a task changes the task status to `closed` and clears active-task state if the closed task was active.

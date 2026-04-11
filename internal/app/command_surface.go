@@ -26,6 +26,10 @@ func (s commandSurface) taskClose(taskID string) string {
 	return fmt.Sprintf("`/%s action:task-close task_id:%s`", s.commandName, taskID)
 }
 
+func (s commandSurface) taskResetContext() string {
+	return fmt.Sprintf("`/%s action:task-reset-context`", s.commandName)
+}
+
 func (s commandSurface) taskIDPlaceholder(action string) string {
 	return fmt.Sprintf("`/%s action:%s task_id:<id>`", s.commandName, action)
 }

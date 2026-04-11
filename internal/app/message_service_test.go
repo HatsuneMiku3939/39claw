@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -518,6 +519,96 @@ func TestMessageServiceHandleMessageTaskReusesTaskBindingAcrossDays(t *testing.T
 
 	if binding.TaskID != "task-1" {
 		t.Fatalf("TaskID = %q, want %q", binding.TaskID, "task-1")
+	}
+}
+
+func TestMessageServiceHandleMessageTaskStartsFreshThreadAfterResetContext(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:         "task-1",
+				DiscordUserID:  "user-1",
+				TaskName:       "Release work",
+				Status:         app.TaskStatusOpen,
+				WorktreeStatus: app.TaskWorktreeStatusReady,
+				WorktreePath:   "/tmp/worktrees/task-1",
+				CreatedAt:      time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+		bindings: map[string]app.ThreadBinding{
+			"task:user-1:task-1": {
+				Mode:             "task",
+				LogicalThreadKey: "user-1:task-1",
+				CodexThreadID:    "thread-old",
+				TaskID:           "task-1",
+			},
+		},
+	}
+	gateway := &fakeCodexGateway{
+		results: []app.RunTurnResult{
+			{ThreadID: "thread-new", ResponseText: "Fresh response"},
+		},
+	}
+	coordinator := thread.NewQueueCoordinator()
+	commandService := newTaskCommandServiceWithCoordinator(t, store, coordinator)
+
+	resetResponse, err := commandService.ResetContext(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("ResetContext() error = %v", err)
+	}
+
+	if !strings.Contains(resetResponse.Text, "workspace is unchanged") {
+		t.Fatalf("reset response text = %q, want workspace guidance", resetResponse.Text)
+	}
+
+	service := newTaskMessageService(t, store, gateway, coordinator)
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-1",
+		Content:    "continue release",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 2, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	if response.Text != "Fresh response" {
+		t.Fatalf("response text = %q, want %q", response.Text, "Fresh response")
+	}
+
+	calls := gateway.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 1)
+	}
+
+	if calls[0].threadID != "" {
+		t.Fatalf("threadID = %q, want empty", calls[0].threadID)
+	}
+
+	if calls[0].workingDirectory != "/tmp/worktrees/task-1" {
+		t.Fatalf("working directory = %q, want %q", calls[0].workingDirectory, "/tmp/worktrees/task-1")
+	}
+
+	binding, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1")
+	if err != nil {
+		t.Fatalf("GetThreadBinding() error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("GetThreadBinding() ok = false, want true")
+	}
+
+	if binding.CodexThreadID != "thread-new" {
+		t.Fatalf("CodexThreadID = %q, want %q", binding.CodexThreadID, "thread-new")
 	}
 }
 
@@ -1676,6 +1767,17 @@ func (s *memoryThreadStore) UpsertThreadBinding(_ context.Context, binding app.T
 	}
 
 	s.bindings[binding.Mode+":"+binding.LogicalThreadKey] = binding
+	return nil
+}
+
+func (s *memoryThreadStore) DeleteThreadBinding(_ context.Context, mode string, logicalThreadKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.bindings != nil {
+		delete(s.bindings, mode+":"+logicalThreadKey)
+	}
+
 	return nil
 }
 

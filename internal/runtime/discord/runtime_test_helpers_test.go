@@ -532,6 +532,7 @@ func (s *fakeMessageService) WaitForDrain(ctx context.Context) error {
 
 type fakeTaskCommandService struct {
 	currentCalls []string
+	resetCalls   []string
 	createCalls  []struct {
 		userID   string
 		taskName string
@@ -552,6 +553,7 @@ type fakeTaskCommandService struct {
 	createResponse  app.MessageResponse
 	switchResponse  app.MessageResponse
 	closeResponse   app.MessageResponse
+	resetResponse   app.MessageResponse
 }
 
 func (s *fakeTaskCommandService) ShowCurrentTask(ctx context.Context, userID string) (app.MessageResponse, error) {
@@ -587,6 +589,11 @@ func (s *fakeTaskCommandService) CloseTask(ctx context.Context, userID string, t
 		taskName string
 	}{userID: userID, taskID: taskID, taskName: taskName})
 	return s.closeResponse, nil
+}
+
+func (s *fakeTaskCommandService) ResetContext(ctx context.Context, userID string) (app.MessageResponse, error) {
+	s.resetCalls = append(s.resetCalls, userID)
+	return s.resetResponse, nil
 }
 
 type fakeDailyCommandService struct {
@@ -665,6 +672,17 @@ func (s *memoryThreadStore) UpsertThreadBinding(_ context.Context, binding app.T
 	}
 
 	s.bindings[binding.Mode+":"+binding.LogicalThreadKey] = binding
+	return nil
+}
+
+func (s *memoryThreadStore) DeleteThreadBinding(_ context.Context, mode string, logicalThreadKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.bindings != nil {
+		delete(s.bindings, mode+":"+logicalThreadKey)
+	}
+
 	return nil
 }
 
@@ -1107,6 +1125,7 @@ func newContractTaskCommandService(
 	service, err := app.NewTaskCommandService(app.TaskCommandServiceDependencies{
 		CommandName: "release",
 		Store:       store,
+		Coordinator: &stubQueueCoordinator{},
 		NewTaskID:   newTaskID,
 	})
 	if err != nil {

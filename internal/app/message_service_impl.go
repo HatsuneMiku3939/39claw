@@ -554,6 +554,10 @@ func taskIDFromLogicalKey(userID string, logicalKey string) (string, error) {
 	return strings.TrimPrefix(logicalKey, prefix), nil
 }
 
+func buildTaskLogicalKey(userID string, taskID string) string {
+	return userID + ":" + taskID
+}
+
 func isLifecycleContextError(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
