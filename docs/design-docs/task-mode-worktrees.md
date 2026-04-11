@@ -28,6 +28,7 @@ This turns `task` mode into an execution-oriented workflow instead of a long-liv
 - Worktrees are created lazily on the first normal message that needs to run Codex for the task.
 - The base ref for worktree creation is detected automatically inside the managed bare parent by preferring the remote default branch state.
 - Worktree preparation synchronizes the managed bare parent to the source checkout's `origin` URL and best-effort `pushurl`, then tries `git fetch origin --prune` plus `git remote set-head origin --auto` before resolving the base ref.
+- Because all tasks for one source checkout share that managed bare parent, in-process mutation against the same managed repository path is serialized during lazy preparation and closed-task pruning.
 - Base-ref resolution should prefer `origin/HEAD`, then `origin/main`, then `origin/master`, and only then fall back to local `main` or `master`.
 - Closing a task does not delete its branch from the managed bare parent.
 - Closed-task worktrees are treated as disposable cache-like workspaces.
@@ -149,6 +150,7 @@ Lazy worktree creation failure is handled at normal-message time:
 - the next normal message retries worktree preparation automatically
 
 If the best-effort `git fetch origin --prune` step fails, the system should log the refresh failure but still continue base-ref detection using any already-available remote-tracking refs in the managed bare parent and then the local fallback branches.
+That refresh and the other shared managed-repository mutations should not race with another task preparing or pruning against the same managed bare parent inside the same process.
 
 Pruning failure must not reopen or invalidate the closed task.
 If pruning fails, the system should keep the task in `closed + ready`, log the failure, and try again during a later cleanup opportunity.

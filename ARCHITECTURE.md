@@ -56,6 +56,7 @@ The distinction between `daily` mode and `task` mode is therefore not a differen
 It is a difference in the role of the repository that Codex is operating against.
 
 - In `task` mode, the configured workdir must be a Git repository with an `origin` remote. It remains the operator-visible source checkout and validation anchor, while 39claw creates task-isolated worktrees from its own managed bare parent repository under `CLAW_DATADIR`.
+- Shared managed-repository mutation in `task` mode must be serialized per managed repository path within the process so concurrent task starts do not contend on the same bare parent, while already-ready task worktrees keep their existing task-level concurrency behavior.
 - In `daily` mode, the repository is a knowledge-oriented repository that primarily contains instructions and documentation, allowing Codex to answer questions by following local guidance and searching the knowledge base.
 
 Both modes share the same Codex-native foundation.

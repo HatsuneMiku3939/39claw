@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -24,6 +25,8 @@ const (
 	managedOriginFetchRefspec     = "+refs/heads/*:refs/remotes/origin/*"
 	managedRepositoryHashByteSize = 6
 )
+
+var managedRepositoryLocks = newPathMutexMap()
 
 type TaskWorkspaceManagerDependencies struct {
 	Store            ThreadStore
@@ -48,6 +51,35 @@ type GitTaskWorkspaceManager struct {
 type gitRemoteConfig struct {
 	url     string
 	pushURL string
+}
+
+type pathMutexMap struct {
+	mu    sync.Mutex
+	locks map[string]*sync.Mutex
+}
+
+func newPathMutexMap() *pathMutexMap {
+	return &pathMutexMap{
+		locks: make(map[string]*sync.Mutex),
+	}
+}
+
+func (m *pathMutexMap) lock(path string) func() {
+	key := filepath.Clean(strings.TrimSpace(path))
+
+	m.mu.Lock()
+	lock, ok := m.locks[key]
+	if !ok {
+		lock = &sync.Mutex{}
+		m.locks[key] = lock
+	}
+	m.mu.Unlock()
+
+	lock.Lock()
+
+	return func() {
+		lock.Unlock()
+	}
 }
 
 func NewTaskWorkspaceManager(ctx context.Context, deps TaskWorkspaceManagerDependencies) (*GitTaskWorkspaceManager, error) {
@@ -119,7 +151,12 @@ func (m *GitTaskWorkspaceManager) EnsureReady(ctx context.Context, task Task) (T
 		return task, nil
 	}
 
-	managedRepositoryPath, err := m.ensureManagedRepository(ctx)
+	managedRepositoryPath := m.managedRepositoryPath()
+	unlockManagedRepository := managedRepositoryLocks.lock(managedRepositoryPath)
+	defer unlockManagedRepository()
+
+	var err error
+	managedRepositoryPath, err = m.ensureManagedRepository(ctx)
 	if err != nil {
 		return Task{}, m.markTaskWorktreeFailed(ctx, task, "", err)
 	}
@@ -189,7 +226,11 @@ func (m *GitTaskWorkspaceManager) PruneClosed(ctx context.Context) error {
 		return nil
 	}
 
-	managedRepositoryPath, err := m.ensureManagedRepository(ctx)
+	managedRepositoryPath := m.managedRepositoryPath()
+	unlockManagedRepository := managedRepositoryLocks.lock(managedRepositoryPath)
+	defer unlockManagedRepository()
+
+	managedRepositoryPath, err = m.ensureManagedRepository(ctx)
 	if err != nil {
 		return fmt.Errorf("ensure managed task repository: %w", err)
 	}
