@@ -145,9 +145,10 @@ If `AGENT_MEMORY/` exists in the current workspace, consult its durable memory f
 Use `task` mode when you want durable work streams that continue across multiple days.
 
 - each user works through an explicit active task
+- task names are immutable slug-style identifiers such as `release-bot-v1`
 - each task eventually runs in its own task-specific Git worktree
 - `/<instance-command> action:task-*` controls which task is active
-- normal conversation does not run until a task is selected
+- normal conversation does not run until a task is selected, unless the message uses a one-shot `task:<name>` override
 
 ## How It Behaves in Discord
 
@@ -181,11 +182,17 @@ In `task` mode, the same root command also supports:
 - `/<instance-command> action:task-list`
   - list open tasks and mark the active one
 - `/<instance-command> action:task-new task_name:<name>`
-  - create a task and make it active
+  - create a task from a slug-style name and make it active
 - `/<instance-command> action:task-switch task_name:<name>`
-  - switch the active task by name; use `task_id` only when the name is ambiguous
+  - switch the active task by name
 - `/<instance-command> action:task-close task_name:<name>`
-  - close a task by name; use `task_id` only when the name is ambiguous
+  - close a task by name
+
+In `task` mode, a normal message may also start with `task:<name>` to route only that message to another open task without changing the active task.
+Examples:
+
+- `task:release-bot-v1 fix the failing tests`
+- `task:docs-cleanup` followed by a newline and the rest of the message body
 
 ### Busy conversations
 
@@ -410,6 +417,7 @@ Try one of these:
 - mention the bot with only an image
 
 If you are running in `task` mode, create a task first with `/<your-command> action:task-new task_name:<name>`.
+Choose a routing-safe slug such as `release-bot-v1`, not a free-form label with spaces.
 The first normal message for a new task may spend a moment preparing that task's dedicated worktree before Codex replies.
 
 ## Configuration Reference

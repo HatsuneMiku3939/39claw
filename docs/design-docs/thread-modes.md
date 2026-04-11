@@ -85,11 +85,13 @@ thread_key = user + task_id
 ### Behavior
 
 - the configured `CLAW_CODEX_WORKDIR` must be a Git repository with an `origin` remote
-- a current task must exist before normal messages can be routed
+- task names are immutable routing-safe slugs and must be unique among the requesting user's open tasks
+- a current task must exist before normal messages can be routed unless the message provides a valid one-shot `task:<name>` override
 - `task-new` creates task metadata immediately but defers worktree creation
 - the first normal message for a task creates or refreshes the managed bare parent under `${CLAW_DATADIR}/repos` and then creates the task worktree lazily when needed
-- messages are sent to the Codex thread associated with the active task and use that task's worktree once it exists
-- changing tasks changes the target logical thread
+- messages are sent to the Codex thread associated with the active task by default and use that task's worktree once it exists
+- a valid one-shot `task:<name>` prefix routes only the current message to another open task and does not change the saved active task
+- changing tasks changes the default target logical thread for later normal messages that do not provide an override
 - `/<instance-command> action:task-reset-context` keeps the current task active and the task worktree unchanged while dropping only the saved Codex thread binding for that task
 - `action:task-reset-context` is rejected while that task has in-flight or queued work
 - closed-task worktrees are retained only for the fifteen most recently closed ready tasks

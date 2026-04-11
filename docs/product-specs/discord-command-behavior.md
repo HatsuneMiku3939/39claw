@@ -84,6 +84,7 @@ Examples:
 v1 should use a small, channel-aware trigger contract for normal-message interaction.
 In guild channels, normal-message interaction remains mention-only.
 In direct messages, normal-message interaction should work without an extra bot mention.
+In `task` mode, the first meaningful token of a qualifying normal message may be a one-shot `task:<name>` override, and guild messages may place that token after the bot mention.
 When a qualifying normal message is accepted, it may contain typed text, one or more image attachments, or both.
 If a qualifying trigger is present but the message contains neither text nor a usable image attachment, the bot should stay silent.
 If the turn starts immediately, the bot may first post a short placeholder reply and then edit that same reply as Codex streams progress or partial assistant output.
@@ -113,7 +114,7 @@ This means:
 - every bot instance should expose exactly one slash-command search result
 - bot instances configured for `task` mode should expose task actions through that root command
 - bot instances configured for `daily` mode should expose `help` plus `clear` through that root command
-- users should not need to guess between natural-language task control and slash-command task control
+- users should not need to guess between normal conversation, the one-shot `task:<name>` routing syntax, and slash-command task control
 
 ### Minimum command capabilities
 
@@ -124,11 +125,11 @@ The root command should support user-facing actions for:
 - `/<instance-command> action:task-list`
   - show open task names and IDs, plus each task's current worktree branch when available
 - `/<instance-command> action:task-new task_name:<name>`
-  - create a new task and switch the active task to it
+  - create a new task from a routing-safe slug name and switch the active task to it
 - `/<instance-command> action:task-switch task_name:<name>`
-  - switch the active task to the uniquely named open task, with `task_id` available only when the name is ambiguous
+  - switch the active task to the uniquely named open task
 - `/<instance-command> action:task-close task_name:<name>`
-  - close the uniquely named open task, with `task_id` available only when the name is ambiguous
+  - close the uniquely named open task
 - `/<instance-command> action:task-reset-context`
   - keep the active task and worktree unchanged while discarding only the saved Codex conversation continuity for that task
 
@@ -156,6 +157,29 @@ The root-command action surface should be:
 - list the supported command surface for the current bot instance
 - explain task actions only when that workflow is available for the current bot instance
 - help users recover from missing-context situations without reading internal docs
+
+### Task-name and one-shot override rules
+
+In `task` mode, task names should be treated as stable routing-safe slugs rather than as free-form labels.
+
+Product rules:
+
+- lowercase ASCII only
+- allowed characters are `a-z`, `0-9`, and single interior `-`
+- no spaces
+- starts with a letter
+- ends with a letter or digit
+- no consecutive hyphens
+- length 3 to 32 characters
+- unique among the user's open tasks
+- immutable after creation
+
+Normal messages may use a one-shot `task:<name>` prefix only at the first meaningful token.
+That prefix may be followed by body text on the same line or the next line.
+If a message has attachments but no body text, `task:<name>` alone is still valid.
+If a literal `task:<name>` string appears later in the message body, it should not be treated as an override.
+
+When a valid one-shot override is accepted, the user-facing response should confirm which task handled that message.
 
 ### Success behavior
 
@@ -192,6 +216,7 @@ When a task action fails, the response should:
 If a task action is invoked against a bot instance running in `daily` mode, the bot should explain that task actions are not available for that instance rather than pretending the command was accepted.
 
 If `action:task-reset-context` is requested while the active task still has running or queued work, the bot should reject the request and tell the user to retry after pending replies finish.
+If a one-shot `task:<name>` override is invalid or targets no open task, the bot should reject that message explicitly and tell the user how to recover.
 
 ## Ambiguous Input Handling
 

@@ -78,6 +78,7 @@ user -> active_task_id
 ```
 
 This allows ordinary messages to be routed without forcing the user to repeat the task identifier in every message.
+One-shot `task:<name>` overrides do not mutate this saved active-task mapping.
 
 ### 5. Task Worktree Metadata
 
@@ -87,6 +88,7 @@ Each task needs enough metadata to create and later manage an isolated Git workt
 
 That includes:
 
+- immutable routing-safe task name
 - reserved branch name
 - detected base ref
 - worktree path
@@ -94,6 +96,7 @@ That includes:
 - creation, prune, and last-used timestamps
 
 This metadata lets 39claw decide whether a task needs lazy worktree creation, whether a closed task is eligible for pruning, and which working directory Codex should use for the next turn.
+The task-name field also acts as a routing target for one-shot `task:<name>` overrides, so open task names must stay unique per user and must not be silently normalized after creation.
 
 Task mode also owns a repository-shaped on-disk artifact outside SQLite:
 
