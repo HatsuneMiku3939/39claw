@@ -25,10 +25,11 @@ Plans in this directory should be written and maintained in line with `.agents/P
 
 These plans are intended to be executed in the order listed below. Most plans follow numeric order, but infrastructure prerequisites may require picking up a later-numbered plan first when it explicitly prepares the repository for another active plan.
 
-- [Add one-shot task override routing for normal task-mode messages](./active/17-one-shot-task-override.md)
+- None currently.
 
 ## Recently Completed Plans
 
+- [Add one-shot task override routing for normal task-mode messages](./completed/17-one-shot-task-override.md)
 - [Add task-scoped context reset without recreating the worktree](./completed/16-task-reset-context.md)
 - [Replace task-mode source-checkout parenting with a managed bare repository](./completed/15-task-managed-bare-parent.md)
 - [Add shared daily generation rotation and `action:clear` to `daily` mode](./completed/12-daily-clear-generation.md)
