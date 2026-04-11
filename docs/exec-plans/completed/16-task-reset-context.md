@@ -18,6 +18,7 @@ This change matters because `task` mode deliberately couples long-lived work to 
 - [x] (2026-04-11 03:24Z) Implemented `action:task-reset-context` in the task command service, root command registration, and Discord routing, including explicit success, no-op, and busy-rejection responses.
 - [x] (2026-04-11 03:28Z) Added store, app, and runtime tests that prove the reset path, no-op fresh-state behavior, busy rejection, and next-message fresh-thread behavior.
 - [x] (2026-04-11 03:31Z) Ran `make test` and `make lint`; both passed after formatting the touched Go files with `gofmt`.
+- [x] (2026-04-11 04:00Z) Confirmed pull request `#83` merged into `origin/master`, fast-forwarded the working branch to the merged commit, and finalized this ExecPlan for archival under `docs/exec-plans/completed/`.
 
 ## Surprises & Discoveries
 
@@ -57,11 +58,17 @@ This change matters because `task` mode deliberately couples long-lived work to 
   Rationale: If the active task has never produced a saved Codex thread ID, the user intent is already satisfied: the next normal message will start fresh in the same workspace. Returning a user-facing failure for that case would create needless friction.
   Date/Author: 2026-04-11 / Codex
 
+- Decision: Archive this plan without adding a new tech-debt entry.
+  Rationale: The merged implementation satisfied the plan's documented acceptance criteria, and no new intentional follow-up gap was introduced beyond the repository's already-tracked standing debt items.
+  Date/Author: 2026-04-11 / Codex
+
 ## Outcomes & Retrospective
 
 Implementation completed on 2026-04-11. The repository now exposes `action:task-reset-context` in `task` mode, deletes only the saved task thread binding when reset succeeds, rejects reset while the active task still has running or queued work, and keeps the active task selection plus task worktree unchanged.
 
 The main tradeoff is that task reset is intentionally narrow: it does not rebuild or repair the task worktree, and it does not target arbitrary non-active tasks. That keeps the feature easy to explain and reuses the existing “missing binding means start a fresh thread” path instead of adding a second thread-rotation mechanism.
+
+Pull request `#83` delivered the implementation and was merged before this archive update. No additional deferred work was identified during archival review, so the plan can move directly to `docs/exec-plans/completed/` as the historical record for issue `#80`.
 
 ## Context and Orientation
 
@@ -453,3 +460,4 @@ Keep the existing dependencies:
 
 Revision Note: 2026-04-11 02:32Z / Codex - Created this active ExecPlan for issue `#80` after reviewing the current task-mode routing, queue, command, and persistence architecture and choosing the smallest coherent design: delete the saved task thread binding while preserving active-task and worktree state.
 Revision Note: 2026-04-11 03:31Z / Codex - Updated this ExecPlan after implementation landed so the living sections, concrete steps, and retrospective now reflect the shipped `task-reset-context` behavior and its passing validation commands.
+Revision Note: 2026-04-11 04:00Z / Codex - Finalized the living sections after confirming pull request `#83` was merged into `origin/master`, then prepared this plan for archival without adding new tech-debt follow-up because the documented acceptance scope was fully satisfied.
