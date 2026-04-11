@@ -188,7 +188,7 @@ func TestAttachmentExtension(t *testing.T) {
 		},
 		{
 			name:       "default extension",
-			attachment: &discordgo.MessageAttachment{Filename: "photo", ContentType: "application/octet-stream"},
+			attachment: &discordgo.MessageAttachment{Filename: "photo", ContentType: "application/x-39claw-unknown"},
 			want:       ".img",
 		},
 	}

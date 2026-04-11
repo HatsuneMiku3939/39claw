@@ -39,7 +39,7 @@ func TestQueueCoordinatorCompletesQueuedWorkInOrder(t *testing.T) {
 		t.Fatalf("Snapshot() = %#v, want %#v", snapshot, app.QueueSnapshot{InFlight: true, Queued: 2})
 	}
 
-	for _, want := range []int{2, 3} {
+	for range []int{2, 3} {
 		next, ok := coordinator.Complete("thread-1")
 		if !ok || next == nil {
 			t.Fatalf("Complete() = (%v, %t), want queued work", next, ok)
