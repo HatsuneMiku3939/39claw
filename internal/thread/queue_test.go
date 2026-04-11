@@ -42,7 +42,7 @@ func TestQueueCoordinatorCompletesQueuedWorkInOrder(t *testing.T) {
 	for range []int{2, 3} {
 		next, ok := coordinator.Complete("thread-1")
 		if !ok || next == nil {
-			t.Fatalf("Complete() = (%v, %t), want queued work", next, ok)
+			t.Fatalf("Complete() returned ok=%t, next nil=%t; want queued work", ok, next == nil)
 		}
 		next()
 	}
@@ -53,7 +53,7 @@ func TestQueueCoordinatorCompletesQueuedWorkInOrder(t *testing.T) {
 
 	next, ok := coordinator.Complete("thread-1")
 	if ok || next != nil {
-		t.Fatalf("final Complete() = (%v, %t), want (nil, false)", next, ok)
+		t.Fatalf("final Complete() returned ok=%t, next nil=%t; want (nil, false)", ok, next == nil)
 	}
 
 	if snapshot := coordinator.Snapshot("thread-1"); snapshot != (app.QueueSnapshot{}) {
