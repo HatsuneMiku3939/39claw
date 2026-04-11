@@ -17,6 +17,7 @@ This change matters because the current task workflow makes users switch the act
 - [x] (2026-04-11 07:47Z) Routed task-mode normal messages through an effective task selected from either the active task or a one-shot `task:<name>` prefix, stripping the prefix before the Codex turn and preserving the override target through queue admission, worktree selection, and thread binding reuse.
 - [x] (2026-04-11 07:55Z) Tightened task creation to require slug-style names for new tasks, rejected duplicate open task names, and updated task help text plus override-specific acknowledgment and rejection responses.
 - [x] (2026-04-11 08:03Z) Added focused helper, policy, message-service, and runtime contract tests for override success and rejection paths; verified targeted packages with `go test ./internal/app ./internal/thread ./internal/runtime/discord ./internal/store/sqlite ./internal/dailymemory`.
+- [x] (2026-04-11 08:47Z) Re-verified the landed feature from `master` with repository-wide `make test` and `make lint`, confirmed the acceptance criteria remain satisfied, and archived this finished ExecPlan because no implementation work remains.
 
 ## Surprises & Discoveries
 
@@ -53,13 +54,17 @@ This change matters because the current task workflow makes users switch the act
   Rationale: The product requirement is immediate, readable proof of which task handled the one-shot turn. A short prefix satisfies that proof requirement without reformatting the rest of the Codex response or changing downstream reply handling.
   Date/Author: 2026-04-11 / Codex
 
+- Decision: Archive this ExecPlan without adding a tech-debt entry.
+  Rationale: The feature shipped on `master`, repository-wide validation now passes, and the remaining work is ordinary review and follow-up discussion rather than an intentional non-blocking product gap.
+  Date/Author: 2026-04-11 / Codex
+
 ## Outcomes & Retrospective
 
-Implementation is complete on the working branch. The app layer now parses `task:<name>` at message preparation time, carries the override through `MessageRequest.TaskOverrideName`, resolves exact open-task matches in the routing policy, and reuses the resulting logical key for queue admission, worktree preparation, and thread binding persistence. Queued override turns now acknowledge the selected task by name, and final override responses prepend a short confirmation line before the Codex answer.
+Implementation is complete and landed on `master` in commit `5eff54e` (`feat(task): add one-shot task override routing`). The app layer now parses `task:<name>` at message preparation time, carries the override through `MessageRequest.TaskOverrideName`, resolves exact open-task matches in the routing policy, and reuses the resulting logical key for queue admission, worktree preparation, and thread binding persistence. Queued override turns acknowledge the selected task by name, and final override responses prepend a short confirmation line before the Codex answer.
 
 The compatibility boundary stayed intentionally narrow. New tasks must use the documented immutable slug contract and duplicate open names are rejected, while older non-slug tasks remain reachable through `task_id` for command workflows. This avoided a data migration while still making one-shot routing deterministic for new tasks.
 
-Remaining work outside this plan is only repository-level validation and PR review. Before merge, run the standard `make test` and `make lint` commands from the repository root and include the results in the implementation PR.
+Repository-wide validation now passes with `make test` and `make lint`, so this plan no longer belongs in `active/`. No deferred follow-up was identified that needs a new tech-debt entry during archival; remaining work is limited to normal code review and any future product iteration that would be tracked separately.
 
 ## Context and Orientation
 
@@ -344,3 +349,4 @@ but teach it to prefer `request.TaskOverrideName` when that field is non-empty.
 In `internal/runtime/discord/commands.go`, keep the existing root-command structure and do not add another slash command. Only update text and examples so they match the slug-first contract.
 
 Plan revision note (2026-04-11 / Codex): Created the initial active ExecPlan after documentation PR `#86` merged so issue `#85` can move into the execution-planning phase with a self-contained implementation guide.
+Plan revision note (2026-04-11 / Codex): Updated the living-document sections after repository-wide validation passed, recorded that the feature shipped on `master`, and archived the finished plan because no implementation work remains.
