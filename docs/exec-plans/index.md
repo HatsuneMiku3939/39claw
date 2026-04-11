@@ -25,7 +25,7 @@ Plans in this directory should be written and maintained in line with `.agents/P
 
 These plans are intended to be executed in the order listed below. Most plans follow numeric order, but infrastructure prerequisites may require picking up a later-numbered plan first when it explicitly prepares the repository for another active plan.
 
-- None currently.
+- [Add task-scoped context reset without recreating the worktree](./active/16-task-reset-context.md)
 
 ## Recently Completed Plans
 
