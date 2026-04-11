@@ -148,6 +148,27 @@ func (s *DefaultTaskCommandService) CreateTask(ctx context.Context, userID strin
 		return taskCommandResponse(s.taskNameRequiredMessage()), nil
 	}
 
+	if err := ValidateTaskName(taskName); err != nil {
+		return taskCommandResponse(TaskNameRulesDescription), nil
+	}
+
+	openTasks, err := s.store.ListOpenTasks(ctx, userID)
+	if err != nil {
+		return MessageResponse{}, fmt.Errorf("list open tasks before create: %w", err)
+	}
+	for _, openTask := range openTasks {
+		if openTask.TaskName == taskName {
+			return taskCommandResponse(
+				fmt.Sprintf(
+					"An open task named `%s` already exists. Use %s to switch to it or %s to pick by task ID when needed.",
+					taskName,
+					s.commands.taskSwitch(taskName),
+					s.commands.taskIDPlaceholder("task-switch"),
+				),
+			), nil
+		}
+	}
+
 	task := Task{
 		TaskID:         s.newTaskID(),
 		DiscordUserID:  userID,
@@ -384,7 +405,11 @@ func (s *DefaultTaskCommandService) taskSelectorRequiredMessage() string {
 }
 
 func (s *DefaultTaskCommandService) taskNameRequiredMessage() string {
-	return fmt.Sprintf("A task name is required. Use %s to create one.", s.commands.taskNewPlaceholder())
+	return fmt.Sprintf(
+		"A task name is required. Use %s to create one. %s",
+		s.commands.taskNewPlaceholder(),
+		TaskNameRulesDescription,
+	)
 }
 
 func (s *DefaultTaskCommandService) renderActiveTaskSuffix(ctx context.Context, userID string) (string, error) {

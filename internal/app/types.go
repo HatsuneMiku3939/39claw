@@ -6,17 +6,18 @@ import (
 )
 
 type MessageRequest struct {
-	UserID       string
-	ChannelID    string
-	MessageID    string
-	Content      string
-	ImagePaths   []string
-	Cleanup      func()
-	ProgressSink MessageProgressSink
-	Mentioned    bool
-	CommandName  string
-	CommandArgs  []string
-	ReceivedAt   time.Time
+	UserID           string
+	ChannelID        string
+	MessageID        string
+	Content          string
+	TaskOverrideName string
+	ImagePaths       []string
+	Cleanup          func()
+	ProgressSink     MessageProgressSink
+	Mentioned        bool
+	CommandName      string
+	CommandArgs      []string
+	ReceivedAt       time.Time
 }
 
 type MessageResponse struct {

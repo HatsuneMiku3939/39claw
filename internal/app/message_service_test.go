@@ -438,6 +438,162 @@ func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 	}
 }
 
+func TestMessageServiceHandleMessageTaskOverrideRoutesWithoutChangingActiveTask(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "release-work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+			"user-1:task-2": {
+				TaskID:        "task-2",
+				DiscordUserID: "user-1",
+				TaskName:      "docs-update",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 1, 0, 0, 0, time.UTC),
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+	}
+	gateway := &fakeCodexGateway{
+		results: []app.RunTurnResult{
+			{ThreadID: "thread-task-2", ResponseText: "Docs response"},
+		},
+	}
+	service := newTaskMessageService(t, store, gateway, nil)
+
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-1",
+		Content:    "task:docs-update fix the docs index",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	if response.Text != "Task override: `docs-update`\n\nDocs response" {
+		t.Fatalf("response text = %q", response.Text)
+	}
+
+	calls := gateway.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 1)
+	}
+
+	if calls[0].input.Prompt != "fix the docs index" {
+		t.Fatalf("prompt = %q, want %q", calls[0].input.Prompt, "fix the docs index")
+	}
+
+	if calls[0].workingDirectory != "/tmp/worktrees/task-2" {
+		t.Fatalf("working directory = %q, want %q", calls[0].workingDirectory, "/tmp/worktrees/task-2")
+	}
+
+	activeTask, ok, err := store.GetActiveTask(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("GetActiveTask() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetActiveTask() ok = false, want true")
+	}
+	if activeTask.TaskID != "task-1" {
+		t.Fatalf("active task id = %q, want %q", activeTask.TaskID, "task-1")
+	}
+
+	if _, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-2"); err != nil || !ok {
+		t.Fatalf("GetThreadBinding(task-2) = ok:%v err:%v, want ok:true err:nil", ok, err)
+	}
+}
+
+func TestMessageServiceHandleMessageTaskOverrideRejectsInvalidPrefix(t *testing.T) {
+	t.Parallel()
+
+	service := newTaskMessageService(t, &memoryThreadStore{}, &fakeCodexGateway{}, nil)
+
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-1",
+		Content:    "task:Release Work fix it",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	want := "Invalid task override. Use `task:<name>` with a slug-style task name such as `task:release-bot-v1`."
+	if response.Text != want {
+		t.Fatalf("response text = %q, want %q", response.Text, want)
+	}
+}
+
+func TestMessageServiceHandleMessageTaskOverrideRejectsMissingTask(t *testing.T) {
+	t.Parallel()
+
+	service := newTaskMessageService(t, &memoryThreadStore{}, &fakeCodexGateway{}, nil)
+
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-1",
+		Content:    "task:docs-update fix it",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	want := "No open task named `docs-update` was found for this message. Use `/release action:task-list` to find an open task or `/release action:task-new task_name:<name>` to create another one."
+	if response.Text != want {
+		t.Fatalf("response text = %q, want %q", response.Text, want)
+	}
+}
+
+func TestMessageServiceHandleMessageTaskOverrideRejectsClosedTask(t *testing.T) {
+	t.Parallel()
+
+	closedAt := time.Date(2026, time.April, 5, 2, 0, 0, 0, time.UTC)
+	service := newTaskMessageService(t, &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-2": {
+				TaskID:        "task-2",
+				DiscordUserID: "user-1",
+				TaskName:      "docs-update",
+				Status:        app.TaskStatusClosed,
+				ClosedAt:      &closedAt,
+				CreatedAt:     time.Date(2026, time.April, 5, 1, 0, 0, 0, time.UTC),
+			},
+		},
+	}, &fakeCodexGateway{}, nil)
+
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-1",
+		Content:    "task:docs-update fix it",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+	}, nil)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	want := "Task `docs-update` is closed. Use `/release action:task-list` to find an open task or `/release action:task-switch task_name:<name>` to select another active task first."
+	if response.Text != want {
+		t.Fatalf("response text = %q, want %q", response.Text, want)
+	}
+}
+
 func TestMessageServiceHandleMessageTaskReusesTaskBindingAcrossDays(t *testing.T) {
 	t.Parallel()
 
@@ -1240,6 +1396,108 @@ func TestMessageServiceHandleMessageFreezesTaskContextForQueuedWork(t *testing.T
 	}
 }
 
+func TestMessageServiceHandleMessageQueuesTaskOverrideAgainstSelectedTask(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "release-work",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+			},
+			"user-1:task-2": {
+				TaskID:        "task-2",
+				DiscordUserID: "user-1",
+				TaskName:      "docs-update",
+				Status:        app.TaskStatusOpen,
+				CreatedAt:     time.Date(2026, time.April, 5, 1, 0, 0, 0, time.UTC),
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+	}
+	gateway := newBlockingCodexGateway(
+		app.RunTurnResult{ThreadID: "thread-task-2", ResponseText: "First docs response"},
+		app.RunTurnResult{ThreadID: "thread-task-2", ResponseText: "Second docs response"},
+	)
+	service := newTaskMessageService(t, store, gateway, thread.NewQueueCoordinator())
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := service.HandleMessage(context.Background(), app.MessageRequest{
+			UserID:     "user-1",
+			MessageID:  "message-1",
+			Content:    "task:docs-update update the docs overview",
+			Mentioned:  true,
+			ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		}, nil)
+		firstDone <- err
+	}()
+
+	waitForSignal(t, gateway.started, "first override turn start")
+
+	delivered := make(chan app.MessageResponse, 1)
+	response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		UserID:     "user-1",
+		MessageID:  "message-2",
+		Content:    "task:docs-update continue the docs work",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 1, 0, 0, time.UTC),
+	}, app.DeferredReplySinkFunc(func(ctx context.Context, response app.MessageResponse) error {
+		delivered <- response
+		return nil
+	}))
+	if err != nil {
+		t.Fatalf("HandleMessage() queued error = %v", err)
+	}
+
+	wantQueued := "A response is already running for task `docs-update`. Your message has been queued at position 1."
+	if response.Text != wantQueued {
+		t.Fatalf("queued response text = %q, want %q", response.Text, wantQueued)
+	}
+
+	close(gateway.release)
+
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatalf("first HandleMessage() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first override turn")
+	}
+
+	select {
+	case deliveredResponse := <-delivered:
+		want := "Task override: `docs-update`\n\nSecond docs response"
+		if deliveredResponse.Text != want {
+			t.Fatalf("queued response text = %q, want %q", deliveredResponse.Text, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for queued override response")
+	}
+
+	calls := gateway.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 2)
+	}
+
+	if calls[1].threadID != "thread-task-2" {
+		t.Fatalf("queued thread id = %q, want %q", calls[1].threadID, "thread-task-2")
+	}
+
+	if calls[1].workingDirectory != "/tmp/worktrees/task-2" {
+		t.Fatalf("queued working directory = %q, want %q", calls[1].workingDirectory, "/tmp/worktrees/task-2")
+	}
+}
+
 func TestMessageServiceHandleMessageQueuedWorkUsesCallerContext(t *testing.T) {
 	t.Parallel()
 
@@ -1962,6 +2220,19 @@ func (s *memoryThreadStore) ListOpenTasks(_ context.Context, userID string) ([]a
 	})
 
 	return tasks, nil
+}
+
+func (s *memoryThreadStore) HasClosedTaskWithName(_ context.Context, userID string, taskName string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, task := range s.tasks {
+		if task.DiscordUserID == userID && task.TaskName == taskName && task.Status == app.TaskStatusClosed {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (s *memoryThreadStore) ListClosedReadyTasks(_ context.Context) ([]app.Task, error) {

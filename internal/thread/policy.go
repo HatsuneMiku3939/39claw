@@ -37,6 +37,36 @@ func (p *Policy) ResolveMessageKey(ctx context.Context, request app.MessageReque
 	case config.ModeDaily:
 		return request.ReceivedAt.In(p.timezone).Format(time.DateOnly), nil
 	case config.ModeTask:
+		if request.TaskOverrideName != "" {
+			openTasks, err := p.store.ListOpenTasks(ctx, request.UserID)
+			if err != nil {
+				return "", err
+			}
+
+			matches := make([]app.Task, 0, 1)
+			for _, task := range openTasks {
+				if task.TaskName == request.TaskOverrideName {
+					matches = append(matches, task)
+				}
+			}
+
+			switch len(matches) {
+			case 1:
+				return BuildTaskKey(request.UserID, matches[0].TaskID), nil
+			case 0:
+				closed, err := p.store.HasClosedTaskWithName(ctx, request.UserID, request.TaskOverrideName)
+				if err != nil {
+					return "", err
+				}
+				if closed {
+					return "", fmt.Errorf("%w: %s", app.ErrTaskOverrideClosed, request.TaskOverrideName)
+				}
+				return "", fmt.Errorf("%w: %s", app.ErrTaskOverrideNotFound, request.TaskOverrideName)
+			default:
+				return "", fmt.Errorf("%w: %s", app.ErrTaskOverrideAmbiguous, request.TaskOverrideName)
+			}
+		}
+
 		activeTask, ok, err := p.store.GetActiveTask(ctx, request.UserID)
 		if err != nil {
 			return "", err

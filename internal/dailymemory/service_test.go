@@ -265,6 +265,10 @@ func (s *stubThreadStore) ListOpenTasks(context.Context, string) ([]app.Task, er
 	return nil, nil
 }
 
+func (s *stubThreadStore) HasClosedTaskWithName(context.Context, string, string) (bool, error) {
+	return false, nil
+}
+
 func (s *stubThreadStore) ListClosedReadyTasks(context.Context) ([]app.Task, error) {
 	return nil, nil
 }

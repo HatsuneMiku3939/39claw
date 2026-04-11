@@ -57,13 +57,13 @@ func registeredCommands(cfg config.Config) []*discordgo.ApplicationCommand {
 			&discordgo.ApplicationCommandOption{
 				Type:        discordgo.ApplicationCommandOptionString,
 				Name:        optionTaskName,
-				Description: "Task name for task-new, task-switch, or task-close.",
+				Description: "Slug-style task name for task-new, task-switch, or task-close.",
 				Required:    false,
 			},
 			&discordgo.ApplicationCommandOption{
 				Type:        discordgo.ApplicationCommandOptionString,
 				Name:        optionTaskID,
-				Description: "Task ID for task-switch or task-close when a name is ambiguous.",
+				Description: "Legacy selector for task-switch or task-close when needed.",
 				Required:    false,
 			},
 		)
@@ -97,10 +97,11 @@ func helpResponse(commandName string, mode config.Mode) app.MessageResponse {
 		lines = append(lines,
 			fmt.Sprintf("- `/%s action:%s` shows the active task.", commandName, actionTaskCurrent),
 			fmt.Sprintf("- `/%s action:%s` lists open tasks.", commandName, actionTaskList),
-			fmt.Sprintf("- `/%s action:%s task_name:<name>` creates and activates a task.", commandName, actionTaskNew),
-			fmt.Sprintf("- `/%s action:%s task_name:<name>` changes the active task and falls back to `task_id` when the name is ambiguous.", commandName, actionTaskSwitch),
-			fmt.Sprintf("- `/%s action:%s task_name:<name>` closes a task and falls back to `task_id` when the name is ambiguous.", commandName, actionTaskClose),
+			fmt.Sprintf("- `/%s action:%s task_name:<name>` creates and activates a task. %s", commandName, actionTaskNew, app.TaskNameRulesDescription),
+			fmt.Sprintf("- `/%s action:%s task_name:<name>` changes the active task. `task_id` remains available only for legacy selection cases.", commandName, actionTaskSwitch),
+			fmt.Sprintf("- `/%s action:%s task_name:<name>` closes a task. `task_id` remains available only for legacy selection cases.", commandName, actionTaskClose),
 			fmt.Sprintf("- `/%s action:%s` resets only the saved Codex conversation continuity for the active task.", commandName, actionTaskResetContext),
+			"- Normal task-mode messages can start with `task:<name>` to route just that one message without changing the active task.",
 		)
 	}
 
