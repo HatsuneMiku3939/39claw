@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/HatsuneMiku3939/39claw/internal/config"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -17,20 +18,23 @@ type TaskCommandService interface {
 	CreateTask(ctx context.Context, userID string, taskName string) (MessageResponse, error)
 	SwitchTask(ctx context.Context, userID string, taskID string, taskName string) (MessageResponse, error)
 	CloseTask(ctx context.Context, userID string, taskID string, taskName string) (MessageResponse, error)
+	ResetContext(ctx context.Context, userID string) (MessageResponse, error)
 }
 
 type TaskCommandServiceDependencies struct {
 	CommandName      string
 	Store            ThreadStore
+	Coordinator      QueueCoordinator
 	WorkspaceManager TaskWorkspaceManager
 	NewTaskID        func() string
 }
 
 type DefaultTaskCommandService struct {
-	commands  commandSurface
-	store     ThreadStore
-	worktrees TaskWorkspaceManager
-	newTaskID func() string
+	commands    commandSurface
+	store       ThreadStore
+	coordinator QueueCoordinator
+	worktrees   TaskWorkspaceManager
+	newTaskID   func() string
 }
 
 func NewTaskCommandService(deps TaskCommandServiceDependencies) (*DefaultTaskCommandService, error) {
@@ -43,6 +47,10 @@ func NewTaskCommandService(deps TaskCommandServiceDependencies) (*DefaultTaskCom
 		return nil, errors.New("command name must not be empty")
 	}
 
+	if deps.Coordinator == nil {
+		return nil, errors.New("queue coordinator must not be nil")
+	}
+
 	newTaskID := deps.NewTaskID
 	if newTaskID == nil {
 		newTaskID = func() string {
@@ -51,10 +59,11 @@ func NewTaskCommandService(deps TaskCommandServiceDependencies) (*DefaultTaskCom
 	}
 
 	return &DefaultTaskCommandService{
-		commands:  newCommandSurface(commandName),
-		store:     deps.Store,
-		worktrees: deps.WorkspaceManager,
-		newTaskID: newTaskID,
+		commands:    newCommandSurface(commandName),
+		store:       deps.Store,
+		coordinator: deps.Coordinator,
+		worktrees:   deps.WorkspaceManager,
+		newTaskID:   newTaskID,
 	}, nil
 }
 
@@ -291,6 +300,69 @@ func (s *DefaultTaskCommandService) CloseTask(ctx context.Context, userID string
 
 	return taskCommandResponse(
 		fmt.Sprintf("Closed task %s.%s", renderTask(task), nextActiveTaskLine),
+	), nil
+}
+
+func (s *DefaultTaskCommandService) ResetContext(ctx context.Context, userID string) (MessageResponse, error) {
+	activeTask, ok, err := s.store.GetActiveTask(ctx, userID)
+	if err != nil {
+		return MessageResponse{}, fmt.Errorf("load active task: %w", err)
+	}
+
+	if !ok {
+		return taskCommandResponse(s.noActiveTaskMessage()), nil
+	}
+
+	task, ok, err := s.store.GetTask(ctx, userID, activeTask.TaskID)
+	if err != nil {
+		return MessageResponse{}, fmt.Errorf("load active task details: %w", err)
+	}
+
+	if !ok {
+		return taskCommandResponse(
+			fmt.Sprintf(
+				"Active task `%s` could not be loaded. Use %s or %s to recover.",
+				activeTask.TaskID,
+				s.commands.taskList(),
+				s.commands.taskSwitchPlaceholder(),
+			),
+		), nil
+	}
+
+	logicalKey := buildTaskLogicalKey(userID, task.TaskID)
+	snapshot := s.coordinator.Snapshot(buildExecutionKey(config.ModeTask, logicalKey))
+	if snapshot.InFlight || snapshot.Queued > 0 {
+		return taskCommandResponse(
+			fmt.Sprintf(
+				"This task still has running or queued work. Wait for pending replies to finish, then retry %s.",
+				s.commands.taskResetContext(),
+			),
+		), nil
+	}
+
+	_, hadBinding, err := s.store.GetThreadBinding(ctx, string(config.ModeTask), logicalKey)
+	if err != nil {
+		return MessageResponse{}, fmt.Errorf("load task thread binding: %w", err)
+	}
+
+	if err := s.store.DeleteThreadBinding(ctx, string(config.ModeTask), logicalKey); err != nil {
+		return MessageResponse{}, fmt.Errorf("delete task thread binding: %w", err)
+	}
+
+	if !hadBinding {
+		return taskCommandResponse(
+			fmt.Sprintf(
+				"Active task %s does not have saved Codex conversation continuity yet. The task is still active, the workspace is unchanged, and your next normal message will already start fresh.",
+				renderTask(task),
+			),
+		), nil
+	}
+
+	return taskCommandResponse(
+		fmt.Sprintf(
+			"Reset Codex conversation continuity for active task %s. The task is still active, the workspace is unchanged, and your next normal message will start a fresh Codex thread for this task.",
+			renderTask(task),
+		),
 	), nil
 }
 

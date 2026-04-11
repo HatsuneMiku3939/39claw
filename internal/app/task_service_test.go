@@ -513,9 +513,151 @@ func TestTaskCommandServiceCloseTaskByNameRequiresIDWhenAmbiguous(t *testing.T) 
 	}
 }
 
+func TestTaskCommandServiceResetContextClearsBindingWhenIdle(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+		bindings: map[string]app.ThreadBinding{
+			"task:user-1:task-1": {
+				Mode:             "task",
+				LogicalThreadKey: "user-1:task-1",
+				CodexThreadID:    "thread-old",
+				TaskID:           "task-1",
+			},
+		},
+	}
+	service := newTaskCommandServiceWithCoordinator(t, store, &stubQueueCoordinator{})
+
+	response, err := service.ResetContext(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("ResetContext() error = %v", err)
+	}
+
+	want := "Reset Codex conversation continuity for active task `Release work` (`task-1`). The task is still active, the workspace is unchanged, and your next normal message will start a fresh Codex thread for this task."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
+	}
+
+	if _, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1"); err != nil {
+		t.Fatalf("GetThreadBinding() error = %v", err)
+	} else if ok {
+		t.Fatal("GetThreadBinding() ok = true, want false")
+	}
+}
+
+func TestTaskCommandServiceResetContextWithoutBindingReturnsNoOp(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+	}
+	service := newTaskCommandServiceWithCoordinator(t, store, &stubQueueCoordinator{})
+
+	response, err := service.ResetContext(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("ResetContext() error = %v", err)
+	}
+
+	want := "Active task `Release work` (`task-1`) does not have saved Codex conversation continuity yet. The task is still active, the workspace is unchanged, and your next normal message will already start fresh."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
+	}
+}
+
+func TestTaskCommandServiceResetContextRejectsBusyTask(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{
+		tasks: map[string]app.Task{
+			"user-1:task-1": {
+				TaskID:        "task-1",
+				DiscordUserID: "user-1",
+				TaskName:      "Release work",
+				Status:        app.TaskStatusOpen,
+			},
+		},
+		activeTasks: map[string]app.ActiveTask{
+			"user-1": {
+				DiscordUserID: "user-1",
+				TaskID:        "task-1",
+			},
+		},
+		bindings: map[string]app.ThreadBinding{
+			"task:user-1:task-1": {
+				Mode:             "task",
+				LogicalThreadKey: "user-1:task-1",
+				CodexThreadID:    "thread-old",
+				TaskID:           "task-1",
+			},
+		},
+	}
+	service := newTaskCommandServiceWithCoordinator(t, store, &stubQueueCoordinator{
+		snapshot: app.QueueSnapshot{InFlight: true, Queued: 1},
+	})
+
+	response, err := service.ResetContext(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("ResetContext() error = %v", err)
+	}
+
+	want := "This task still has running or queued work. Wait for pending replies to finish, then retry `/release action:task-reset-context`."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
+	}
+
+	if _, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1"); err != nil {
+		t.Fatalf("GetThreadBinding() error = %v", err)
+	} else if !ok {
+		t.Fatal("GetThreadBinding() ok = false, want true")
+	}
+}
+
+func TestTaskCommandServiceResetContextWithoutActiveTaskReturnsGuidance(t *testing.T) {
+	t.Parallel()
+
+	service := newTaskCommandServiceWithCoordinator(t, &memoryThreadStore{}, &stubQueueCoordinator{})
+
+	response, err := service.ResetContext(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("ResetContext() error = %v", err)
+	}
+
+	want := "No active task is selected. Use `/release action:task-new task_name:<name>`, `/release action:task-list`, or `/release action:task-switch task_name:<name>` first."
+	if response.Text != want {
+		t.Fatalf("Text = %q, want %q", response.Text, want)
+	}
+}
+
 func newTaskCommandService(t *testing.T, store app.ThreadStore) *app.DefaultTaskCommandService {
 	t.Helper()
-	return newTaskCommandServiceWithWorkspace(t, store, nil, nil)
+	return newTaskCommandServiceWithWorkspaceAndCoordinator(t, store, nil, nil, &stubQueueCoordinator{})
 }
 
 func newTaskCommandServiceWithID(
@@ -524,7 +666,16 @@ func newTaskCommandServiceWithID(
 	newTaskID func() string,
 ) *app.DefaultTaskCommandService {
 	t.Helper()
-	return newTaskCommandServiceWithWorkspace(t, store, newTaskID, nil)
+	return newTaskCommandServiceWithWorkspaceAndCoordinator(t, store, newTaskID, nil, &stubQueueCoordinator{})
+}
+
+func newTaskCommandServiceWithCoordinator(
+	t *testing.T,
+	store app.ThreadStore,
+	coordinator app.QueueCoordinator,
+) *app.DefaultTaskCommandService {
+	t.Helper()
+	return newTaskCommandServiceWithWorkspaceAndCoordinator(t, store, nil, nil, coordinator)
 }
 
 func newTaskCommandServiceWithWorkspace(
@@ -534,10 +685,22 @@ func newTaskCommandServiceWithWorkspace(
 	worktrees app.TaskWorkspaceManager,
 ) *app.DefaultTaskCommandService {
 	t.Helper()
+	return newTaskCommandServiceWithWorkspaceAndCoordinator(t, store, newTaskID, worktrees, &stubQueueCoordinator{})
+}
+
+func newTaskCommandServiceWithWorkspaceAndCoordinator(
+	t *testing.T,
+	store app.ThreadStore,
+	newTaskID func() string,
+	worktrees app.TaskWorkspaceManager,
+	coordinator app.QueueCoordinator,
+) *app.DefaultTaskCommandService {
+	t.Helper()
 
 	service, err := app.NewTaskCommandService(app.TaskCommandServiceDependencies{
 		CommandName:      "release",
 		Store:            store,
+		Coordinator:      coordinator,
 		WorkspaceManager: worktrees,
 		NewTaskID:        newTaskID,
 	})

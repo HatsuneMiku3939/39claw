@@ -93,8 +93,8 @@ func TestRuntimeStartRegistersTaskModeChoices(t *testing.T) {
 	}
 
 	actionOption := command.Options[0]
-	if len(actionOption.Choices) != 6 {
-		t.Fatalf("action choice count = %d, want %d", len(actionOption.Choices), 6)
+	if len(actionOption.Choices) != 7 {
+		t.Fatalf("action choice count = %d, want %d", len(actionOption.Choices), 7)
 	}
 
 	if command.Options[1].Name != optionTaskName {
@@ -1130,6 +1130,10 @@ func TestRuntimeTaskCommandRoutesTaskModeActions(t *testing.T) {
 			Text:      "Closed task `Release work` (`task-1`). No active task is selected now.",
 			Ephemeral: true,
 		},
+		resetResponse: app.MessageResponse{
+			Text:      "Reset Codex conversation continuity for active task `Release work` (`task-1`). The task is still active and the workspace is unchanged.",
+			Ephemeral: true,
+		},
 	}
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithServices(t, config.ModeTask, fakeSession, &fakeMessageService{}, taskService)
@@ -1145,6 +1149,7 @@ func TestRuntimeTaskCommandRoutesTaskModeActions(t *testing.T) {
 	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskNew, "Release work", ""))
 	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskSwitch, "Release work", ""))
 	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskClose, "Release work", ""))
+	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionTaskResetContext, "", ""))
 
 	if len(taskService.currentCalls) != 1 {
 		t.Fatalf("current call count = %d, want %d", len(taskService.currentCalls), 1)
@@ -1182,11 +1187,15 @@ func TestRuntimeTaskCommandRoutesTaskModeActions(t *testing.T) {
 		t.Fatalf("close task id = %q, want empty", taskService.closeCalls[0].taskID)
 	}
 
-	if len(fakeSession.interactionResponses) != 4 {
-		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 4)
+	if len(taskService.resetCalls) != 1 {
+		t.Fatalf("reset call count = %d, want %d", len(taskService.resetCalls), 1)
 	}
 
-	response := fakeSession.interactionResponses[3]
+	if len(fakeSession.interactionResponses) != 5 {
+		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 5)
+	}
+
+	response := fakeSession.interactionResponses[4]
 	if response.Data == nil || response.Data.Flags != discordgo.MessageFlagsEphemeral {
 		t.Fatal("task response should be ephemeral")
 	}

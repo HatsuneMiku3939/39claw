@@ -213,6 +213,7 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	taskService, err := app.NewTaskCommandService(app.TaskCommandServiceDependencies{
 		CommandName:      cfg.DiscordCommandName,
 		Store:            store,
+		Coordinator:      coordinator,
 		WorkspaceManager: workspaceManager,
 	})
 	if err != nil {

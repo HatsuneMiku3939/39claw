@@ -204,6 +204,36 @@ func TestStoreThreadBindingLifecycle(t *testing.T) {
 	}
 }
 
+func TestStoreDeleteThreadBinding(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	if err := store.UpsertThreadBinding(ctx, app.ThreadBinding{
+		Mode:             "task",
+		LogicalThreadKey: "user-1:task-1",
+		CodexThreadID:    "thread-1",
+		TaskID:           "task-1",
+	}); err != nil {
+		t.Fatalf("UpsertThreadBinding() error = %v", err)
+	}
+
+	if err := store.DeleteThreadBinding(ctx, "task", "user-1:task-1"); err != nil {
+		t.Fatalf("DeleteThreadBinding() error = %v", err)
+	}
+
+	if _, ok, err := store.GetThreadBinding(ctx, "task", "user-1:task-1"); err != nil {
+		t.Fatalf("GetThreadBinding() error = %v", err)
+	} else if ok {
+		t.Fatal("GetThreadBinding() ok = true, want false")
+	}
+
+	if err := store.DeleteThreadBinding(ctx, "task", "user-1:task-1"); err != nil {
+		t.Fatalf("DeleteThreadBinding() second error = %v", err)
+	}
+}
+
 func TestStoreThreadBindingPersistsAcrossReopen(t *testing.T) {
 	t.Parallel()
 

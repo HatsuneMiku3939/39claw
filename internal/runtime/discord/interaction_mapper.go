@@ -11,13 +11,14 @@ const (
 	optionTaskName = "task_name"
 	optionTaskID   = "task_id"
 
-	actionHelp        = "help"
-	actionClear       = "clear"
-	actionTaskCurrent = "task-current"
-	actionTaskList    = "task-list"
-	actionTaskNew     = "task-new"
-	actionTaskSwitch  = "task-switch"
-	actionTaskClose   = "task-close"
+	actionHelp             = "help"
+	actionClear            = "clear"
+	actionTaskCurrent      = "task-current"
+	actionTaskList         = "task-list"
+	actionTaskNew          = "task-new"
+	actionTaskSwitch       = "task-switch"
+	actionTaskClose        = "task-close"
+	actionTaskResetContext = "task-reset-context"
 )
 
 type commandRequest struct {

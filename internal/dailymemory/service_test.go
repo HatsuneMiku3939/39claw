@@ -229,6 +229,10 @@ func (s *stubThreadStore) UpsertThreadBinding(context.Context, app.ThreadBinding
 	return nil
 }
 
+func (s *stubThreadStore) DeleteThreadBinding(context.Context, string, string) error {
+	return nil
+}
+
 func (s *stubThreadStore) GetActiveDailySession(context.Context, string) (app.DailySession, bool, error) {
 	return app.DailySession{}, false, nil
 }

@@ -105,6 +105,20 @@ func (s *Store) UpsertThreadBinding(ctx context.Context, binding app.ThreadBindi
 	return nil
 }
 
+func (s *Store) DeleteThreadBinding(ctx context.Context, mode string, logicalThreadKey string) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`DELETE FROM thread_bindings WHERE mode = ? AND logical_thread_key = ?`,
+		mode,
+		logicalThreadKey,
+	)
+	if err != nil {
+		return fmt.Errorf("delete thread binding: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Store) CreateTask(ctx context.Context, task app.Task) error {
 	now := s.clock()
 	if task.CreatedAt.IsZero() {

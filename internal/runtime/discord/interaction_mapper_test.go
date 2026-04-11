@@ -64,6 +64,29 @@ func TestMapInteractionCommand(t *testing.T) {
 			ok: true,
 		},
 		{
+			name: "maps task reset action without task selector fields",
+			event: &discordgo.InteractionCreate{
+				Interaction: &discordgo.Interaction{
+					Type: discordgo.InteractionApplicationCommand,
+					Data: discordgo.ApplicationCommandInteractionData{
+						Name: "release",
+						Options: []*discordgo.ApplicationCommandInteractionDataOption{
+							{Name: optionAction, Type: discordgo.ApplicationCommandOptionString, Value: actionTaskResetContext},
+						},
+					},
+					Member: &discordgo.Member{
+						User: &discordgo.User{ID: "user-3"},
+					},
+				},
+			},
+			want: commandRequest{
+				Name:   "release",
+				Action: actionTaskResetContext,
+				UserID: "user-3",
+			},
+			ok: true,
+		},
+		{
 			name: "keeps request when action is missing",
 			event: &discordgo.InteractionCreate{
 				Interaction: &discordgo.Interaction{

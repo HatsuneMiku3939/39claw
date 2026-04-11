@@ -90,6 +90,8 @@ thread_key = user + task_id
 - the first normal message for a task creates or refreshes the managed bare parent under `${CLAW_DATADIR}/repos` and then creates the task worktree lazily when needed
 - messages are sent to the Codex thread associated with the active task and use that task's worktree once it exists
 - changing tasks changes the target logical thread
+- `/<instance-command> action:task-reset-context` keeps the current task active and the task worktree unchanged while dropping only the saved Codex thread binding for that task
+- `action:task-reset-context` is rejected while that task has in-flight or queued work
 - closed-task worktrees are retained only for the fifteen most recently closed ready tasks
 
 ### UX Requirements
@@ -101,7 +103,8 @@ At a minimum, v1 likely needs:
 - create a task
 - select the current task
 - inspect the current task
-- clear or close the current task context
+- reset only the current task's Codex conversation continuity
+- close the current task
 
 ### UX Properties
 
@@ -115,6 +118,7 @@ Benefits:
 - strong control over context boundaries
 - better fit for issue-based or project-based workflows
 - task switching changes both conversation context and filesystem workspace
+- users can intentionally restart the Codex conversation for one task without rebuilding its workspace
 
 Costs:
 

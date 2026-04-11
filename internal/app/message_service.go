@@ -25,6 +25,7 @@ type DailyMemoryRefresher interface {
 type ThreadStore interface {
 	GetThreadBinding(ctx context.Context, mode string, logicalThreadKey string) (ThreadBinding, bool, error)
 	UpsertThreadBinding(ctx context.Context, binding ThreadBinding) error
+	DeleteThreadBinding(ctx context.Context, mode string, logicalThreadKey string) error
 	GetActiveDailySession(ctx context.Context, localDate string) (DailySession, bool, error)
 	GetLatestDailySessionBefore(ctx context.Context, localDate string) (DailySession, bool, error)
 	CreateDailySession(ctx context.Context, session DailySession) (DailySession, error)

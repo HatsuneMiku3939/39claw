@@ -108,6 +108,23 @@ Expected user perception:
 - “The bot should now respond in terms of the new task.”
 - “The switch changes both the Codex context and the task workspace used for later work.”
 
+### Scenario: User resets Codex context for the active task but keeps the workspace
+
+Expected flow:
+
+1. The user has an active task whose worktree is already the correct workspace.
+2. The user invokes `/<instance-command> action:task-reset-context`.
+3. 39claw keeps the active task selection unchanged.
+4. 39claw keeps the existing task branch and worktree unchanged.
+5. 39claw removes only the saved Codex thread continuity for that task.
+6. The next normal message for that task starts a fresh Codex thread in the same worktree.
+
+Expected user perception:
+
+- “I kept the same task.”
+- “I kept the same workspace.”
+- “Only the Codex conversation restarted.”
+
 ### Scenario: The first normal message for a task needs workspace preparation
 
 Expected flow:
@@ -153,6 +170,8 @@ For `task` mode to feel usable, v1 should support at least:
   - switch the active task to the uniquely named open task, with `task_id` used only when the name is ambiguous
 - `/<instance-command> action:task-close task_name:<name>`
   - close the uniquely named open task, with `task_id` used only when the name is ambiguous
+- `/<instance-command> action:task-reset-context`
+  - keep the current active task and worktree but discard only the saved Codex conversation continuity for that task
 
 The root-command action surface should stay explicit and stable enough that users can learn it as the standard task-control surface for `task` mode.
 
@@ -170,6 +189,7 @@ Task-related blocking behavior should be easy to understand without knowledge of
 
 Users should be able to assume that task continuity is stable over multiple sessions unless the bot explicitly reports that something went wrong.
 The active task should remain active until the user explicitly closes it or switches to another task.
+When the user explicitly resets task context, only Codex thread continuity should restart; task identity and workspace continuity should remain stable.
 
 ### Task identity clarity
 
@@ -204,6 +224,11 @@ If a task exists but its thread binding cannot be resumed, the bot should explai
 
 If the task workspace cannot be prepared, the bot should explain that the task workspace is not ready and tell the user to retry.
 The bot should not pretend that Codex processed the message normally.
+
+### Context reset while work is still pending
+
+If the active task still has in-flight or queued work, `action:task-reset-context` should be rejected.
+The bot should explain that the user needs to wait for pending replies to finish before retrying the reset.
 
 ### Incorrect task risk
 
