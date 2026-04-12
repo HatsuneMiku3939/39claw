@@ -27,7 +27,7 @@ const (
 	exitCodeSuccess              = 0
 	exitCodeFailure              = 1
 	exitCodeUsage                = 2
-	scheduledTaskShutdownTimeout = 5 * time.Minute
+	scheduledTaskShutdownTimeout = 30 * time.Second
 )
 
 type cliCommand string
