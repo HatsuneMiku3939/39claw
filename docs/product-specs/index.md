@@ -26,6 +26,8 @@ If a document starts describing package boundaries or infrastructure internals, 
   - Defines the expected user experience for conversation flow in `daily` mode
 - [Task Mode User Flow](./task-mode-user-flow.md)
   - Defines the expected user experience for explicit task-oriented flow in `task` mode
+- [Scheduled Tasks User Flow](./scheduled-tasks-user-flow.md)
+  - Defines the expected user experience for MCP-managed scheduled Codex tasks
 - [Discord Command Behavior](./discord-command-behavior.md)
   - Defines the intended Discord interaction rules, command behavior, and response expectations
 
