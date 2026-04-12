@@ -58,6 +58,7 @@ func NewHTTPServer(deps HTTPServerDependencies) (*HTTPServer, error) {
 	)
 	mux := http.NewServeMux()
 	mux.Handle(httpMCPBasePath, transport)
+	mux.Handle(httpMCPBasePath+"/", transport)
 	httpServer.Handler = mux
 
 	return &HTTPServer{
