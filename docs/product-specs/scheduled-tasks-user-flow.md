@@ -4,13 +4,13 @@ Status: Active
 
 ## Purpose
 
-This document defines the intended user-facing behavior of 39claw for repository-defined scheduled Codex tasks.
+This document defines the intended user-facing behavior of 39claw for scheduled Codex tasks.
 
 Its job is to answer questions such as:
 
 - what scheduled tasks are in product terms
-- how users create and update them
-- how 39claw discovers and applies schedule-definition changes
+- how users create and manage them
+- how Codex interacts with 39claw to manage task definitions
 - what users should expect from scheduled execution and Discord delivery
 
 This document is product-facing.
@@ -18,21 +18,21 @@ It describes user experience and stable product rules rather than internal packa
 
 ## Product Goal
 
-39claw should let users define repeatable Codex work inside the repository and have the bot execute that work on schedule without turning 39claw into a general-purpose job runner.
+39claw should let users define repeatable Codex work and have the bot execute that work on schedule without turning 39claw into a general-purpose job runner.
 
 At a product level, scheduled tasks should feel like:
 
-- repository-native automation
-- Codex-native execution
-- easy-to-audit recurring work
-- a small extension of the existing chat-driven workflow rather than a separate operations product
+- Codex-native automation
+- a natural extension of normal chat-driven interaction
+- a small, understandable product surface
+- managed automation rather than repository-authored infrastructure
 
 ## Scope
 
 This document covers:
 
 - the identity and boundary of scheduled tasks
-- the authoring and update flow for job definitions
+- the user-facing authoring and management flow
 - schedule-triggered execution expectations
 - reporting expectations in Discord
 - failure and recovery expectations visible to users
@@ -60,34 +60,30 @@ The execution target is always Codex running against the bot instance's configur
 
 When users adopt scheduled tasks, the product should feel like:
 
-- “I define the task in the repository, so the repository remains the source of truth.”
-- “The bot executes the same kind of Codex work it already performs for normal messages.”
-- “The schedule is understandable from the file itself.”
-- “Discord acts as a delivery surface for results, not as the canonical configuration database.”
+- “I can manage scheduled work by talking to the bot normally.”
+- “Codex uses built-in management tools for schedules instead of me editing hidden database state directly.”
+- “39claw stores and owns the canonical scheduled-task definitions.”
+- “Scheduled execution uses the same Codex capability the bot already exposes elsewhere.”
 
 ## Core Experience Rules
 
-### 1. Repository definitions are canonical
+### 1. Scheduled-task definitions are owned by 39claw
 
-The source of truth for scheduled tasks is the repository, not Discord state.
+The source of truth for scheduled-task definitions is 39claw-managed state under the bot data directory.
 
-If users want to add, remove, enable, disable, or change a scheduled task, they should do so by editing the repository files that define those tasks.
+Users should not need to know or manipulate that storage layout directly.
 
-### 2. Scheduled tasks are managed through normal Codex interaction
+### 2. Management happens through Codex-mediated tools
 
-Users should be able to ask 39claw through normal message interaction to inspect or edit the scheduled-task definition files in the repository.
+Users should be able to create, inspect, update, enable, disable, and delete scheduled tasks through normal message interaction with 39claw.
 
-The product should treat that as ordinary Codex-mediated repository work rather than as a separate built-in CRUD command surface.
+The user experience should remain conversational, but Codex should perform schedule management through MCP tools exposed by 39claw rather than by directly editing repository files.
 
-### 3. Discovery is file-driven
+### 3. Canonical state must be independent from task worktrees
 
-39claw should periodically scan the scheduled-task definition directory and reconcile the active task set against those files.
+Scheduled-task definitions should not depend on which worktree or task context Codex is currently using.
 
-From a user perspective, the product rule is simple:
-
-- if a valid definition file appears, the task becomes scheduled
-- if a definition file changes, the scheduled task updates
-- if a definition file is removed, the scheduled task disappears
+From a product perspective, there is one canonical scheduled-task set for the bot instance.
 
 ### 4. Execution always targets Codex
 
@@ -95,9 +91,11 @@ Every scheduled run should execute as a fresh Codex thread in the same configure
 
 Scheduled tasks do not get their own separate runtime model or special permission tier.
 
-### 5. Task definitions should stay small and readable
+### 5. Task definitions should stay small and understandable
 
-Users should be able to understand the purpose, timing, and prompt of a scheduled task from one repository file without reading internal implementation docs.
+Users should be able to understand a scheduled task in terms of its name, schedule, prompt, enabled state, and optional report target.
+
+The product should avoid expanding the definition surface into a large policy system in v1.
 
 ### 6. Reporting is bridged, not interpreted
 
@@ -107,20 +105,26 @@ If a task wants to say “success,” “warning,” or “failure,” that judg
 
 ## Definition Model
 
-### Definition location
+### Canonical definition ownership
 
-Scheduled-task definitions live under:
+Scheduled-task definitions are stored in 39claw-owned persistent state under the bot instance data directory.
 
-- `.agents/schedules/`
+This state should be treated as canonical for the bot instance.
 
-That directory should be treated as the stable, product-visible home for scheduled-task definitions.
+### User-facing management model
 
-### Definition format
+Users manage scheduled tasks by asking Codex through normal message interaction.
 
-Each scheduled task is defined as a repository file that uses frontmatter plus plain-text body content.
+Codex uses MCP tools exposed by 39claw to:
 
-The frontmatter carries the structured job metadata.
-The body carries the task prompt as plain text.
+- list scheduled tasks
+- inspect one scheduled task
+- create a scheduled task
+- update a scheduled task
+- enable or disable a scheduled task
+- delete a scheduled task
+
+The product should present this as one integrated conversational workflow rather than as a separate scheduling console.
 
 ### Minimum schema
 
@@ -128,13 +132,15 @@ The minimum product-visible fields are:
 
 - `name`
 - `schedule`
+- `prompt`
 - `enabled`
 
 Optional field:
 
 - `report_channel_id`
 
-The body content is the prompt and should be treated as required for a meaningful task definition.
+There is no separate per-task policy surface in v1.
+Scheduled tasks inherit the same effective permission model as normal message-driven Codex execution.
 
 ### Schedule syntax
 
@@ -153,56 +159,57 @@ Users should not expect `every <duration>`, calendar-rule variants, or arbitrary
 Expected flow:
 
 1. The user asks 39claw through normal message interaction to create a scheduled task.
-2. Codex reads or writes files under `.agents/schedules/` in the repository.
-3. A new valid definition file is created with frontmatter metadata and a plain-text prompt body.
-4. 39claw later discovers the new file through its periodic scan.
-5. The task becomes active if the definition is valid and `enabled` is true.
+2. Codex uses a 39claw schedule-management tool to create the task definition.
+3. 39claw persists the new definition in its canonical scheduled-task store.
+4. The task becomes active if the new definition is valid and `enabled` is true.
 
 Expected user perception:
 
-- “I created this task by changing repository files.”
-- “The repository now describes the automation.”
-- “The bot picked it up from the repository rather than from hidden state.”
+- “I created this task by talking to the bot normally.”
+- “Codex handled the task creation for me.”
+- “39claw now owns that scheduled definition.”
 
 ### Scenario: User updates an existing scheduled task
 
 Expected flow:
 
-1. The user asks 39claw to inspect or modify an existing schedule-definition file.
-2. Codex edits the file in `.agents/schedules/`.
-3. 39claw discovers the changed file on a later scan.
-4. The active scheduled-task behavior updates to match the new file contents.
+1. The user asks 39claw to inspect or modify an existing scheduled task.
+2. Codex reads the existing definition through a 39claw schedule-management tool.
+3. Codex updates the task through the appropriate 39claw tool.
+4. 39claw persists the new canonical definition.
 
 Expected user perception:
 
-- “Changing the file changes the scheduled behavior.”
-- “There is one obvious place to review the task definition.”
+- “Changing the task through conversation changes the real scheduled behavior.”
+- “There is one canonical definition for this bot instance.”
 
 ### Scenario: User disables a scheduled task
 
 Expected flow:
 
-1. The user changes the definition so `enabled` is false.
-2. 39claw discovers the updated file.
-3. The task remains defined but no longer schedules future runs.
+1. The user asks 39claw to disable a scheduled task.
+2. Codex uses a 39claw schedule-management tool to update `enabled`.
+3. 39claw persists the new disabled state.
+4. The task remains defined but no longer schedules future runs.
 
 Expected user perception:
 
-- “The task still exists in the repository.”
+- “The task still exists.”
 - “It is intentionally paused rather than deleted.”
 
 ### Scenario: User deletes a scheduled task
 
 Expected flow:
 
-1. The user removes the scheduled-task definition file from `.agents/schedules/`.
-2. 39claw discovers that the file no longer exists.
-3. The previously registered task is removed from the active schedule set.
+1. The user asks 39claw to delete a scheduled task.
+2. Codex uses a 39claw schedule-management tool to remove it.
+3. 39claw deletes the canonical definition from its persistent store.
+4. Future scheduled runs for that task no longer occur.
 
 Expected user perception:
 
-- “Deleting the file removes the scheduled behavior.”
-- “The repository state still explains why the task is gone.”
+- “Deleting the task removes its future scheduled behavior.”
+- “The bot no longer considers that task part of the active schedule set.”
 
 ### Scenario: A cron-based task runs on schedule
 
@@ -211,7 +218,7 @@ Expected flow:
 1. A scheduled time is reached according to the bot instance's local time zone.
 2. 39claw starts a new scheduled run for that task.
 3. The run executes as a fresh Codex thread in the configured working directory.
-4. The task prompt body is sent as the run input.
+4. The stored task prompt is sent as the run input.
 5. 39claw bridges the resulting output to Discord delivery behavior.
 
 Expected user perception:
@@ -224,7 +231,7 @@ Expected user perception:
 Expected flow:
 
 1. A task definition uses the one-shot local-time `at` schedule form.
-2. 39claw discovers and registers the task before that time arrives.
+2. 39claw stores the task before that time arrives.
 3. At the scheduled local time, 39claw runs the task once.
 4. After execution, the task is not treated as a recurring schedule.
 
@@ -244,7 +251,7 @@ Expected flow:
 Expected user perception:
 
 - “This task can report somewhere other than the default report destination.”
-- “The destination is part of the repository-defined task.”
+- “That destination is part of the managed task definition.”
 
 ### Scenario: A task has no per-task report override
 
@@ -256,30 +263,30 @@ Expected flow:
 
 Expected user perception:
 
-- “Tasks inherit the instance default unless the file says otherwise.”
+- “Tasks inherit the instance default unless they define a specific report destination.”
 
 ## Definition Expectations
 
-For scheduled tasks to feel product-ready, v1 should keep the authoring contract simple and stable.
+For scheduled tasks to feel product-ready, v1 should keep the management contract simple and stable.
 
 Users should be able to rely on these expectations:
 
-- one repository directory for all scheduled definitions
-- one definition file per scheduled task
-- frontmatter for metadata
-- plain-text body for the prompt
+- one canonical scheduled-task set per bot instance
+- conversational management through Codex
+- MCP-backed create, read, update, enable, disable, and delete behavior
+- a small task schema
 - no separate per-task permission policy surface
-- no special scheduled-task-only command language beyond supported schedule syntax
+- no special scheduled-task-only language beyond supported schedule syntax
 
 ## UX Requirements
 
-### Auditability
+### Canonical clarity
 
-A user should be able to inspect the repository and understand what scheduled work exists without querying a hidden control plane.
+A user should be able to assume that scheduled-task definitions live in one canonical bot-managed store for the instance.
 
 ### Explainability
 
-If a task does not run, runs once, or stops recurring, the user should be able to explain that behavior through the file definition and documented product rules.
+If a task does not run, runs once, or stops recurring, the user should be able to explain that behavior through the task definition and documented product rules.
 
 ### Consistency with normal Codex behavior
 
@@ -288,7 +295,12 @@ Scheduled tasks should feel like the same Codex capability the bot exposes throu
 ### Fresh-run expectation
 
 Users should be able to assume that each scheduled run starts from a fresh Codex thread.
-Continuity should come from the repository state and prompt design rather than from hidden thread reuse.
+Continuity should come from repository state and prompt design rather than from hidden thread reuse.
+
+### Worktree independence
+
+Task-mode worktree isolation should not create multiple competing scheduled-task definition sets.
+The scheduled-task management surface should remain stable regardless of which task context the user is currently in.
 
 ### Small product surface
 
@@ -297,23 +309,23 @@ If a proposed feature starts requiring task-specific permission models, generic 
 
 ## Failure and Edge Cases
 
-### Invalid definition file
+### Invalid task definition input
 
-If a schedule-definition file is malformed or missing required fields, the task should not become active.
+If a requested task definition is malformed or missing required fields, the create or update operation should not succeed.
 
 Expected user perception:
 
-- “The repository file is invalid.”
+- “My requested task definition was invalid.”
 - “The bot did not silently invent defaults for a broken task.”
 
-### Scan delay after repository change
+### Management-tool failure
 
-Scheduled-task changes do not need to appear instantly after a file edit.
+If Codex cannot complete a schedule-management operation because the 39claw management tool call fails, the user should receive a clear failure outcome rather than a fake success.
 
 Expected user perception:
 
-- “The bot discovers changes by scanning.”
-- “A small delay between editing the file and seeing the new schedule is expected.”
+- “The requested change was not applied.”
+- “The failure happened in the management path, not silently later.”
 
 ### System failure during a scheduled run
 
@@ -335,11 +347,11 @@ Expected user perception:
 - “The task run and the report delivery are related but not the same thing.”
 - “A delivery failure does not necessarily mean the Codex run itself failed.”
 
-### Task removed while previously scheduled
+### Task deleted while an execution is already in progress
 
-If a definition file is deleted after a task was previously active, 39claw should stop scheduling future runs for that task after reconciliation.
+If a task is deleted after a run has already started, the product does not need to promise that the in-flight execution disappears retroactively.
 
-The product does not need to promise that already-started runs disappear retroactively.
+The deletion should stop future scheduled runs for that task.
 
 ## Out of Scope
 
@@ -348,7 +360,7 @@ The following are out of scope for this product surface in v1:
 - arbitrary shell-job scheduling
 - per-task permission policies
 - generic workflow graphs or dependency chains
-- built-in repository-external job editors
+- repository-file-based canonical schedule definitions
 - recurring schedules beyond `cron`
 - duration-based schedule syntax such as `every 6h`
 - reuse of prior Codex threads for scheduled-run continuity
@@ -359,5 +371,5 @@ The following details remain product-adjacent and may need a separate Discord-fa
 
 - the exact message shape used for scheduled-task delivery
 - whether scheduled deliveries include task-name headers or metadata blocks
-- how invalid schedule definitions are surfaced to operators in Discord, if at all
-- whether operators get a built-in summary view of currently discovered scheduled tasks
+- how create, update, enable, disable, and delete confirmations are phrased in Discord
+- whether operators get a built-in summary view of currently registered scheduled tasks
