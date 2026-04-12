@@ -383,6 +383,12 @@ func startScheduledMCPServer(
 		return nil, "", fmt.Errorf("start scheduled MCP HTTP server: %w", err)
 	}
 
+	logger.Info(
+		"scheduled MCP HTTP server started",
+		"url", serverURL,
+		"mode", cfg.Mode,
+	)
+
 	return server, serverURL, nil
 }
 

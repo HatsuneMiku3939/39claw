@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -479,6 +480,50 @@ func TestCodexProcessEnv(t *testing.T) {
 	}
 }
 
+func TestStartScheduledMCPServerLogsURL(t *testing.T) {
+	t.Parallel()
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	location, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("time.LoadLocation() error = %v", err)
+	}
+
+	server, serverURL, err := startScheduledMCPServer(
+		context.Background(),
+		noopScheduledTaskStore{},
+		config.Config{
+			Mode:                     config.ModeTask,
+			Timezone:                 location,
+			ScheduledReportChannelID: "1234567890",
+		},
+		logger,
+	)
+	if err != nil {
+		t.Fatalf("startScheduledMCPServer() error = %v", err)
+	}
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := server.Close(shutdownCtx); err != nil {
+			t.Fatalf("server.Close() error = %v", err)
+		}
+	})
+
+	if !strings.HasPrefix(serverURL, "http://") {
+		t.Fatalf("serverURL = %q, want http:// prefix", serverURL)
+	}
+
+	logOutput := logs.String()
+	if !strings.Contains(logOutput, "scheduled MCP HTTP server started") {
+		t.Fatalf("log output = %q, want startup message", logOutput)
+	}
+	if !strings.Contains(logOutput, serverURL) {
+		t.Fatalf("log output = %q, want server URL %q", logOutput, serverURL)
+	}
+}
+
 type stubDiscordRuntime struct{}
 
 func (r *stubDiscordRuntime) Start(ctx context.Context) error {
@@ -498,6 +543,64 @@ type stubCodexGateway struct{}
 
 func (stubCodexGateway) RunTurn(ctx context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
 	return app.RunTurnResult{}, nil
+}
+
+type noopScheduledTaskStore struct{}
+
+func (noopScheduledTaskStore) ListScheduledTasks(ctx context.Context) ([]app.ScheduledTask, error) {
+	return nil, nil
+}
+
+func (noopScheduledTaskStore) ListEnabledScheduledTasks(ctx context.Context) ([]app.ScheduledTask, error) {
+	return nil, nil
+}
+
+func (noopScheduledTaskStore) GetScheduledTaskByID(ctx context.Context, scheduledTaskID string) (app.ScheduledTask, bool, error) {
+	return app.ScheduledTask{}, false, nil
+}
+
+func (noopScheduledTaskStore) GetScheduledTaskByName(ctx context.Context, name string) (app.ScheduledTask, bool, error) {
+	return app.ScheduledTask{}, false, nil
+}
+
+func (noopScheduledTaskStore) CreateScheduledTask(ctx context.Context, task app.ScheduledTask) error {
+	return nil
+}
+
+func (noopScheduledTaskStore) UpdateScheduledTask(ctx context.Context, task app.ScheduledTask) error {
+	return nil
+}
+
+func (noopScheduledTaskStore) DeleteScheduledTask(ctx context.Context, scheduledTaskID string) error {
+	return nil
+}
+
+func (noopScheduledTaskStore) GetLatestScheduledTaskRunForTask(ctx context.Context, scheduledTaskID string) (app.ScheduledTaskRun, bool, error) {
+	return app.ScheduledTaskRun{}, false, nil
+}
+
+func (noopScheduledTaskStore) AdmitScheduledTaskRun(ctx context.Context, run app.ScheduledTaskRun) (app.ScheduledTaskRun, bool, error) {
+	return app.ScheduledTaskRun{}, false, nil
+}
+
+func (noopScheduledTaskStore) UpdateScheduledTaskRun(ctx context.Context, run app.ScheduledTaskRun) error {
+	return nil
+}
+
+func (noopScheduledTaskStore) ListScheduledTaskRunsForDueTime(
+	ctx context.Context,
+	scheduledTaskID string,
+	scheduledFor time.Time,
+) ([]app.ScheduledTaskRun, error) {
+	return nil, nil
+}
+
+func (noopScheduledTaskStore) CreateScheduledTaskDelivery(ctx context.Context, delivery app.ScheduledTaskDelivery) error {
+	return nil
+}
+
+func (noopScheduledTaskStore) UpdateScheduledTaskDelivery(ctx context.Context, delivery app.ScheduledTaskDelivery) error {
+	return nil
 }
 
 func createTaskModeRemoteBackedRepository(t *testing.T) string {
