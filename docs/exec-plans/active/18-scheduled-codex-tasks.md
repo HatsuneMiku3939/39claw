@@ -38,6 +38,9 @@ The user-visible proof is concrete. A contributor should be able to run the bot 
 - Observation: A recurring cron schedule can admit more than one overdue occurrence on one scheduler tick if the creation time and current time span multiple matching schedule boundaries.
   Evidence: the first scheduler test initially admitted two `* * * * *` runs until the fixture creation time was moved off the previous minute boundary in `internal/app/scheduled_task_service_test.go`.
 
+- Observation: The hand-rolled SSE/JSON-RPC transport was not accepted by the real Codex CLI during initialization, so the scheduled-task endpoint had to move onto `github.com/mark3labs/mcp-go` for protocol-compatible framing.
+  Evidence: a live Codex run failed with `Deserialize error: expected value at line 1 column 1, when process initialize response`, and the final implementation now validates the endpoint through `mcp-go`'s own in-process and SSE clients in `internal/scheduled/*_test.go`.
+
 ## Decision Log
 
 - Decision: Implement scheduled-task management through a local MCP server exposed by the 39claw binary itself instead of through new slash commands.
@@ -61,6 +64,8 @@ The user-visible proof is concrete. A contributor should be able to run the bot 
 Implementation landed across the runtime, store, Discord adapter, and a new `internal/scheduled` package. 39claw now owns canonical scheduled-task definitions, due-run admission, delivery recording, and MCP exposure through a loopback HTTP/SSE server hosted inside the main process, while Codex still owns interpretation and execution of the scheduled prompt.
 
 The MCP registration risk was resolved more simply than the original milestone expected. Instead of materializing a managed `CODEX_HOME`, the bot now appends one per-run Codex config override that registers a loopback `scheduled-tasks` MCP endpoint served by the main 39claw process. That keeps user-provided `CODEX_HOME` behavior intact and lets the MCP handlers share the same SQLite-backed store instance as the scheduler runtime.
+
+The final transport layer intentionally does not hand-roll MCP framing. The repository now uses `github.com/mark3labs/mcp-go` for the scheduled-task tool server and verifies the same endpoint shape with `mcp-go` clients in tests, which reduced protocol risk after the first bespoke SSE implementation failed against a real Codex session.
 
 The main remaining acceptance gap is operator-level live validation with a real Codex session and a Discord channel. The repository now has automated coverage for the moving pieces, but a future cleanup pass should still capture one manual end-to-end transcript before archiving this plan.
 

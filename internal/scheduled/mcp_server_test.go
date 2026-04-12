@@ -9,6 +9,8 @@ import (
 
 	"github.com/HatsuneMiku3939/39claw/internal/app"
 	sqlitestore "github.com/HatsuneMiku3939/39claw/internal/store/sqlite"
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestMCPServerCreateAndListScheduledTasks(t *testing.T) {
@@ -18,7 +20,11 @@ func TestMCPServerCreateAndListScheduledTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenDB() error = %v", err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Fatalf("db.Close() error = %v", closeErr)
+		}
+	})
 
 	if err := sqlitestore.Migrate(context.Background(), db); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
@@ -29,7 +35,7 @@ func TestMCPServerCreateAndListScheduledTasks(t *testing.T) {
 		t.Fatalf("LoadLocation() error = %v", err)
 	}
 
-	server := MCPServer{
+	scheduledServer := &MCPServer{
 		Store:                  sqlitestore.New(db),
 		Timezone:               location,
 		DefaultReportChannelID: "12345",
@@ -38,21 +44,37 @@ func TestMCPServerCreateAndListScheduledTasks(t *testing.T) {
 		},
 	}
 
-	createResult, err := server.handleToolsCall(context.Background(), mustJSON(t, map[string]any{
-		"name": "scheduled_tasks_create",
-		"arguments": map[string]any{
-			"name":          "daily-report",
-			"schedule_kind": "cron",
-			"schedule_expr": "0 9 * * *",
-			"prompt":        "Write the daily report.",
-			"enabled":       true,
-		},
-	}))
+	mcpServer, err := scheduledServer.BuildServer()
 	if err != nil {
-		t.Fatalf("handleToolsCall(create) error = %v", err)
+		t.Fatalf("BuildServer() error = %v", err)
 	}
 
-	createdTask := decodeStructuredTask(t, createResult["structuredContent"])
+	mcpClient, err := client.NewInProcessClient(mcpServer)
+	if err != nil {
+		t.Fatalf("NewInProcessClient() error = %v", err)
+	}
+	defer mcpClient.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := mcpClient.Start(ctx); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	initializeMCPClient(t, ctx, mcpClient)
+
+	createResult, err := mcpClient.CallTool(ctx, callToolRequest("scheduled_tasks_create", map[string]any{
+		"name":          "daily-report",
+		"schedule_kind": "cron",
+		"schedule_expr": "0 9 * * *",
+		"prompt":        "Write the daily report.",
+		"enabled":       true,
+	}))
+	if err != nil {
+		t.Fatalf("CallTool(create) error = %v", err)
+	}
+
+	createdTask := decodeStructuredTask(t, createResult.StructuredContent)
 	if createdTask.Name != "daily-report" {
 		t.Fatalf("created task name = %q, want %q", createdTask.Name, "daily-report")
 	}
@@ -60,15 +82,12 @@ func TestMCPServerCreateAndListScheduledTasks(t *testing.T) {
 		t.Fatal("created task Enabled = false, want true")
 	}
 
-	listResult, err := server.handleToolsCall(context.Background(), mustJSON(t, map[string]any{
-		"name":      "scheduled_tasks_list",
-		"arguments": map[string]any{},
-	}))
+	listResult, err := mcpClient.CallTool(ctx, callToolRequest("scheduled_tasks_list", map[string]any{}))
 	if err != nil {
-		t.Fatalf("handleToolsCall(list) error = %v", err)
+		t.Fatalf("CallTool(list) error = %v", err)
 	}
 
-	listedTasks := decodeStructuredTasks(t, listResult["structuredContent"])
+	listedTasks := decodeStructuredTasks(t, listResult.StructuredContent)
 	if len(listedTasks) != 1 {
 		t.Fatalf("listed task count = %d, want %d", len(listedTasks), 1)
 	}
@@ -77,15 +96,26 @@ func TestMCPServerCreateAndListScheduledTasks(t *testing.T) {
 	}
 }
 
-func mustJSON(t *testing.T, value any) json.RawMessage {
+func initializeMCPClient(t *testing.T, ctx context.Context, mcpClient *client.Client) {
 	t.Helper()
 
-	payload, err := json.Marshal(value)
-	if err != nil {
-		t.Fatalf("json.Marshal() error = %v", err)
+	request := mcp.InitializeRequest{}
+	request.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	request.Params.ClientInfo = mcp.Implementation{
+		Name:    "39claw-test-client",
+		Version: "1.0.0",
 	}
 
-	return payload
+	if _, err := mcpClient.Initialize(ctx, request); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+}
+
+func callToolRequest(name string, arguments map[string]any) mcp.CallToolRequest {
+	request := mcp.CallToolRequest{}
+	request.Params.Name = name
+	request.Params.Arguments = arguments
+	return request
 }
 
 func decodeStructuredTask(t *testing.T, value any) app.ScheduledTask {
