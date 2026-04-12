@@ -59,13 +59,14 @@ func NewHTTPServer(deps HTTPServerDependencies) (*HTTPServer, error) {
 	mux := http.NewServeMux()
 	mux.Handle(httpMCPBasePath, transport)
 	mux.Handle(httpMCPBasePath+"/", transport)
-	httpServer.Handler = mux
-
-	return &HTTPServer{
+	server := &HTTPServer{
 		logger:    logger,
 		transport: transport,
 		http:      httpServer,
-	}, nil
+	}
+	httpServer.Handler = server.wrapHTTPLogging(mux)
+
+	return server, nil
 }
 
 func (s *HTTPServer) Start(ctx context.Context) (string, error) {
@@ -93,4 +94,41 @@ func (s *HTTPServer) Close(ctx context.Context) error {
 	}
 
 	return s.http.Shutdown(ctx)
+}
+
+func (s *HTTPServer) wrapHTTPLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		recorder := &statusCapturingResponseWriter{
+			ResponseWriter: responseWriter,
+			statusCode:     http.StatusOK,
+		}
+
+		s.logger.Info(
+			"scheduled MCP HTTP request started",
+			"method", request.Method,
+			"path", request.URL.Path,
+			"query", request.URL.RawQuery,
+			"content_type", request.Header.Get("Content-Type"),
+			"accept", request.Header.Get("Accept"),
+		)
+
+		next.ServeHTTP(recorder, request)
+
+		s.logger.Info(
+			"scheduled MCP HTTP request finished",
+			"method", request.Method,
+			"path", request.URL.Path,
+			"status", recorder.statusCode,
+		)
+	})
+}
+
+type statusCapturingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *statusCapturingResponseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
 }
