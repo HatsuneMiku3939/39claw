@@ -11,7 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func TestHTTPServerSupportsMCPGoSSEClientAndSharesStore(t *testing.T) {
+func TestHTTPServerSupportsMCPGoStreamableHTTPClientAndSharesStore(t *testing.T) {
 	t.Parallel()
 
 	location, err := time.LoadLocation("Asia/Tokyo")
@@ -58,9 +58,9 @@ func TestHTTPServerSupportsMCPGoSSEClientAndSharesStore(t *testing.T) {
 		}
 	})
 
-	mcpClient, err := client.NewSSEMCPClient(serverURL)
+	mcpClient, err := client.NewStreamableHttpClient(serverURL)
 	if err != nil {
-		t.Fatalf("NewSSEMCPClient() error = %v", err)
+		t.Fatalf("NewStreamableHttpClient() error = %v", err)
 	}
 	defer mcpClient.Close()
 

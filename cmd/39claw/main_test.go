@@ -641,7 +641,7 @@ func assertScheduledTaskMCPConfigOverride(t *testing.T, got []string) {
 	for _, want := range []string{
 		`mcp_servers.scheduled-tasks={`,
 		`url = "http://127.0.0.1:`,
-		`/mcp/scheduled-tasks/sse"`,
+		`/mcp/scheduled-tasks"`,
 	} {
 		if !strings.Contains(override, want) {
 			t.Fatalf("ConfigOverrides[0] = %q, want substring %q", override, want)

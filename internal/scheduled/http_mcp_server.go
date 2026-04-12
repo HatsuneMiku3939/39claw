@@ -14,10 +14,8 @@ import (
 
 const (
 	httpMCPBasePath          = "/mcp/scheduled-tasks"
-	httpMCPServerPathSSE     = httpMCPBasePath + "/sse"
-	httpMCPServerPathMessage = httpMCPBasePath + "/messages"
-	httpMCPKeepAliveInterval = 15 * time.Second
 	httpMCPReadHeaderTimeout = 5 * time.Second
+	httpMCPSessionIdleTTL    = 15 * time.Minute
 )
 
 type HTTPServerDependencies struct {
@@ -29,7 +27,7 @@ type HTTPServerDependencies struct {
 
 type HTTPServer struct {
 	logger    *slog.Logger
-	transport *mcpserver.SSEServer
+	transport *mcpserver.StreamableHTTPServer
 	http      *http.Server
 }
 
@@ -52,15 +50,15 @@ func NewHTTPServer(deps HTTPServerDependencies) (*HTTPServer, error) {
 	httpServer := &http.Server{
 		ReadHeaderTimeout: httpMCPReadHeaderTimeout,
 	}
-	transport := mcpserver.NewSSEServer(
+	transport := mcpserver.NewStreamableHTTPServer(
 		mcpHandler,
-		mcpserver.WithHTTPServer(httpServer),
-		mcpserver.WithStaticBasePath(httpMCPBasePath),
-		mcpserver.WithSSEEndpoint("/sse"),
-		mcpserver.WithMessageEndpoint("/messages"),
-		mcpserver.WithKeepAliveInterval(httpMCPKeepAliveInterval),
+		mcpserver.WithStreamableHTTPServer(httpServer),
+		mcpserver.WithStateful(true),
+		mcpserver.WithSessionIdleTTL(httpMCPSessionIdleTTL),
 	)
-	httpServer.Handler = transport
+	mux := http.NewServeMux()
+	mux.Handle(httpMCPBasePath, transport)
+	httpServer.Handler = mux
 
 	return &HTTPServer{
 		logger:    logger,
@@ -85,7 +83,7 @@ func (s *HTTPServer) Start(ctx context.Context) (string, error) {
 		}
 	}()
 
-	return "http://" + listener.Addr().String() + httpMCPServerPathSSE, nil
+	return "http://" + listener.Addr().String() + httpMCPBasePath, nil
 }
 
 func (s *HTTPServer) Close(ctx context.Context) error {
