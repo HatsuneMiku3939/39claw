@@ -91,6 +91,7 @@ Every scheduled run should execute as a fresh Codex thread in the same configure
 
 Scheduled tasks do not get their own separate runtime model or special permission tier.
 
+When the bot instance runs in `daily` mode, the scheduled run should use `CLAW_CODEX_WORKDIR` directly and should not create a temporary worktree.
 When the bot instance runs in `task` mode, the scheduled run should use its own fresh temporary worktree rather than borrowing a user's interactive task worktree.
 
 ### 5. Task definitions should stay small and understandable
