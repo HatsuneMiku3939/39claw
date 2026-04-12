@@ -79,9 +79,9 @@ Users should be able to create, inspect, update, enable, disable, and delete sch
 
 The user experience should remain conversational, but Codex should perform schedule management through MCP tools exposed by 39claw rather than by directly editing repository files.
 
-### 3. Canonical state must be independent from task worktrees
+### 3. Canonical state must be independent from interactive task workspaces
 
-Scheduled-task definitions should not depend on which worktree or task context Codex is currently using.
+Scheduled-task definitions should not depend on which interactive task worktree or task context Codex is currently using.
 
 From a product perspective, there is one canonical scheduled-task set for the bot instance.
 
@@ -90,6 +90,9 @@ From a product perspective, there is one canonical scheduled-task set for the bo
 Every scheduled run should execute as a fresh Codex thread in the same configured working directory used for normal message-driven Codex interaction.
 
 Scheduled tasks do not get their own separate runtime model or special permission tier.
+
+When the bot instance runs in `daily` mode, the scheduled run should use `CLAW_CODEX_WORKDIR` directly and should not create a temporary worktree.
+When the bot instance runs in `task` mode, the scheduled run should use its own fresh temporary worktree rather than borrowing a user's interactive task worktree.
 
 ### 5. Task definitions should stay small and understandable
 
@@ -218,13 +221,16 @@ Expected flow:
 1. A scheduled time is reached according to the bot instance's local time zone.
 2. 39claw starts a new scheduled run for that task.
 3. The run executes as a fresh Codex thread in the configured working directory.
-4. The stored task prompt is sent as the run input.
-5. 39claw bridges the resulting output to Discord delivery behavior.
+4. If the bot instance runs in `task` mode, 39claw first creates a fresh temporary worktree for that scheduled run.
+5. After the run finishes, 39claw removes that temporary worktree.
+6. The stored task prompt is sent as the run input.
+7. 39claw bridges the resulting output to Discord delivery behavior.
 
 Expected user perception:
 
 - “This was a new execution, not a continuation of an old task thread.”
 - “The task ran against the same repository context as normal bot work.”
+- “In task mode, the scheduled run used its own temporary workspace instead of reusing an interactive task workspace.”
 
 ### Scenario: A one-shot `at` task runs once
 
@@ -297,9 +303,9 @@ Scheduled tasks should feel like the same Codex capability the bot exposes throu
 Users should be able to assume that each scheduled run starts from a fresh Codex thread.
 Continuity should come from repository state and prompt design rather than from hidden thread reuse.
 
-### Worktree independence
+### Workspace independence
 
-Task-mode worktree isolation should not create multiple competing scheduled-task definition sets.
+Interactive task-worktree isolation should not create multiple competing scheduled-task definition sets.
 The scheduled-task management surface should remain stable regardless of which task context the user is currently in.
 
 ### Small product surface
