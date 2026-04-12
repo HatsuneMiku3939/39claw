@@ -35,6 +35,7 @@ Instead:
 - 39claw owns Discord integration
 - 39claw owns thread routing policy
 - 39claw owns local persistence for Codex thread bindings
+- 39claw owns scheduled-task definitions, dispatch timing, and Discord delivery for bot-initiated Codex runs
 
 The application should stay intentionally thin.
 
@@ -90,6 +91,7 @@ Losing the mapping between a logical thread key and a Codex thread ID breaks con
 39claw should focus on:
 
 - message intake
+- scheduled-run intake and dispatch
 - thread resolution
 - Codex thread binding
 - response delivery
@@ -98,7 +100,7 @@ It should avoid unnecessary local orchestration layers in v1.
 
 ## 4. System Role
 
-39claw is a stateful gateway between Discord conversations and Codex threads.
+39claw is a stateful gateway between Discord conversations, scheduled bot-initiated runs, and Codex threads.
 
 Its job is to:
 
@@ -113,6 +115,7 @@ Its job is to:
 ```text
 Discord Runtime
   -> Message Application Service
+  -> Scheduled Task Service
     -> Thread Policy
     -> Thread Store
     -> Queue Coordinator
@@ -171,6 +174,7 @@ The thread store persists the mapping between:
 - Codex thread ID
 
 In `task` mode, the thread store must also track task records, the currently selected task for a user within the current bot instance, and task worktree metadata such as branch name, worktree path, and worktree lifecycle state.
+For scheduled tasks, the store must also track persisted task definitions, individual run records, and Discord delivery state for report posting and retry-safe reconciliation.
 
 ### 6.5 Queue Coordinator
 
@@ -186,7 +190,22 @@ Responsibilities:
 The queue is intentionally in memory only.
 It is not part of the durable SQLite state.
 
-### 6.6 Codex Gateway
+### 6.6 Scheduled Task Service
+
+The scheduled task service orchestrates bot-initiated Codex runs that are triggered by persisted schedules instead of a live user message.
+
+Responsibilities:
+
+- manage the lifecycle of scheduled task definitions and validation
+- determine when a scheduled task becomes due according to the configured timezone
+- create a durable run record before dispatch so retries and post-crash reconciliation stay explicit
+- call the Codex gateway using the mode-appropriate working directory policy for the scheduled run
+- deliver the resulting report to the configured Discord channel and persist delivery outcome metadata
+
+Scheduled execution does not replace the normal message flow.
+It is a parallel application entrypoint that reuses the same Codex integration boundary and mode-specific working-directory rules.
+
+### 6.7 Codex Gateway
 
 The Codex gateway wraps the Codex SDK or Codex integration layer.
 
@@ -200,7 +219,7 @@ Responsibilities:
 
 All Codex-specific details should stay behind this boundary.
 
-### 6.7 Response Presenter
+### 6.8 Response Presenter
 
 The presenter adapts normalized application output to Discord-safe responses.
 
@@ -305,6 +324,32 @@ Tradeoffs:
 - requires task-state persistence in addition to thread binding
 - requires Git worktree lifecycle management and cleanup policy
 
+## 7.3 Scheduled Tasks
+
+Purpose:
+
+- let the bot trigger Codex work on a persisted schedule without waiting for a live Discord message
+- deliver the resulting output back into Discord as a bot-authored report
+
+Behavior:
+
+- scheduled task definitions are owned locally by 39claw rather than by Discord message history
+- scheduled runs inherit the bot instance's configured mode, so mode-specific thread and workdir rules still apply
+- when the bot instance runs in `daily` mode, a scheduled run executes directly in `CLAW_CODEX_WORKDIR`
+- when the bot instance runs in `task` mode, a scheduled run must create a fresh temporary worktree for the run, execute Codex there, and remove that temporary worktree after the run finishes
+- scheduled task management and execution are initiated through local 39claw-owned orchestration even though the run itself is still executed by Codex
+- report delivery must be durable enough to distinguish run success from Discord-delivery failure
+
+Properties:
+
+- makes bot-initiated recurring Codex workflows possible without adding a local agent loop
+- keeps scheduling, persistence, and Discord delivery on the 39claw side while leaving reasoning and tool execution to Codex
+
+Tradeoffs:
+
+- introduces additional durable state beyond interactive thread bindings
+- adds reconciliation needs for runs that finish while Discord delivery fails or the process restarts mid-flight
+
 ## 8. Request Flow
 
 ```text
@@ -366,6 +411,9 @@ The minimum persistent state for v1 is:
 - thread bindings
 - active task selection for `task` mode
 - task records with task worktree metadata for `task` mode
+- scheduled task definitions
+- scheduled run records
+- scheduled report delivery records
 
 The bounded queued-message backlog is not persisted.
 It exists only in memory while the process is running.
@@ -396,6 +444,7 @@ v1 should include:
 - global thread mode selection
 - `daily` mode
 - `task` mode
+- scheduled task definitions and execution
 - local persistent thread binding
 - local persistent active task state
 - task-isolated Git worktrees for `task` mode

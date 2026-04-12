@@ -9,7 +9,7 @@ Use this document when you want a quick mental model of the system before readin
 
 ## System Role
 
-39claw is a stateful gateway between Discord conversations and Codex threads.
+39claw is a stateful gateway between Discord conversations, scheduled bot-initiated runs, and Codex threads.
 
 It does not act as a full local coding agent runtime.
 Instead, it delegates agent execution to Codex and manages the local application-side policy.
@@ -27,12 +27,14 @@ This leads to two distinct mode families on the same foundation:
   - execution-oriented interaction against an operator-visible Git checkout with an `origin` remote, where 39claw manages a separate bare parent repository, each task uses an immutable slug name, and each task eventually runs inside its own task-specific worktree
 
 The detailed rationale for these modes lives in `ARCHITECTURE.md` and `thread-modes.md`.
+Scheduled tasks sit beside those interactive modes rather than replacing them: 39claw owns schedule persistence, due-run dispatch, and Discord report delivery, while Codex still executes the actual run inside the mode-appropriate working directory.
 
 ## High-Level Components
 
 ```text
 Discord Runtime
   -> Message Application Service
+  -> Scheduled Task Service
     -> Thread Policy
     -> Thread Store
     -> Queue Coordinator
@@ -58,12 +60,16 @@ In `task` mode, the policy must resolve the effective task from either the saved
 
 ### Thread Store
 
-Persists the local continuity data that lets 39claw resume the correct Codex thread, plus task and task-worktree metadata in `task` mode.
+Persists the local continuity data that lets 39claw resume the correct Codex thread, plus task and task-worktree metadata in `task` mode, plus scheduled-task definitions and run or delivery state.
 
 ### Queue Coordinator
 
 Serializes work per logical thread key.
 The first turn for an idle key runs immediately, up to five additional waiting turns may queue in memory, and further turns receive a retry-later response until capacity returns.
+
+### Scheduled Task Service
+
+Owns schedule definition management, due-run claiming, Codex execution handoff, and Discord report delivery for bot-initiated scheduled runs.
 
 ### Codex Gateway
 
@@ -92,6 +98,18 @@ Adapts normalized application output into Discord-safe responses.
 
 The runtime-owned part stops at creating and refreshing the memory files themselves.
 Whether Codex consults those files during normal visible turns is controlled by the user-owned instructions already present in the workdir, such as `AGENTS.md`.
+```
+
+Scheduled runs follow a parallel path:
+
+```text
+1. Scheduler determines that a persisted scheduled task is due
+2. Scheduled task service creates or claims a durable run record
+3. The service chooses the mode-appropriate workdir policy for that run
+4. In `daily` mode, the run executes directly in `CLAW_CODEX_WORKDIR`
+5. In `task` mode, the run executes in a fresh temporary worktree that is removed after completion
+6. Codex returns the final output and any resulting thread identity
+7. 39claw records the run outcome and separately records whether Discord delivery succeeded
 ```
 
 ## Concurrency Model
