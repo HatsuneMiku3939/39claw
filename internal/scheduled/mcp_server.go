@@ -1,12 +1,9 @@
 package scheduled
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -44,55 +41,6 @@ type mcpTool struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
-}
-
-func (s MCPServer) ServeStdio(ctx context.Context, input io.Reader, output io.Writer) error {
-	if s.Store == nil {
-		return fmt.Errorf("scheduled task store must not be nil")
-	}
-	if s.Timezone == nil {
-		return fmt.Errorf("timezone must not be nil")
-	}
-	if s.Now == nil {
-		s.Now = time.Now().UTC
-	}
-
-	reader := bufio.NewReader(input)
-	writer := bufio.NewWriter(output)
-	defer writer.Flush()
-
-	for {
-		payload, err := readMCPMessage(reader)
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
-
-		var request jsonRPCRequest
-		if err := json.Unmarshal(payload, &request); err != nil {
-			if writeErr := writeMCPResponse(writer, jsonRPCResponse{
-				JSONRPC: "2.0",
-				Error: &jsonRPCError{
-					Code:    -32700,
-					Message: fmt.Sprintf("parse request: %v", err),
-				},
-			}); writeErr != nil {
-				return writeErr
-			}
-			continue
-		}
-
-		response := s.handleRequest(ctx, request)
-		if len(request.ID) == 0 {
-			continue
-		}
-
-		if err := writeMCPResponse(writer, response); err != nil {
-			return err
-		}
-	}
 }
 
 func (s MCPServer) handleRequest(ctx context.Context, request jsonRPCRequest) jsonRPCResponse {
@@ -424,78 +372,4 @@ func toolSuccessResult(payload any) map[string]any {
 		},
 		"structuredContent": payload,
 	}
-}
-
-func readMCPMessage(reader *bufio.Reader) ([]byte, error) {
-	contentLength := 0
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			break
-		}
-
-		key, value, ok := strings.Cut(trimmed, ":")
-		if !ok {
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(key), "Content-Length") {
-			if _, err := fmt.Sscanf(strings.TrimSpace(value), "%d", &contentLength); err != nil {
-				return nil, fmt.Errorf("parse content length: %w", err)
-			}
-		}
-	}
-
-	if contentLength <= 0 {
-		return nil, fmt.Errorf("missing content length")
-	}
-
-	payload := make([]byte, contentLength)
-	if _, err := io.ReadFull(reader, payload); err != nil {
-		return nil, err
-	}
-
-	return payload, nil
-}
-
-func writeMCPResponse(writer *bufio.Writer, response jsonRPCResponse) error {
-	if response.JSONRPC == "" {
-		response.JSONRPC = "2.0"
-	}
-
-	payload, err := json.Marshal(response)
-	if err != nil {
-		return fmt.Errorf("marshal mcp response: %w", err)
-	}
-
-	if _, err := fmt.Fprintf(writer, "Content-Length: %d\r\n\r\n", len(payload)); err != nil {
-		return fmt.Errorf("write mcp response header: %w", err)
-	}
-	if _, err := writer.Write(payload); err != nil {
-		return fmt.Errorf("write mcp response payload: %w", err)
-	}
-	if err := writer.Flush(); err != nil {
-		return fmt.Errorf("flush mcp response: %w", err)
-	}
-
-	return nil
-}
-
-func RunMCPScheduledTasksMain(ctx context.Context, sqlitePath string, timezone *time.Location, defaultReportChannelID string) error {
-	db, err := openMCPStore(ctx, sqlitePath)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	server := MCPServer{
-		Store:                  db,
-		Timezone:               timezone,
-		DefaultReportChannelID: defaultReportChannelID,
-	}
-	return server.ServeStdio(ctx, os.Stdin, os.Stdout)
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/HatsuneMiku3939/39claw/internal/codex"
 	"github.com/HatsuneMiku3939/39claw/internal/config"
 	runtimediscord "github.com/HatsuneMiku3939/39claw/internal/runtime/discord"
-	"github.com/HatsuneMiku3939/39claw/internal/scheduled"
 )
 
 func TestParseCLIArgs(t *testing.T) {
@@ -319,17 +318,8 @@ func TestRun(t *testing.T) {
 			}
 
 			if tt.wantErr == "" {
-				executablePath, execErr := os.Executable()
-				if execErr != nil {
-					t.Fatalf("os.Executable() error = %v", execErr)
-				}
-
-				tt.wantThreadOptions.ConfigOverrides = []string{scheduled.BuildMCPConfigOverride(
-					executablePath,
-					filepath.Join(env["CLAW_DATADIR"], "39claw.sqlite"),
-					env["CLAW_TIMEZONE"],
-					env["CLAW_SCHEDULED_REPORT_CHANNEL_ID"],
-				)}
+				assertScheduledTaskMCPConfigOverride(t, capturedOptions.ThreadOptions.ConfigOverrides)
+				capturedOptions.ThreadOptions.ConfigOverrides = nil
 			}
 
 			assertThreadOptionsEqual(t, capturedOptions.ThreadOptions, tt.wantThreadOptions)
@@ -637,6 +627,25 @@ func assertThreadOptionsEqual(t *testing.T, got codex.ThreadOptions, want codex.
 
 	if got.ApprovalPolicy != want.ApprovalPolicy {
 		t.Fatalf("ApprovalPolicy = %q, want %q", got.ApprovalPolicy, want.ApprovalPolicy)
+	}
+}
+
+func assertScheduledTaskMCPConfigOverride(t *testing.T, got []string) {
+	t.Helper()
+
+	if len(got) != 1 {
+		t.Fatalf("ConfigOverrides length = %d, want %d", len(got), 1)
+	}
+
+	override := got[0]
+	for _, want := range []string{
+		`mcp_servers.scheduled-tasks={`,
+		`url = "http://127.0.0.1:`,
+		`/mcp/scheduled-tasks/sse"`,
+	} {
+		if !strings.Contains(override, want) {
+			t.Fatalf("ConfigOverrides[0] = %q, want substring %q", override, want)
+		}
 	}
 }
 

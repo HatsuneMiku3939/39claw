@@ -456,6 +456,7 @@ The first normal message for a new task may spend a moment preparing that task's
 - `CLAW_CODEX_HOME`
   - when set, 39claw injects it into the Codex CLI process as `CODEX_HOME`
   - scheduled-task MCP registration is added per-run through Codex `--config` overrides rather than by rewriting the user's Codex home
+  - the override points Codex at a loopback HTTP/SSE MCP endpoint hosted by the running 39claw process, so scheduled-task tools share the same SQLite connection as the scheduler runtime
 - `CLAW_CODEX_SANDBOX_MODE`
   - `read-only`, `workspace-write`, or `danger-full-access`
 - `CLAW_CODEX_ADDITIONAL_DIRECTORIES`

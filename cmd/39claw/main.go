@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -28,20 +27,18 @@ const (
 	exitCodeSuccess              = 0
 	exitCodeFailure              = 1
 	exitCodeUsage                = 2
-	scheduledTaskShutdownTimeout = 30 * time.Second
+	scheduledTaskShutdownTimeout = 5 * time.Minute
 )
 
 type cliCommand string
 
 const (
-	cliCommandServe             cliCommand = "serve"
-	cliCommandVersion           cliCommand = "version"
-	cliCommandMCPScheduledTasks cliCommand = "mcp-scheduled-tasks"
+	cliCommandServe   cliCommand = "serve"
+	cliCommandVersion cliCommand = "version"
 )
 
 type cliInvocation struct {
 	command cliCommand
-	args    []string
 }
 
 type discordRuntime interface {
@@ -82,11 +79,7 @@ func runCLI(
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	if invocation.command == cliCommandMCPScheduledTasks {
-		err = runMCPScheduledTasks(ctx, invocation.args)
-	} else {
-		err = run(ctx, lookupEnv)
-	}
+	err = run(ctx, lookupEnv)
 	stop()
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
@@ -108,40 +101,9 @@ func parseCLIArgs(args []string) (cliInvocation, error) {
 		}
 
 		return cliInvocation{command: cliCommandVersion}, nil
-	case string(cliCommandMCPScheduledTasks):
-		return cliInvocation{command: cliCommandMCPScheduledTasks, args: args[1:]}, nil
 	default:
 		return cliInvocation{}, fmt.Errorf("unknown command %q", args[0])
 	}
-}
-
-func runMCPScheduledTasks(ctx context.Context, args []string) error {
-	flags := flag.NewFlagSet(string(cliCommandMCPScheduledTasks), flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-
-	var sqlitePath string
-	var timezoneName string
-	var defaultReportChannelID string
-	flags.StringVar(&sqlitePath, "sqlite-path", "", "sqlite database path")
-	flags.StringVar(&timezoneName, "timezone", "", "IANA timezone name")
-	flags.StringVar(&defaultReportChannelID, "default-report-channel-id", "", "default report channel")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
-	if sqlitePath == "" {
-		return errors.New("--sqlite-path is required")
-	}
-	if timezoneName == "" {
-		return errors.New("--timezone is required")
-	}
-
-	location, err := time.LoadLocation(timezoneName)
-	if err != nil {
-		return fmt.Errorf("load timezone %q: %w", timezoneName, err)
-	}
-
-	return scheduled.RunMCPScheduledTasksMain(ctx, sqlitePath, location, defaultReportChannelID)
 }
 
 func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
@@ -177,6 +139,11 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 
 	store := sqlitestore.New(db)
 
+	scheduledMCPServer, scheduledMCPServerURL, err := startScheduledMCPServer(ctx, store, cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	client := newCodexClient(codex.Options{
 		ExecutablePath: cfg.CodexExecutable,
 		Env:            codexProcessEnv(cfg),
@@ -189,16 +156,10 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		return err
 	}
 
-	executablePath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("resolve 39claw executable path: %w", err)
-	}
-	threadOptions.ConfigOverrides = append(threadOptions.ConfigOverrides, scheduled.BuildMCPConfigOverride(
-		executablePath,
-		cfg.SQLitePath,
-		cfg.TimezoneName,
-		cfg.ScheduledReportChannelID,
-	))
+	threadOptions.ConfigOverrides = append(
+		threadOptions.ConfigOverrides,
+		scheduled.BuildMCPURLConfigOverride(scheduledMCPServerURL),
+	)
 
 	if cfg.Mode == config.ModeDaily {
 		if threadOptions.SandboxMode == codex.SandboxModeReadOnly {
@@ -326,6 +287,10 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		return fmt.Errorf("close discord runtime: %w", err)
 	}
 
+	if err := scheduledMCPServer.Close(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+		return fmt.Errorf("close scheduled MCP HTTP server: %w", err)
+	}
+
 	return nil
 }
 
@@ -395,6 +360,30 @@ func codexProcessEnv(cfg config.Config) map[string]string {
 	return map[string]string{
 		"CODEX_HOME": cfg.CodexHome,
 	}
+}
+
+func startScheduledMCPServer(
+	ctx context.Context,
+	store app.ScheduledTaskStore,
+	cfg config.Config,
+	logger *slog.Logger,
+) (*scheduled.HTTPServer, string, error) {
+	server, err := scheduled.NewHTTPServer(scheduled.HTTPServerDependencies{
+		Store:                  store,
+		Timezone:               cfg.Timezone,
+		DefaultReportChannelID: cfg.ScheduledReportChannelID,
+		Logger:                 logger,
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("build scheduled MCP HTTP server: %w", err)
+	}
+
+	serverURL, err := server.Start(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("start scheduled MCP HTTP server: %w", err)
+	}
+
+	return server, serverURL, nil
 }
 
 func cloneBoolPointer(value *bool) *bool {
