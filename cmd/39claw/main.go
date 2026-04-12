@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/HatsuneMiku3939/39claw/internal/app"
 	"github.com/HatsuneMiku3939/39claw/internal/codex"
@@ -16,27 +18,36 @@ import (
 	"github.com/HatsuneMiku3939/39claw/internal/dailymemory"
 	"github.com/HatsuneMiku3939/39claw/internal/observe"
 	runtimediscord "github.com/HatsuneMiku3939/39claw/internal/runtime/discord"
+	"github.com/HatsuneMiku3939/39claw/internal/scheduled"
 	sqlitestore "github.com/HatsuneMiku3939/39claw/internal/store/sqlite"
 	"github.com/HatsuneMiku3939/39claw/internal/thread"
 	"github.com/HatsuneMiku3939/39claw/version"
 )
 
 const (
-	exitCodeSuccess = 0
-	exitCodeFailure = 1
-	exitCodeUsage   = 2
+	exitCodeSuccess              = 0
+	exitCodeFailure              = 1
+	exitCodeUsage                = 2
+	scheduledTaskShutdownTimeout = 30 * time.Second
 )
 
 type cliCommand string
 
 const (
-	cliCommandServe   cliCommand = "serve"
-	cliCommandVersion cliCommand = "version"
+	cliCommandServe             cliCommand = "serve"
+	cliCommandVersion           cliCommand = "version"
+	cliCommandMCPScheduledTasks cliCommand = "mcp-scheduled-tasks"
 )
+
+type cliInvocation struct {
+	command cliCommand
+	args    []string
+}
 
 type discordRuntime interface {
 	Start(ctx context.Context) error
 	Close() error
+	app.ScheduledTaskReportSender
 }
 
 var newDiscordRuntime = func(deps runtimediscord.Dependencies) (discordRuntime, error) {
@@ -59,19 +70,23 @@ func runCLI(
 	stdout io.Writer,
 	stderr io.Writer,
 ) int {
-	command, err := parseCLIArgs(args)
+	invocation, err := parseCLIArgs(args)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return exitCodeUsage
 	}
 
-	if command == cliCommandVersion {
+	if invocation.command == cliCommandVersion {
 		_, _ = fmt.Fprintln(stdout, version.Version)
 		return exitCodeSuccess
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	err = run(ctx, lookupEnv)
+	if invocation.command == cliCommandMCPScheduledTasks {
+		err = runMCPScheduledTasks(ctx, invocation.args)
+	} else {
+		err = run(ctx, lookupEnv)
+	}
 	stop()
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
@@ -81,21 +96,52 @@ func runCLI(
 	return exitCodeSuccess
 }
 
-func parseCLIArgs(args []string) (cliCommand, error) {
+func parseCLIArgs(args []string) (cliInvocation, error) {
 	if len(args) == 0 {
-		return cliCommandServe, nil
+		return cliInvocation{command: cliCommandServe}, nil
 	}
 
 	switch args[0] {
 	case string(cliCommandVersion):
 		if len(args) > 1 {
-			return "", errors.New("version command does not accept arguments")
+			return cliInvocation{}, errors.New("version command does not accept arguments")
 		}
 
-		return cliCommandVersion, nil
+		return cliInvocation{command: cliCommandVersion}, nil
+	case string(cliCommandMCPScheduledTasks):
+		return cliInvocation{command: cliCommandMCPScheduledTasks, args: args[1:]}, nil
 	default:
-		return "", fmt.Errorf("unknown command %q", args[0])
+		return cliInvocation{}, fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func runMCPScheduledTasks(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet(string(cliCommandMCPScheduledTasks), flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+
+	var sqlitePath string
+	var timezoneName string
+	var defaultReportChannelID string
+	flags.StringVar(&sqlitePath, "sqlite-path", "", "sqlite database path")
+	flags.StringVar(&timezoneName, "timezone", "", "IANA timezone name")
+	flags.StringVar(&defaultReportChannelID, "default-report-channel-id", "", "default report channel")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+
+	if sqlitePath == "" {
+		return errors.New("--sqlite-path is required")
+	}
+	if timezoneName == "" {
+		return errors.New("--timezone is required")
+	}
+
+	location, err := time.LoadLocation(timezoneName)
+	if err != nil {
+		return fmt.Errorf("load timezone %q: %w", timezoneName, err)
+	}
+
+	return scheduled.RunMCPScheduledTasksMain(ctx, sqlitePath, location, defaultReportChannelID)
 }
 
 func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
@@ -143,6 +189,17 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		return err
 	}
 
+	executablePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve 39claw executable path: %w", err)
+	}
+	threadOptions.ConfigOverrides = append(threadOptions.ConfigOverrides, scheduled.BuildMCPConfigOverride(
+		executablePath,
+		cfg.SQLitePath,
+		cfg.TimezoneName,
+		cfg.ScheduledReportChannelID,
+	))
+
 	if cfg.Mode == config.ModeDaily {
 		if threadOptions.SandboxMode == codex.SandboxModeReadOnly {
 			return errors.New("daily memory bridge requires CLAW_CODEX_SANDBOX_MODE to allow writes inside CLAW_CODEX_WORKDIR")
@@ -179,8 +236,9 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	}
 
 	var workspaceManager app.TaskWorkspaceManager
+	var scheduledWorkspaceManager app.ScheduledTaskWorkspaceManager
 	if cfg.Mode == config.ModeTask {
-		workspaceManager, err = app.NewTaskWorkspaceManager(ctx, app.TaskWorkspaceManagerDependencies{
+		taskWorkspaceManager, err := app.NewTaskWorkspaceManager(ctx, app.TaskWorkspaceManagerDependencies{
 			Store:            store,
 			SourceRepository: cfg.CodexWorkdir,
 			DataDir:          cfg.DataDir,
@@ -189,6 +247,8 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		if err != nil {
 			return fmt.Errorf("build task workspace manager: %w", err)
 		}
+		workspaceManager = taskWorkspaceManager
+		scheduledWorkspaceManager = taskWorkspaceManager
 	}
 
 	policy, err := thread.NewPolicy(cfg.Mode, cfg.Timezone, store)
@@ -231,11 +291,36 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		return fmt.Errorf("build discord runtime: %w", err)
 	}
 
+	scheduledTaskService, err := app.NewScheduledTaskService(app.ScheduledTaskServiceDependencies{
+		Mode:                   cfg.Mode,
+		Timezone:               cfg.Timezone,
+		Workdir:                cfg.CodexWorkdir,
+		DefaultReportChannelID: cfg.ScheduledReportChannelID,
+		Store:                  store,
+		Gateway:                gateway,
+		ReportSender:           runtime,
+		WorkspaceManager:       scheduledWorkspaceManager,
+		Logger:                 logger,
+	})
+	if err != nil {
+		return fmt.Errorf("build scheduled task service: %w", err)
+	}
+
 	if err := runtime.Start(ctx); err != nil {
 		return fmt.Errorf("start discord runtime: %w", err)
 	}
 
+	if err := scheduledTaskService.Start(ctx); err != nil {
+		return fmt.Errorf("start scheduled task service: %w", err)
+	}
+
 	<-ctx.Done()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), scheduledTaskShutdownTimeout)
+	defer shutdownCancel()
+	if err := scheduledTaskService.Close(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+		return fmt.Errorf("close scheduled task service: %w", err)
+	}
 
 	if err := runtime.Close(); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("close discord runtime: %w", err)
@@ -245,8 +330,10 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 }
 
 var (
-	_ app.ThreadStore  = (*sqlitestore.Store)(nil)
-	_ app.CodexGateway = (*codex.Gateway)(nil)
+	_ app.ThreadStore               = (*sqlitestore.Store)(nil)
+	_ app.ScheduledTaskStore        = (*sqlitestore.Store)(nil)
+	_ app.CodexGateway              = (*codex.Gateway)(nil)
+	_ app.ScheduledTaskReportSender = (*runtimediscord.Runtime)(nil)
 )
 
 func loadThreadOptions(cfg config.Config) (codex.ThreadOptions, error) {

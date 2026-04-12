@@ -14,6 +14,7 @@ import (
 	"github.com/HatsuneMiku3939/39claw/internal/codex"
 	"github.com/HatsuneMiku3939/39claw/internal/config"
 	runtimediscord "github.com/HatsuneMiku3939/39claw/internal/runtime/discord"
+	"github.com/HatsuneMiku3939/39claw/internal/scheduled"
 )
 
 func TestParseCLIArgs(t *testing.T) {
@@ -22,17 +23,17 @@ func TestParseCLIArgs(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    []string
-		want    cliCommand
+		want    cliInvocation
 		wantErr string
 	}{
 		{
 			name: "defaults to serve",
-			want: cliCommandServe,
+			want: cliInvocation{command: cliCommandServe},
 		},
 		{
 			name: "supports version command",
 			args: []string{"version"},
-			want: cliCommandVersion,
+			want: cliInvocation{command: cliCommandVersion},
 		},
 		{
 			name:    "rejects unknown command",
@@ -69,8 +70,8 @@ func TestParseCLIArgs(t *testing.T) {
 				t.Fatalf("parseCLIArgs() error = %v", err)
 			}
 
-			if got != tt.want {
-				t.Fatalf("parseCLIArgs() = %q, want %q", got, tt.want)
+			if got.command != tt.want.command {
+				t.Fatalf("parseCLIArgs().command = %q, want %q", got.command, tt.want.command)
 			}
 		})
 	}
@@ -317,6 +318,20 @@ func TestRun(t *testing.T) {
 				t.Fatalf("run() error = %v", err)
 			}
 
+			if tt.wantErr == "" {
+				executablePath, execErr := os.Executable()
+				if execErr != nil {
+					t.Fatalf("os.Executable() error = %v", execErr)
+				}
+
+				tt.wantThreadOptions.ConfigOverrides = []string{scheduled.BuildMCPConfigOverride(
+					executablePath,
+					filepath.Join(env["CLAW_DATADIR"], "39claw.sqlite"),
+					env["CLAW_TIMEZONE"],
+					env["CLAW_SCHEDULED_REPORT_CHANNEL_ID"],
+				)}
+			}
+
 			assertThreadOptionsEqual(t, capturedOptions.ThreadOptions, tt.wantThreadOptions)
 			assertStringMapEqual(t, capturedClientOptions.Env, tt.wantCodexEnv)
 
@@ -485,6 +500,10 @@ func (r *stubDiscordRuntime) Close() error {
 	return nil
 }
 
+func (r *stubDiscordRuntime) SendScheduledReport(ctx context.Context, channelID string, text string) (string, error) {
+	return "scheduled-message", nil
+}
+
 type stubCodexGateway struct{}
 
 func (stubCodexGateway) RunTurn(ctx context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
@@ -583,6 +602,21 @@ func assertThreadOptionsEqual(t *testing.T, got codex.ThreadOptions, want codex.
 
 	if got.SkipGitRepoCheck != want.SkipGitRepoCheck {
 		t.Fatalf("SkipGitRepoCheck = %t, want %t", got.SkipGitRepoCheck, want.SkipGitRepoCheck)
+	}
+
+	if len(got.ConfigOverrides) != len(want.ConfigOverrides) {
+		t.Fatalf("ConfigOverrides length = %d, want %d", len(got.ConfigOverrides), len(want.ConfigOverrides))
+	}
+
+	for index := range got.ConfigOverrides {
+		if got.ConfigOverrides[index] != want.ConfigOverrides[index] {
+			t.Fatalf(
+				"ConfigOverrides[%d] = %q, want %q",
+				index,
+				got.ConfigOverrides[index],
+				want.ConfigOverrides[index],
+			)
+		}
 	}
 
 	if got.ModelReasoningEffort != want.ModelReasoningEffort {

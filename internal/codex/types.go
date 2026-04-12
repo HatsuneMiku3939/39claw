@@ -42,6 +42,7 @@ type ThreadOptions struct {
 	SandboxMode           SandboxMode
 	WorkingDirectory      string
 	AdditionalDirectories []string
+	ConfigOverrides       []string
 	SkipGitRepoCheck      bool
 	ModelReasoningEffort  ModelReasoningEffort
 	NetworkAccessEnabled  *bool

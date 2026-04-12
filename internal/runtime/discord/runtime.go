@@ -473,6 +473,31 @@ func (r *Runtime) presentMessageResponse(discordSession session, channelID strin
 	return presentMessage(discordSession, channelID, response)
 }
 
+func (r *Runtime) SendScheduledReport(ctx context.Context, channelID string, text string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
+	r.mu.Lock()
+	if r.session == nil || r.closing {
+		r.mu.Unlock()
+		return "", errors.New("discord runtime is not running")
+	}
+	discordSession := r.session
+	r.workers.Add(1)
+	r.mu.Unlock()
+	defer r.workers.Done()
+
+	messageID, err := r.presentMessageResponse(discordSession, channelID, app.MessageResponse{
+		Text: text,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return messageID, nil
+}
+
 func (r *Runtime) addCompletionReaction(discordSession session, channelID string, messageID string) {
 	if strings.TrimSpace(channelID) == "" || strings.TrimSpace(messageID) == "" {
 		return

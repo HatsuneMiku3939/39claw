@@ -293,6 +293,56 @@ func (m *GitTaskWorkspaceManager) CurrentBranch(ctx context.Context, task Task) 
 	return branch, true, nil
 }
 
+func (m *GitTaskWorkspaceManager) PrepareTemporaryWorktree(
+	ctx context.Context,
+	runID string,
+) (string, func(context.Context) error, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return "", nil, errors.New("scheduled run id must not be empty")
+	}
+
+	managedRepositoryPath := m.managedRepositoryPath()
+	unlockManagedRepository := managedRepositoryLocks.lock(managedRepositoryPath)
+	defer unlockManagedRepository()
+
+	managedRepositoryPath, err := m.ensureManagedRepository(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+
+	baseRef, err := m.detectBaseRef(ctx, managedRepositoryPath)
+	if err != nil {
+		return "", nil, err
+	}
+
+	worktreePath := filepath.Join(m.dataDir, "scheduled-worktrees", runID)
+	if err := m.prepareWorktreePath(ctx, managedRepositoryPath, worktreePath); err != nil {
+		return "", nil, err
+	}
+
+	if _, err := m.runGitIn(ctx, managedRepositoryPath, "worktree", "add", "--detach", worktreePath, baseRef); err != nil {
+		return "", nil, err
+	}
+
+	cleanup := func(cleanupCtx context.Context) error {
+		unlock := managedRepositoryLocks.lock(managedRepositoryPath)
+		defer unlock()
+
+		if _, err := m.runGitIn(cleanupCtx, managedRepositoryPath, "worktree", "remove", "--force", worktreePath); err != nil {
+			return err
+		}
+
+		if err := os.RemoveAll(worktreePath); err != nil {
+			return fmt.Errorf("remove scheduled worktree path: %w", err)
+		}
+
+		return nil
+	}
+
+	return worktreePath, cleanup, nil
+}
+
 func (m *GitTaskWorkspaceManager) detectBaseRef(ctx context.Context, repositoryPath string) (string, error) {
 	if ref, ok := m.originHeadRef(ctx, repositoryPath); ok {
 		return ref, nil

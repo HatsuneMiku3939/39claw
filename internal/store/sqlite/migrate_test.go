@@ -27,11 +27,20 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	}
 
 	versions := appliedVersionsForTest(t, db)
-	if !slices.Equal(versions, []int{1, 2, 3}) {
-		t.Fatalf("applied migration versions = %v, want %v", versions, []int{1, 2, 3})
+	if !slices.Equal(versions, []int{1, 2, 3, 4, 5}) {
+		t.Fatalf("applied migration versions = %v, want %v", versions, []int{1, 2, 3, 4, 5})
 	}
 
-	for _, tableName := range []string{"schema_migrations", "thread_bindings", "tasks", "active_tasks", "daily_sessions"} {
+	for _, tableName := range []string{
+		"schema_migrations",
+		"thread_bindings",
+		"tasks",
+		"active_tasks",
+		"daily_sessions",
+		"scheduled_tasks",
+		"scheduled_task_runs",
+		"scheduled_task_deliveries",
+	} {
 		exists, err := tableExists(context.Background(), db, tableName)
 		if err != nil {
 			t.Fatalf("tableExists(%q) error = %v", tableName, err)
@@ -137,8 +146,8 @@ func TestMigrateLegacyDatabaseBootstrapRecognizesLatestSchema(t *testing.T) {
 	}
 
 	versions := appliedVersionsForTest(t, reopened)
-	if !slices.Equal(versions, []int{1, 2, 3}) {
-		t.Fatalf("applied migration versions = %v, want %v", versions, []int{1, 2, 3})
+	if !slices.Equal(versions, []int{1, 2, 3, 4, 5}) {
+		t.Fatalf("applied migration versions = %v, want %v", versions, []int{1, 2, 3, 4, 5})
 	}
 
 	store := New(reopened)
