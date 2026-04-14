@@ -266,6 +266,7 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	if err != nil {
 		return fmt.Errorf("build scheduled task service: %w", err)
 	}
+	scheduledMCPServer.SetExecutor(scheduledTaskService)
 
 	if err := runtime.Start(ctx); err != nil {
 		return fmt.Errorf("start discord runtime: %w", err)

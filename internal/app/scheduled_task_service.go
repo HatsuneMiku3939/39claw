@@ -128,6 +128,12 @@ func (s *ScheduledTaskService) Start(ctx context.Context) error {
 	s.cancel = cancel
 	s.started = true
 	s.loopWG.Add(1)
+	s.logger.Info(
+		"scheduled task service started",
+		"mode", s.mode,
+		"tick_interval", s.tickInterval.String(),
+		"timezone", s.timezone.String(),
+	)
 	go s.loop(loopCtx)
 	return nil
 }
@@ -156,10 +162,54 @@ func (s *ScheduledTaskService) Close(ctx context.Context) error {
 
 	select {
 	case <-done:
+		s.logger.Info("scheduled task service stopped", "mode", s.mode)
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func (s *ScheduledTaskService) ExecuteTaskNow(ctx context.Context, taskName string) (ScheduledTaskRun, error) {
+	trimmedName := strings.TrimSpace(taskName)
+	if trimmedName == "" {
+		return ScheduledTaskRun{}, fmt.Errorf("scheduled task name must not be empty")
+	}
+
+	task, ok, err := s.store.GetScheduledTaskByName(ctx, trimmedName)
+	if err != nil {
+		return ScheduledTaskRun{}, fmt.Errorf("load scheduled task %q: %w", trimmedName, err)
+	}
+	if !ok {
+		return ScheduledTaskRun{}, fmt.Errorf("scheduled task %q was not found", trimmedName)
+	}
+
+	run := ScheduledTaskRun{
+		ScheduledRunID:  s.newRunID(),
+		ScheduledTaskID: task.ScheduledTaskID,
+		Mode:            string(s.mode),
+		ScheduledFor:    s.now().UTC(),
+		Attempt:         1,
+		Status:          ScheduledTaskRunStatusPending,
+	}
+	s.logger.Info(
+		"scheduled task execute-now requested",
+		"task", task.Name,
+		"task_id", task.ScheduledTaskID,
+		"scheduled_for", run.ScheduledFor,
+	)
+
+	admittedRun, admitted, err := s.store.AdmitScheduledTaskRun(ctx, run)
+	if err != nil {
+		return ScheduledTaskRun{}, fmt.Errorf("admit execute-now scheduled task run: %w", err)
+	}
+	if !admitted {
+		return ScheduledTaskRun{}, fmt.Errorf("scheduled task %q execute-now run was not admitted", trimmedName)
+	}
+
+	s.runWG.Add(1)
+	defer s.runWG.Done()
+
+	return s.executeRun(ctx, task, admittedRun), nil
 }
 
 func (s *ScheduledTaskService) loop(ctx context.Context) {
@@ -181,31 +231,46 @@ func (s *ScheduledTaskService) loop(ctx context.Context) {
 }
 
 func (s *ScheduledTaskService) tick(ctx context.Context) {
+	now := s.now().In(s.timezone)
+	s.logger.Info("scheduled task tick started", "mode", s.mode, "now", now)
+
 	tasks, err := s.store.ListEnabledScheduledTasks(ctx)
 	if err != nil {
 		s.logger.Error("list enabled scheduled tasks", "error", err)
 		return
 	}
 
-	now := s.now().In(s.timezone)
+	totalDue := 0
+	totalAdmitted := 0
 	for _, task := range tasks {
+		taskLogger := s.logger.With("task", task.Name, "task_id", task.ScheduledTaskID)
 		schedule, err := ParseScheduledTaskSchedule(task, s.timezone)
 		if err != nil {
-			s.logger.Error("parse scheduled task definition", "task", task.Name, "error", err)
+			taskLogger.Error("parse scheduled task definition", "error", err)
 			continue
 		}
 
 		anchor := task.CreatedAt.In(s.timezone).Add(-time.Second)
 		latestRun, ok, err := s.store.GetLatestScheduledTaskRunForTask(ctx, task.ScheduledTaskID)
 		if err != nil {
-			s.logger.Error("load latest scheduled task run", "task", task.Name, "error", err)
+			taskLogger.Error("load latest scheduled task run", "error", err)
 			continue
 		}
 		if ok {
 			anchor = latestRun.ScheduledFor.In(s.timezone)
 		}
+		taskLogger.Info(
+			"scheduled task evaluation started",
+			"schedule_kind", task.ScheduleKind,
+			"schedule_expr", task.ScheduleExpr,
+			"anchor", anchor,
+			"now", now,
+		)
 
 		for due := schedule.Next(anchor); !due.IsZero() && !due.After(now); due = schedule.Next(due) {
+			totalDue++
+			taskLogger.Info("scheduled task due run identified", "scheduled_for", due)
+
 			run, admitted, err := s.store.AdmitScheduledTaskRun(ctx, ScheduledTaskRun{
 				ScheduledRunID:  s.newRunID(),
 				ScheduledTaskID: task.ScheduledTaskID,
@@ -215,12 +280,15 @@ func (s *ScheduledTaskService) tick(ctx context.Context) {
 				Status:          ScheduledTaskRunStatusPending,
 			})
 			if err != nil {
-				s.logger.Error("admit scheduled task run", "task", task.Name, "scheduled_for", due, "error", err)
+				taskLogger.Error("admit scheduled task run", "scheduled_for", due, "error", err)
 				break
 			}
 			if !admitted {
+				taskLogger.Info("scheduled task run already admitted", "scheduled_for", due)
 				continue
 			}
+			totalAdmitted++
+			taskLogger.Info("scheduled task run admitted", "scheduled_for", due, "run_id", run.ScheduledRunID)
 
 			s.runWG.Add(1)
 			go func(task ScheduledTask, run ScheduledTaskRun) {
@@ -229,35 +297,53 @@ func (s *ScheduledTaskService) tick(ctx context.Context) {
 			}(task, run)
 		}
 	}
+
+	s.logger.Info(
+		"scheduled task tick finished",
+		"mode", s.mode,
+		"task_count", len(tasks),
+		"due_count", totalDue,
+		"admitted_count", totalAdmitted,
+	)
 }
 
-func (s *ScheduledTaskService) executeRun(ctx context.Context, task ScheduledTask, run ScheduledTaskRun) {
+func (s *ScheduledTaskService) executeRun(ctx context.Context, task ScheduledTask, run ScheduledTaskRun) ScheduledTaskRun {
+	runLogger := s.logger.With(
+		"task", task.Name,
+		"task_id", task.ScheduledTaskID,
+		"run_id", run.ScheduledRunID,
+		"scheduled_for", run.ScheduledFor,
+	)
+	runLogger.Info("scheduled task run started", "mode", run.Mode, "attempt", run.Attempt)
+
 	startedAt := s.now()
 	run.Status = ScheduledTaskRunStatusRunning
 	run.StartedAt = &startedAt
 	run.UpdatedAt = startedAt
 	if err := s.store.UpdateScheduledTaskRun(ctx, run); err != nil {
-		s.logger.Error("mark scheduled task run started", "run_id", run.ScheduledRunID, "error", err)
-		return
+		runLogger.Error("mark scheduled task run started", "error", err)
+		return run
 	}
 
 	workdir := s.workdir
 	cleanup := func(context.Context) error { return nil }
 	if s.mode == config.ModeTask {
+		runLogger.Info("scheduled task worktree preparation started")
 		tempWorktreePath, cleanupFn, err := s.workspaceManager.PrepareTemporaryWorktree(ctx, run.ScheduledRunID)
 		if err != nil {
-			s.failRun(ctx, task, run, "workspace_prepare_failed", err.Error(), true)
-			return
+			return s.failRun(ctx, task, run, "workspace_prepare_failed", err.Error(), true)
 		}
 		workdir = tempWorktreePath
 		run.TempWorktreePath = tempWorktreePath
 		run.WorkdirPath = tempWorktreePath
 		cleanup = cleanupFn
+		runLogger.Info("scheduled task worktree prepared", "workdir", workdir)
 	} else {
 		run.WorkdirPath = s.workdir
 	}
 
 	prompt := buildScheduledRunPrompt(task, run)
+	runLogger.Info("scheduled task Codex run started", "workdir", workdir)
 	result, err := s.gateway.RunTurn(ctx, "", CodexTurnInput{
 		Prompt:           prompt,
 		WorkingDirectory: workdir,
@@ -270,18 +356,23 @@ func (s *ScheduledTaskService) executeRun(ctx context.Context, task ScheduledTas
 	run.UpdatedAt = finishedAt
 
 	if err != nil {
-		s.failRun(ctx, task, run, "codex_run_failed", err.Error(), true)
+		run = s.failRun(ctx, task, run, "codex_run_failed", err.Error(), true)
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), scheduledTaskCleanupTimeout)
 		if cleanupErr := cleanup(cleanupCtx); cleanupErr != nil {
-			s.logger.Error("cleanup scheduled task worktree after failure", "run_id", run.ScheduledRunID, "error", cleanupErr)
+			runLogger.Error("cleanup scheduled task worktree after failure", "error", cleanupErr)
 		}
 		cancel()
-		return
+		return run
 	}
+	runLogger.Info(
+		"scheduled task Codex run finished",
+		"thread_id", run.CodexThreadID,
+		"response_char_count", len(run.ResponseText),
+	)
 
 	run.Status = ScheduledTaskRunStatusSucceeded
 	if updateErr := s.store.UpdateScheduledTaskRun(ctx, run); updateErr != nil {
-		s.logger.Error("persist scheduled task run success", "run_id", run.ScheduledRunID, "error", updateErr)
+		runLogger.Error("persist scheduled task run success", "error", updateErr)
 	}
 
 	s.deliverRunResult(ctx, task, run)
@@ -292,11 +383,13 @@ func (s *ScheduledTaskService) executeRun(ctx context.Context, task ScheduledTas
 		run.ErrorMessage = cleanupErr.Error()
 		run.UpdatedAt = s.now()
 		if updateErr := s.store.UpdateScheduledTaskRun(ctx, run); updateErr != nil {
-			s.logger.Error("persist scheduled run cleanup failure", "run_id", run.ScheduledRunID, "error", updateErr)
+			runLogger.Error("persist scheduled run cleanup failure", "error", updateErr)
 		}
-		s.logger.Error("cleanup scheduled task worktree", "run_id", run.ScheduledRunID, "error", cleanupErr)
+		runLogger.Error("cleanup scheduled task worktree", "error", cleanupErr)
 	}
 	cancel()
+	runLogger.Info("scheduled task run finished", "status", run.Status)
+	return run
 }
 
 func (s *ScheduledTaskService) failRun(
@@ -306,7 +399,13 @@ func (s *ScheduledTaskService) failRun(
 	errorCode string,
 	errorMessage string,
 	mayRetry bool,
-) {
+) ScheduledTaskRun {
+	runLogger := s.logger.With(
+		"task", task.Name,
+		"task_id", task.ScheduledTaskID,
+		"run_id", run.ScheduledRunID,
+		"scheduled_for", run.ScheduledFor,
+	)
 	finishedAt := s.now()
 	run.Status = ScheduledTaskRunStatusFailed
 	run.ErrorCode = errorCode
@@ -314,8 +413,9 @@ func (s *ScheduledTaskService) failRun(
 	run.FinishedAt = &finishedAt
 	run.UpdatedAt = finishedAt
 	if err := s.store.UpdateScheduledTaskRun(ctx, run); err != nil {
-		s.logger.Error("persist scheduled task run failure", "run_id", run.ScheduledRunID, "error", err)
+		runLogger.Error("persist scheduled task run failure", "error", err)
 	}
+	runLogger.Error("scheduled task run failed", "error_code", errorCode, "error_message", errorMessage)
 
 	if mayRetry && run.Attempt < 2 {
 		retryRun, admitted, err := s.store.AdmitScheduledTaskRun(ctx, ScheduledTaskRun{
@@ -327,10 +427,11 @@ func (s *ScheduledTaskService) failRun(
 			Status:          ScheduledTaskRunStatusPending,
 		})
 		if err != nil {
-			s.logger.Error("admit scheduled task retry run", "run_id", run.ScheduledRunID, "error", err)
-			return
+			runLogger.Error("admit scheduled task retry run", "error", err)
+			return run
 		}
 		if admitted {
+			runLogger.Info("scheduled task retry run admitted", "retry_run_id", retryRun.ScheduledRunID, "attempt", retryRun.Attempt)
 			s.runWG.Add(1)
 			go func() {
 				defer s.runWG.Done()
@@ -338,10 +439,18 @@ func (s *ScheduledTaskService) failRun(
 			}()
 		}
 	}
+
+	return run
 }
 
 func (s *ScheduledTaskService) deliverRunResult(ctx context.Context, task ScheduledTask, run ScheduledTaskRun) {
 	channelID := ResolveScheduledTaskReportChannel(task, s.defaultReportChannelID)
+	deliveryLogger := s.logger.With(
+		"task", task.Name,
+		"task_id", task.ScheduledTaskID,
+		"run_id", run.ScheduledRunID,
+		"channel_id", channelID,
+	)
 	delivery := ScheduledTaskDelivery{
 		ScheduledDeliveryID: s.newDeliveryID(),
 		ScheduledRunID:      run.ScheduledRunID,
@@ -356,15 +465,17 @@ func (s *ScheduledTaskService) deliverRunResult(ctx context.Context, task Schedu
 		delivery.ErrorCode = "missing_report_channel"
 		delivery.ErrorMessage = "scheduled task does not resolve to a report channel"
 		if err := s.store.CreateScheduledTaskDelivery(ctx, delivery); err != nil {
-			s.logger.Error("record skipped scheduled task delivery", "run_id", run.ScheduledRunID, "error", err)
+			deliveryLogger.Error("record skipped scheduled task delivery", "error", err)
 		}
+		deliveryLogger.Info("scheduled task delivery skipped", "reason", delivery.ErrorCode)
 		return
 	}
 
 	if err := s.store.CreateScheduledTaskDelivery(ctx, delivery); err != nil {
-		s.logger.Error("create scheduled task delivery", "run_id", run.ScheduledRunID, "error", err)
+		deliveryLogger.Error("create scheduled task delivery", "error", err)
 		return
 	}
+	deliveryLogger.Info("scheduled task delivery started")
 
 	messageID, err := s.reportSender.SendScheduledReport(ctx, channelID, formatScheduledReport(task, run))
 	now := s.now()
@@ -375,16 +486,18 @@ func (s *ScheduledTaskService) deliverRunResult(ctx context.Context, task Schedu
 		delivery.ErrorCode = "discord_delivery_failed"
 		delivery.ErrorMessage = err.Error()
 		if updateErr := s.store.UpdateScheduledTaskDelivery(ctx, delivery); updateErr != nil {
-			s.logger.Error("update failed scheduled task delivery", "run_id", run.ScheduledRunID, "error", updateErr)
+			deliveryLogger.Error("update failed scheduled task delivery", "error", updateErr)
 		}
+		deliveryLogger.Error("scheduled task delivery failed", "error_message", delivery.ErrorMessage)
 		return
 	}
 
 	delivery.Status = ScheduledTaskDeliveryStatusSucceeded
 	delivery.DiscordMessageID = messageID
 	if err := s.store.UpdateScheduledTaskDelivery(ctx, delivery); err != nil {
-		s.logger.Error("update successful scheduled task delivery", "run_id", run.ScheduledRunID, "error", err)
+		deliveryLogger.Error("update successful scheduled task delivery", "error", err)
 	}
+	deliveryLogger.Info("scheduled task delivery finished", "message_id", messageID, "status", delivery.Status)
 }
 
 func buildScheduledRunPrompt(task ScheduledTask, run ScheduledTaskRun) string {

@@ -1,8 +1,12 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -31,6 +35,7 @@ func TestScheduledTaskServiceTickExecutesAndDeliversDueRun(t *testing.T) {
 			},
 		},
 	}
+	gateway := &fakeScheduledGateway{}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
 		Mode:                   config.ModeDaily,
@@ -38,7 +43,7 @@ func TestScheduledTaskServiceTickExecutesAndDeliversDueRun(t *testing.T) {
 		Workdir:                "/workspace/project",
 		DefaultReportChannelID: "channel-1",
 		Store:                  store,
-		Gateway:                fakeScheduledGateway{},
+		Gateway:                gateway,
 		ReportSender:           &fakeScheduledReportSender{},
 		Logger:                 nil,
 		Now: func() time.Time {
@@ -80,15 +85,232 @@ func TestScheduledTaskServiceTickExecutesAndDeliversDueRun(t *testing.T) {
 	if delivery.DiscordChannelID != "channel-1" {
 		t.Fatalf("delivery channel = %q, want %q", delivery.DiscordChannelID, "channel-1")
 	}
+	if gateway.runCount() != 1 {
+		t.Fatalf("gateway run count = %d, want %d", gateway.runCount(), 1)
+	}
 }
 
-type fakeScheduledGateway struct{}
+func TestScheduledTaskServiceTickCatchesUpMultipleDueRuns(t *testing.T) {
+	t.Parallel()
 
-func (fakeScheduledGateway) RunTurn(ctx context.Context, threadID string, input CodexTurnInput) (RunTurnResult, error) {
+	location, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+
+	store := &fakeScheduledTaskStore{
+		tasks: []ScheduledTask{
+			{
+				ScheduledTaskID: "task-1",
+				Name:            "daily-report",
+				ScheduleKind:    ScheduledTaskScheduleKindCron,
+				ScheduleExpr:    "* * * * *",
+				Prompt:          "Write the report.",
+				Enabled:         true,
+				CreatedAt:       time.Date(2026, time.April, 12, 8, 0, 30, 0, location),
+			},
+		},
+	}
+	gateway := &fakeScheduledGateway{}
+
+	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
+		Mode:                   config.ModeDaily,
+		Timezone:               location,
+		Workdir:                "/workspace/project",
+		DefaultReportChannelID: "channel-1",
+		Store:                  store,
+		Gateway:                gateway,
+		ReportSender:           &fakeScheduledReportSender{},
+		Now: func() time.Time {
+			return time.Date(2026, time.April, 12, 8, 3, 0, 0, location)
+		},
+		NewRunID:      sequentialStringGenerator("run"),
+		NewDeliveryID: sequentialStringGenerator("delivery"),
+	})
+	if err != nil {
+		t.Fatalf("NewScheduledTaskService() error = %v", err)
+	}
+
+	service.tick(context.Background())
+	service.runWG.Wait()
+
+	if len(store.admittedRuns) != 3 {
+		t.Fatalf("admittedRuns count = %d, want %d", len(store.admittedRuns), 3)
+	}
+
+	wantDueTimes := []time.Time{
+		time.Date(2026, time.April, 12, 8, 1, 0, 0, location).UTC(),
+		time.Date(2026, time.April, 12, 8, 2, 0, 0, location).UTC(),
+		time.Date(2026, time.April, 12, 8, 3, 0, 0, location).UTC(),
+	}
+	for index, run := range store.admittedRuns {
+		if !run.ScheduledFor.Equal(wantDueTimes[index]) {
+			t.Fatalf("admittedRuns[%d].ScheduledFor = %v, want %v", index, run.ScheduledFor, wantDueTimes[index])
+		}
+	}
+
+	if gateway.runCount() != 3 {
+		t.Fatalf("gateway run count = %d, want %d", gateway.runCount(), 3)
+	}
+}
+
+func TestScheduledTaskServiceTickUsesLatestRunAsAnchor(t *testing.T) {
+	t.Parallel()
+
+	location, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+
+	existingRunTime := time.Date(2026, time.April, 12, 8, 2, 0, 0, location).UTC()
+	store := &fakeScheduledTaskStore{
+		tasks: []ScheduledTask{
+			{
+				ScheduledTaskID: "task-1",
+				Name:            "daily-report",
+				ScheduleKind:    ScheduledTaskScheduleKindCron,
+				ScheduleExpr:    "* * * * *",
+				Prompt:          "Write the report.",
+				Enabled:         true,
+				CreatedAt:       time.Date(2026, time.April, 12, 8, 0, 30, 0, location),
+			},
+		},
+		runs: map[string]ScheduledTaskRun{
+			"run-existing": {
+				ScheduledRunID:  "run-existing",
+				ScheduledTaskID: "task-1",
+				ScheduledFor:    existingRunTime,
+				Attempt:         1,
+				Status:          ScheduledTaskRunStatusSucceeded,
+			},
+		},
+	}
+	gateway := &fakeScheduledGateway{}
+
+	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
+		Mode:                   config.ModeDaily,
+		Timezone:               location,
+		Workdir:                "/workspace/project",
+		DefaultReportChannelID: "channel-1",
+		Store:                  store,
+		Gateway:                gateway,
+		ReportSender:           &fakeScheduledReportSender{},
+		Now: func() time.Time {
+			return time.Date(2026, time.April, 12, 8, 4, 0, 0, location)
+		},
+		NewRunID:      sequentialStringGenerator("run"),
+		NewDeliveryID: sequentialStringGenerator("delivery"),
+	})
+	if err != nil {
+		t.Fatalf("NewScheduledTaskService() error = %v", err)
+	}
+
+	service.tick(context.Background())
+	service.runWG.Wait()
+
+	if len(store.admittedRuns) != 2 {
+		t.Fatalf("admittedRuns count = %d, want %d", len(store.admittedRuns), 2)
+	}
+
+	wantDueTimes := []time.Time{
+		time.Date(2026, time.April, 12, 8, 3, 0, 0, location).UTC(),
+		time.Date(2026, time.April, 12, 8, 4, 0, 0, location).UTC(),
+	}
+	for index, run := range store.admittedRuns {
+		if !run.ScheduledFor.Equal(wantDueTimes[index]) {
+			t.Fatalf("admittedRuns[%d].ScheduledFor = %v, want %v", index, run.ScheduledFor, wantDueTimes[index])
+		}
+	}
+}
+
+func TestScheduledTaskServiceExecuteTaskNowRunsImmediately(t *testing.T) {
+	t.Parallel()
+
+	location, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	store := &fakeScheduledTaskStore{
+		tasks: []ScheduledTask{
+			{
+				ScheduledTaskID: "task-1",
+				Name:            "daily-report",
+				ScheduleKind:    ScheduledTaskScheduleKindCron,
+				ScheduleExpr:    "* * * * *",
+				Prompt:          "Write the report.",
+				Enabled:         true,
+				CreatedAt:       time.Date(2026, time.April, 12, 8, 0, 30, 0, location),
+			},
+		},
+	}
+	gateway := &fakeScheduledGateway{}
+	reportSender := &fakeScheduledReportSender{}
+
+	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
+		Mode:                   config.ModeDaily,
+		Timezone:               location,
+		Workdir:                "/workspace/project",
+		DefaultReportChannelID: "channel-1",
+		Store:                  store,
+		Gateway:                gateway,
+		ReportSender:           reportSender,
+		Logger:                 logger,
+		Now: func() time.Time {
+			return time.Date(2026, time.April, 12, 8, 5, 10, 0, location)
+		},
+		NewRunID:      func() string { return "run-now-1" },
+		NewDeliveryID: func() string { return "delivery-now-1" },
+	})
+	if err != nil {
+		t.Fatalf("NewScheduledTaskService() error = %v", err)
+	}
+
+	run, err := service.ExecuteTaskNow(context.Background(), "daily-report")
+	if err != nil {
+		t.Fatalf("ExecuteTaskNow() error = %v", err)
+	}
+
+	if run.ScheduledRunID != "run-now-1" {
+		t.Fatalf("run ID = %q, want %q", run.ScheduledRunID, "run-now-1")
+	}
+	if run.Status != ScheduledTaskRunStatusSucceeded {
+		t.Fatalf("run status = %q, want %q", run.Status, ScheduledTaskRunStatusSucceeded)
+	}
+	if gateway.runCount() != 1 {
+		t.Fatalf("gateway run count = %d, want %d", gateway.runCount(), 1)
+	}
+	if len(reportSender.messages) != 1 {
+		t.Fatalf("report sender message count = %d, want %d", len(reportSender.messages), 1)
+	}
+	if !strings.Contains(logs.String(), "scheduled task execute-now requested") {
+		t.Fatalf("log output = %q, want execute-now message", logs.String())
+	}
+}
+
+type fakeScheduledGateway struct {
+	mu     sync.Mutex
+	inputs []CodexTurnInput
+}
+
+func (g *fakeScheduledGateway) RunTurn(ctx context.Context, threadID string, input CodexTurnInput) (RunTurnResult, error) {
+	g.mu.Lock()
+	g.inputs = append(g.inputs, input)
+	g.mu.Unlock()
+
 	return RunTurnResult{
 		ThreadID:     "thread-1",
 		ResponseText: "Scheduled run complete.",
 	}, nil
+}
+
+func (g *fakeScheduledGateway) runCount() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return len(g.inputs)
 }
 
 type fakeScheduledReportSender struct {
@@ -265,4 +487,16 @@ func (s *fakeScheduledTaskStore) UpdateScheduledTaskDelivery(ctx context.Context
 	}
 	s.deliveries[delivery.ScheduledDeliveryID] = delivery
 	return nil
+}
+
+func sequentialStringGenerator(prefix string) func() string {
+	var mu sync.Mutex
+	counter := 0
+
+	return func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		counter++
+		return prefix + "-" + strconv.Itoa(counter)
+	}
 }

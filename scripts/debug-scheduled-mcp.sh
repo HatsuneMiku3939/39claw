@@ -15,6 +15,7 @@ Examples:
   scripts/debug-scheduled-mcp.sh http://127.0.0.1:34725/mcp/scheduled-tasks list-tools
   scripts/debug-scheduled-mcp.sh http://127.0.0.1:34725/mcp/scheduled-tasks list-tasks
   scripts/debug-scheduled-mcp.sh http://127.0.0.1:34725/mcp/scheduled-tasks call scheduled_tasks_get '{"name":"daily-report"}'
+  scripts/debug-scheduled-mcp.sh http://127.0.0.1:34725/mcp/scheduled-tasks call scheduled_tasks_execute_now '{"name":"daily-report"}'
 
 Environment:
   MCP_PROTOCOL_VERSION   Override the initialize protocol version. Default: 2025-11-25

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/HatsuneMiku3939/39claw/internal/app"
@@ -20,9 +21,11 @@ const (
 
 type MCPServer struct {
 	Store                  app.ScheduledTaskStore
+	Executor               app.ScheduledTaskExecutor
 	Timezone               *time.Location
 	DefaultReportChannelID string
 	Now                    func() time.Time
+	mu                     sync.RWMutex
 }
 
 func (s *MCPServer) BuildServer() (*mcpserver.MCPServer, error) {
@@ -43,8 +46,21 @@ func (s *MCPServer) BuildServer() (*mcpserver.MCPServer, error) {
 	server.AddTool(scheduledTasksEnableTool(), s.enableTask)
 	server.AddTool(scheduledTasksDisableTool(), s.disableTask)
 	server.AddTool(scheduledTasksDeleteTool(), s.deleteTask)
+	server.AddTool(scheduledTasksExecuteNowTool(), s.executeTaskNow)
 
 	return server, nil
+}
+
+func (s *MCPServer) SetExecutor(executor app.ScheduledTaskExecutor) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Executor = executor
+}
+
+func (s *MCPServer) loadExecutor() app.ScheduledTaskExecutor {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.Executor
 }
 
 func (s *MCPServer) prepare() error {
@@ -210,6 +226,25 @@ func (s *MCPServer) deleteTask(ctx context.Context, request mcp.CallToolRequest)
 	return structuredToolResult(map[string]any{"deleted": task.Name}), nil
 }
 
+func (s *MCPServer) executeTaskNow(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	executor := s.loadExecutor()
+	if executor == nil {
+		return mcp.NewToolResultError("scheduled task execute-now endpoint is not available"), nil
+	}
+
+	name, err := request.RequireString("name")
+	if err != nil {
+		return toolErrorResult("read required name", err), nil
+	}
+
+	run, err := executor.ExecuteTaskNow(ctx, strings.TrimSpace(name))
+	if err != nil {
+		return toolErrorResult("execute scheduled task immediately", err), nil
+	}
+
+	return structuredToolResult(run), nil
+}
+
 func (s *MCPServer) toggleTask(
 	ctx context.Context,
 	request mcp.CallToolRequest,
@@ -312,6 +347,14 @@ func scheduledTasksDeleteTool() mcp.Tool {
 	return mcp.NewTool(
 		"scheduled_tasks_delete",
 		mcp.WithDescription("Delete a scheduled task by name."),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Scheduled task name.")),
+	)
+}
+
+func scheduledTasksExecuteNowTool() mcp.Tool {
+	return mcp.NewTool(
+		"scheduled_tasks_execute_now",
+		mcp.WithDescription("Execute one scheduled task immediately for debugging by name."),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Scheduled task name.")),
 	)
 }

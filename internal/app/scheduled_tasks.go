@@ -99,3 +99,7 @@ type ScheduledTaskReportSender interface {
 type ScheduledTaskWorkspaceManager interface {
 	PrepareTemporaryWorktree(ctx context.Context, runID string) (string, func(context.Context) error, error)
 }
+
+type ScheduledTaskExecutor interface {
+	ExecuteTaskNow(ctx context.Context, taskName string) (ScheduledTaskRun, error)
+}

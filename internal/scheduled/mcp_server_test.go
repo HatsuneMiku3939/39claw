@@ -96,6 +96,59 @@ func TestMCPServerCreateAndListScheduledTasks(t *testing.T) {
 	}
 }
 
+func TestMCPServerExecuteNowUsesExecutor(t *testing.T) {
+	t.Parallel()
+
+	location, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+
+	scheduledServer := &MCPServer{
+		Store:                  &fakeScheduledTaskStore{},
+		Executor:               fakeScheduledTaskExecutor{},
+		Timezone:               location,
+		DefaultReportChannelID: "12345",
+	}
+
+	mcpServer, err := scheduledServer.BuildServer()
+	if err != nil {
+		t.Fatalf("BuildServer() error = %v", err)
+	}
+
+	mcpClient, err := client.NewInProcessClient(mcpServer)
+	if err != nil {
+		t.Fatalf("NewInProcessClient() error = %v", err)
+	}
+	defer mcpClient.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := mcpClient.Start(ctx); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	initializeMCPClient(t, ctx, mcpClient)
+
+	result, err := mcpClient.CallTool(ctx, callToolRequest("scheduled_tasks_execute_now", map[string]any{
+		"name": "daily-report",
+	}))
+	if err != nil {
+		t.Fatalf("CallTool(execute_now) error = %v", err)
+	}
+	if result.IsError {
+		t.Fatal("CallTool(execute_now) IsError = true, want false")
+	}
+
+	run := decodeStructuredRun(t, result.StructuredContent)
+	if run.ScheduledRunID != "run-debug-1" {
+		t.Fatalf("run ID = %q, want %q", run.ScheduledRunID, "run-debug-1")
+	}
+	if run.Status != app.ScheduledTaskRunStatusSucceeded {
+		t.Fatalf("run status = %q, want %q", run.Status, app.ScheduledTaskRunStatusSucceeded)
+	}
+}
+
 func initializeMCPClient(t *testing.T, ctx context.Context, mcpClient *client.Client) {
 	t.Helper()
 
@@ -148,4 +201,92 @@ func decodeStructuredTasks(t *testing.T, value any) []app.ScheduledTask {
 	}
 
 	return tasks
+}
+
+func decodeStructuredRun(t *testing.T, value any) app.ScheduledTaskRun {
+	t.Helper()
+
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal(structured run) error = %v", err)
+	}
+
+	var run app.ScheduledTaskRun
+	if err := json.Unmarshal(payload, &run); err != nil {
+		t.Fatalf("json.Unmarshal(structured run) error = %v", err)
+	}
+
+	return run
+}
+
+type fakeScheduledTaskStore struct{}
+
+func (fakeScheduledTaskStore) ListScheduledTasks(ctx context.Context) ([]app.ScheduledTask, error) {
+	return nil, nil
+}
+
+func (fakeScheduledTaskStore) ListEnabledScheduledTasks(ctx context.Context) ([]app.ScheduledTask, error) {
+	return nil, nil
+}
+
+func (fakeScheduledTaskStore) GetScheduledTaskByID(ctx context.Context, scheduledTaskID string) (app.ScheduledTask, bool, error) {
+	return app.ScheduledTask{}, false, nil
+}
+
+func (fakeScheduledTaskStore) GetScheduledTaskByName(ctx context.Context, name string) (app.ScheduledTask, bool, error) {
+	return app.ScheduledTask{}, false, nil
+}
+
+func (fakeScheduledTaskStore) CreateScheduledTask(ctx context.Context, task app.ScheduledTask) error {
+	return nil
+}
+
+func (fakeScheduledTaskStore) UpdateScheduledTask(ctx context.Context, task app.ScheduledTask) error {
+	return nil
+}
+
+func (fakeScheduledTaskStore) DeleteScheduledTask(ctx context.Context, scheduledTaskID string) error {
+	return nil
+}
+
+func (fakeScheduledTaskStore) GetLatestScheduledTaskRunForTask(ctx context.Context, scheduledTaskID string) (app.ScheduledTaskRun, bool, error) {
+	return app.ScheduledTaskRun{}, false, nil
+}
+
+func (fakeScheduledTaskStore) AdmitScheduledTaskRun(ctx context.Context, run app.ScheduledTaskRun) (app.ScheduledTaskRun, bool, error) {
+	return app.ScheduledTaskRun{}, false, nil
+}
+
+func (fakeScheduledTaskStore) UpdateScheduledTaskRun(ctx context.Context, run app.ScheduledTaskRun) error {
+	return nil
+}
+
+func (fakeScheduledTaskStore) ListScheduledTaskRunsForDueTime(
+	ctx context.Context,
+	scheduledTaskID string,
+	scheduledFor time.Time,
+) ([]app.ScheduledTaskRun, error) {
+	return nil, nil
+}
+
+func (fakeScheduledTaskStore) CreateScheduledTaskDelivery(ctx context.Context, delivery app.ScheduledTaskDelivery) error {
+	return nil
+}
+
+func (fakeScheduledTaskStore) UpdateScheduledTaskDelivery(ctx context.Context, delivery app.ScheduledTaskDelivery) error {
+	return nil
+}
+
+type fakeScheduledTaskExecutor struct{}
+
+func (fakeScheduledTaskExecutor) ExecuteTaskNow(ctx context.Context, taskName string) (app.ScheduledTaskRun, error) {
+	return app.ScheduledTaskRun{
+		ScheduledRunID:  "run-debug-1",
+		ScheduledTaskID: "task-1",
+		Mode:            "daily",
+		ScheduledFor:    time.Date(2026, time.April, 12, 8, 1, 0, 0, time.UTC),
+		Attempt:         1,
+		Status:          app.ScheduledTaskRunStatusSucceeded,
+		ResponseText:    "done",
+	}, nil
 }

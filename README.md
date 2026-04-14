@@ -501,6 +501,7 @@ For manual scheduled-task MCP debugging against a running 39claw process, use:
 ```bash
 scripts/debug-scheduled-mcp.sh http://127.0.0.1:34725/mcp/scheduled-tasks list-tools
 scripts/debug-scheduled-mcp.sh http://127.0.0.1:34725/mcp/scheduled-tasks list-tasks
+scripts/debug-scheduled-mcp.sh http://127.0.0.1:34725/mcp/scheduled-tasks call scheduled_tasks_execute_now '{"name":"nightly-report"}'
 ```
 
 The helper performs `initialize`, reuses the returned `Mcp-Session-Id`, and can also call individual tools with raw JSON arguments.

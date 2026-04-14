@@ -90,8 +90,8 @@ func TestHTTPServerSupportsMCPGoStreamableHTTPClientAndSharesStore(t *testing.T)
 	if err != nil {
 		t.Fatalf("ListTools() error = %v", err)
 	}
-	if len(listToolsResult.Tools) != 7 {
-		t.Fatalf("tool count = %d, want %d", len(listToolsResult.Tools), 7)
+	if len(listToolsResult.Tools) != 8 {
+		t.Fatalf("tool count = %d, want %d", len(listToolsResult.Tools), 8)
 	}
 
 	createResult, err := mcpClient.CallTool(clientCtx, callToolRequest("scheduled_tasks_create", map[string]any{

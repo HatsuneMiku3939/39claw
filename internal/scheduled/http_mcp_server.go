@@ -20,6 +20,7 @@ const (
 
 type HTTPServerDependencies struct {
 	Store                  app.ScheduledTaskStore
+	Executor               app.ScheduledTaskExecutor
 	Timezone               *time.Location
 	DefaultReportChannelID string
 	Logger                 *slog.Logger
@@ -27,6 +28,7 @@ type HTTPServerDependencies struct {
 
 type HTTPServer struct {
 	logger    *slog.Logger
+	mcpTools  *MCPServer
 	transport *mcpserver.StreamableHTTPServer
 	http      *http.Server
 }
@@ -39,6 +41,7 @@ func NewHTTPServer(deps HTTPServerDependencies) (*HTTPServer, error) {
 
 	mcpTools := &MCPServer{
 		Store:                  deps.Store,
+		Executor:               deps.Executor,
 		Timezone:               deps.Timezone,
 		DefaultReportChannelID: deps.DefaultReportChannelID,
 	}
@@ -61,12 +64,21 @@ func NewHTTPServer(deps HTTPServerDependencies) (*HTTPServer, error) {
 	mux.Handle(httpMCPBasePath+"/", transport)
 	server := &HTTPServer{
 		logger:    logger,
+		mcpTools:  mcpTools,
 		transport: transport,
 		http:      httpServer,
 	}
 	httpServer.Handler = server.wrapHTTPLogging(mux)
 
 	return server, nil
+}
+
+func (s *HTTPServer) SetExecutor(executor app.ScheduledTaskExecutor) {
+	if s == nil || s.mcpTools == nil {
+		return
+	}
+
+	s.mcpTools.SetExecutor(executor)
 }
 
 func (s *HTTPServer) Start(ctx context.Context) (string, error) {
