@@ -343,6 +343,35 @@ func TestScheduledTaskServiceExecuteRunDoesNotRetryCanceledRun(t *testing.T) {
 	}
 }
 
+func TestNewScheduledTaskServiceDefaultNowUsesLiveClock(t *testing.T) {
+	t.Parallel()
+
+	location, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+
+	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
+		Mode:                   config.ModeDaily,
+		Timezone:               location,
+		Workdir:                "/workspace/project",
+		DefaultReportChannelID: "channel-1",
+		Store:                  &fakeScheduledTaskStore{},
+		Gateway:                &fakeScheduledGateway{},
+		ReportSender:           &fakeScheduledReportSender{},
+	})
+	if err != nil {
+		t.Fatalf("NewScheduledTaskService() error = %v", err)
+	}
+
+	first := service.now()
+	time.Sleep(10 * time.Millisecond)
+	second := service.now()
+	if !second.After(first) {
+		t.Fatalf("default now clock did not advance: first=%v second=%v", first, second)
+	}
+}
+
 type fakeScheduledGateway struct {
 	mu     sync.Mutex
 	inputs []CodexTurnInput

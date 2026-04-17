@@ -21,8 +21,10 @@ type Store struct {
 
 func New(db *sql.DB) *Store {
 	return &Store{
-		db:    db,
-		clock: time.Now().UTC,
+		db: db,
+		clock: func() time.Time {
+			return time.Now().UTC()
+		},
 	}
 }
 

@@ -71,7 +71,9 @@ func (s *MCPServer) prepare() error {
 		return fmt.Errorf("timezone must not be nil")
 	}
 	if s.Now == nil {
-		s.Now = time.Now().UTC
+		s.Now = func() time.Time {
+			return time.Now().UTC()
+		}
 	}
 
 	return nil

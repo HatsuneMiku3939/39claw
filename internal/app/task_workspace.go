@@ -114,7 +114,9 @@ func NewTaskWorkspaceManager(ctx context.Context, deps TaskWorkspaceManagerDepen
 
 	clock := deps.Clock
 	if clock == nil {
-		clock = time.Now().UTC
+		clock = func() time.Time {
+			return time.Now().UTC()
+		}
 	}
 
 	manager := &GitTaskWorkspaceManager{

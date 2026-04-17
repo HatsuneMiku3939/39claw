@@ -85,7 +85,9 @@ func NewScheduledTaskService(deps ScheduledTaskServiceDependencies) (*ScheduledT
 
 	now := deps.Now
 	if now == nil {
-		now = time.Now().UTC
+		now = func() time.Time {
+			return time.Now().UTC()
+		}
 	}
 
 	newRunID := deps.NewRunID
