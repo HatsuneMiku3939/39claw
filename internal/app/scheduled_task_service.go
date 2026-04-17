@@ -247,7 +247,7 @@ func (s *ScheduledTaskService) loop(ctx context.Context) {
 
 func (s *ScheduledTaskService) tick(ctx context.Context) {
 	now := s.now().In(s.timezone)
-	s.logger.Info("scheduled task tick started", "mode", s.mode, "now", now)
+	s.logger.Debug("scheduled task tick started", "mode", s.mode, "now", now)
 
 	tasks, err := s.store.ListEnabledScheduledTasks(ctx)
 	if err != nil {
@@ -277,7 +277,7 @@ func (s *ScheduledTaskService) tick(ctx context.Context) {
 		if task.ScheduleKind == ScheduledTaskScheduleKindCron && !s.startedAt.IsZero() {
 			startFloor := s.startedAt.Add(-time.Nanosecond)
 			if anchor.Before(startFloor) {
-				taskLogger.Info(
+				taskLogger.Debug(
 					"scheduled task advanced anchor to scheduler start",
 					"previous_anchor", anchor,
 					"scheduler_started_at", s.startedAt,
@@ -285,7 +285,7 @@ func (s *ScheduledTaskService) tick(ctx context.Context) {
 				anchor = startFloor
 			}
 		}
-		taskLogger.Info(
+		taskLogger.Debug(
 			"scheduled task evaluation started",
 			"schedule_kind", task.ScheduleKind,
 			"schedule_expr", task.ScheduleExpr,
@@ -304,13 +304,13 @@ func (s *ScheduledTaskService) tick(ctx context.Context) {
 		}
 
 		if latestDue.IsZero() {
-			taskLogger.Info("scheduled task evaluation found no due run")
+			taskLogger.Debug("scheduled task evaluation found no due run")
 			continue
 		}
 
 		taskLogger.Info("scheduled task due run identified", "scheduled_for", latestDue)
 		if skippedBackfillCount > 0 {
-			taskLogger.Info(
+			taskLogger.Debug(
 				"scheduled task skipped overdue backfill runs",
 				"latest_scheduled_for", latestDue,
 				"skipped_count", skippedBackfillCount,
@@ -343,7 +343,7 @@ func (s *ScheduledTaskService) tick(ctx context.Context) {
 		}(task, run)
 	}
 
-	s.logger.Info(
+	s.logger.Debug(
 		"scheduled task tick finished",
 		"mode", s.mode,
 		"task_count", len(tasks),
