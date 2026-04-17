@@ -90,7 +90,7 @@ func TestScheduledTaskServiceTickExecutesAndDeliversDueRun(t *testing.T) {
 	}
 }
 
-func TestScheduledTaskServiceTickAdmitsOnlyLatestDueRunWithoutBackfill(t *testing.T) {
+func TestScheduledTaskServiceTickSkipsBackfillBeforeServiceStart(t *testing.T) {
 	t.Parallel()
 
 	location, err := time.LoadLocation("Asia/Tokyo")
@@ -122,8 +122,9 @@ func TestScheduledTaskServiceTickAdmitsOnlyLatestDueRunWithoutBackfill(t *testin
 		Gateway:                gateway,
 		ReportSender:           &fakeScheduledReportSender{},
 		Now: func() time.Time {
-			return time.Date(2026, time.April, 12, 8, 3, 0, 0, location)
+			return time.Date(2026, time.April, 12, 8, 3, 40, 0, location)
 		},
+		StartedAt:     time.Date(2026, time.April, 12, 8, 3, 30, 0, location),
 		NewRunID:      sequentialStringGenerator("run"),
 		NewDeliveryID: sequentialStringGenerator("delivery"),
 	})
@@ -134,17 +135,11 @@ func TestScheduledTaskServiceTickAdmitsOnlyLatestDueRunWithoutBackfill(t *testin
 	service.tick(context.Background())
 	service.runWG.Wait()
 
-	if len(store.admittedRuns) != 1 {
-		t.Fatalf("admittedRuns count = %d, want %d", len(store.admittedRuns), 1)
+	if len(store.admittedRuns) != 0 {
+		t.Fatalf("admittedRuns count = %d, want %d", len(store.admittedRuns), 0)
 	}
-
-	wantDueTime := time.Date(2026, time.April, 12, 8, 3, 0, 0, location).UTC()
-	if !store.admittedRuns[0].ScheduledFor.Equal(wantDueTime) {
-		t.Fatalf("admittedRuns[0].ScheduledFor = %v, want %v", store.admittedRuns[0].ScheduledFor, wantDueTime)
-	}
-
-	if gateway.runCount() != 1 {
-		t.Fatalf("gateway run count = %d, want %d", gateway.runCount(), 1)
+	if gateway.runCount() != 0 {
+		t.Fatalf("gateway run count = %d, want %d", gateway.runCount(), 0)
 	}
 }
 

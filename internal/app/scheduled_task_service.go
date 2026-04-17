@@ -31,6 +31,7 @@ type ScheduledTaskServiceDependencies struct {
 	Logger                 *slog.Logger
 	TickInterval           time.Duration
 	Now                    func() time.Time
+	StartedAt              time.Time
 	NewRunID               func() string
 	NewDeliveryID          func() string
 }
@@ -49,6 +50,7 @@ type ScheduledTaskService struct {
 	now                    func() time.Time
 	newRunID               func() string
 	newDeliveryID          func() string
+	startedAt              time.Time
 
 	mu      sync.Mutex
 	cancel  context.CancelFunc
@@ -100,6 +102,11 @@ func NewScheduledTaskService(deps ScheduledTaskServiceDependencies) (*ScheduledT
 		return nil, fmt.Errorf("task mode scheduled execution requires a workspace manager")
 	}
 
+	startedAt := deps.StartedAt
+	if !startedAt.IsZero() {
+		startedAt = startedAt.In(deps.Timezone)
+	}
+
 	return &ScheduledTaskService{
 		mode:                   deps.Mode,
 		timezone:               deps.Timezone,
@@ -112,6 +119,7 @@ func NewScheduledTaskService(deps ScheduledTaskServiceDependencies) (*ScheduledT
 		logger:                 logger,
 		tickInterval:           tickInterval,
 		now:                    now,
+		startedAt:              startedAt,
 		newRunID:               newRunID,
 		newDeliveryID:          newDeliveryID,
 	}, nil
@@ -123,6 +131,9 @@ func (s *ScheduledTaskService) Start(ctx context.Context) error {
 
 	if s.started {
 		return fmt.Errorf("scheduled task service already started")
+	}
+	if s.startedAt.IsZero() {
+		s.startedAt = s.now().In(s.timezone)
 	}
 
 	//nolint:gosec // The service keeps the cancel function and calls it during Close.
@@ -260,6 +271,17 @@ func (s *ScheduledTaskService) tick(ctx context.Context) {
 		}
 		if ok {
 			anchor = latestRun.ScheduledFor.In(s.timezone)
+		}
+		if task.ScheduleKind == ScheduledTaskScheduleKindCron && !s.startedAt.IsZero() {
+			startFloor := s.startedAt.Add(-time.Nanosecond)
+			if anchor.Before(startFloor) {
+				taskLogger.Info(
+					"scheduled task advanced anchor to scheduler start",
+					"previous_anchor", anchor,
+					"scheduler_started_at", s.startedAt,
+				)
+				anchor = startFloor
+			}
 		}
 		taskLogger.Info(
 			"scheduled task evaluation started",
