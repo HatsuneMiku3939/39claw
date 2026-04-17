@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -15,6 +16,7 @@ import (
 const (
 	defaultScheduledTaskTickInterval = time.Minute
 	scheduledTaskCleanupTimeout      = 10 * time.Second
+	scheduledTaskPersistenceTimeout  = 5 * time.Second
 )
 
 type ScheduledTaskServiceDependencies struct {
@@ -331,7 +333,15 @@ func (s *ScheduledTaskService) executeRun(ctx context.Context, task ScheduledTas
 		runLogger.Info("scheduled task worktree preparation started")
 		tempWorktreePath, cleanupFn, err := s.workspaceManager.PrepareTemporaryWorktree(ctx, run.ScheduledRunID)
 		if err != nil {
-			return s.failRun(ctx, task, run, "workspace_prepare_failed", err.Error(), true)
+			status := ScheduledTaskRunStatusFailed
+			shouldRetry := true
+			errorCode := "workspace_prepare_failed"
+			if isCancellationError(err) || ctx.Err() != nil {
+				status = ScheduledTaskRunStatusCanceled
+				shouldRetry = false
+				errorCode = "workspace_prepare_canceled"
+			}
+			return s.failRun(ctx, task, run, status, errorCode, err.Error(), shouldRetry)
 		}
 		workdir = tempWorktreePath
 		run.TempWorktreePath = tempWorktreePath
@@ -356,7 +366,15 @@ func (s *ScheduledTaskService) executeRun(ctx context.Context, task ScheduledTas
 	run.UpdatedAt = finishedAt
 
 	if err != nil {
-		run = s.failRun(ctx, task, run, "codex_run_failed", err.Error(), true)
+		status := ScheduledTaskRunStatusFailed
+		shouldRetry := true
+		errorCode := "codex_run_failed"
+		if isCancellationError(err) || ctx.Err() != nil {
+			status = ScheduledTaskRunStatusCanceled
+			shouldRetry = false
+			errorCode = "codex_run_canceled"
+		}
+		run = s.failRun(ctx, task, run, status, errorCode, err.Error(), shouldRetry)
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), scheduledTaskCleanupTimeout)
 		if cleanupErr := cleanup(cleanupCtx); cleanupErr != nil {
 			runLogger.Error("cleanup scheduled task worktree after failure", "error", cleanupErr)
@@ -396,6 +414,7 @@ func (s *ScheduledTaskService) failRun(
 	ctx context.Context,
 	task ScheduledTask,
 	run ScheduledTaskRun,
+	status ScheduledTaskRunStatus,
 	errorCode string,
 	errorMessage string,
 	mayRetry bool,
@@ -407,18 +426,20 @@ func (s *ScheduledTaskService) failRun(
 		"scheduled_for", run.ScheduledFor,
 	)
 	finishedAt := s.now()
-	run.Status = ScheduledTaskRunStatusFailed
+	run.Status = status
 	run.ErrorCode = errorCode
 	run.ErrorMessage = errorMessage
 	run.FinishedAt = &finishedAt
 	run.UpdatedAt = finishedAt
-	if err := s.store.UpdateScheduledTaskRun(ctx, run); err != nil {
+	persistCtx, cancel := detachedStoreContext(ctx)
+	defer cancel()
+	if err := s.store.UpdateScheduledTaskRun(persistCtx, run); err != nil {
 		runLogger.Error("persist scheduled task run failure", "error", err)
 	}
 	runLogger.Error("scheduled task run failed", "error_code", errorCode, "error_message", errorMessage)
 
-	if mayRetry && run.Attempt < 2 {
-		retryRun, admitted, err := s.store.AdmitScheduledTaskRun(ctx, ScheduledTaskRun{
+	if mayRetry && status == ScheduledTaskRunStatusFailed && run.Attempt < 2 {
+		retryRun, admitted, err := s.store.AdmitScheduledTaskRun(persistCtx, ScheduledTaskRun{
 			ScheduledRunID:  s.newRunID(),
 			ScheduledTaskID: run.ScheduledTaskID,
 			Mode:            run.Mode,
@@ -441,6 +462,18 @@ func (s *ScheduledTaskService) failRun(
 	}
 
 	return run
+}
+
+func detachedStoreContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx.Err() == nil {
+		return ctx, func() {}
+	}
+
+	return context.WithTimeout(context.WithoutCancel(ctx), scheduledTaskPersistenceTimeout)
+}
+
+func isCancellationError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func (s *ScheduledTaskService) deliverRunResult(ctx context.Context, task ScheduledTask, run ScheduledTaskRun) {

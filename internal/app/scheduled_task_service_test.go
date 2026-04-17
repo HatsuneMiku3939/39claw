@@ -291,15 +291,88 @@ func TestScheduledTaskServiceExecuteTaskNowRunsImmediately(t *testing.T) {
 	}
 }
 
+func TestScheduledTaskServiceExecuteRunDoesNotRetryCanceledRun(t *testing.T) {
+	t.Parallel()
+
+	location, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+
+	store := &fakeScheduledTaskStore{
+		tasks: []ScheduledTask{
+			{
+				ScheduledTaskID: "task-1",
+				Name:            "daily-report",
+				ScheduleKind:    ScheduledTaskScheduleKindCron,
+				ScheduleExpr:    "* * * * *",
+				Prompt:          "Write the report.",
+				Enabled:         true,
+				CreatedAt:       time.Date(2026, time.April, 12, 8, 0, 30, 0, location),
+			},
+		},
+	}
+	gateway := &fakeScheduledGateway{err: context.Canceled}
+
+	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
+		Mode:                   config.ModeDaily,
+		Timezone:               location,
+		Workdir:                "/workspace/project",
+		DefaultReportChannelID: "channel-1",
+		Store:                  store,
+		Gateway:                gateway,
+		ReportSender:           &fakeScheduledReportSender{},
+		Now: func() time.Time {
+			return time.Date(2026, time.April, 12, 8, 5, 10, 0, location)
+		},
+		NewRunID:      sequentialStringGenerator("run"),
+		NewDeliveryID: sequentialStringGenerator("delivery"),
+	})
+	if err != nil {
+		t.Fatalf("NewScheduledTaskService() error = %v", err)
+	}
+
+	run, admitted, err := store.AdmitScheduledTaskRun(context.Background(), ScheduledTaskRun{
+		ScheduledRunID:  "run-1",
+		ScheduledTaskID: "task-1",
+		Mode:            "daily",
+		ScheduledFor:    time.Date(2026, time.April, 12, 8, 5, 10, 0, location).UTC(),
+		Attempt:         1,
+		Status:          ScheduledTaskRunStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("AdmitScheduledTaskRun() error = %v", err)
+	}
+	if !admitted {
+		t.Fatal("AdmitScheduledTaskRun() admitted = false, want true")
+	}
+
+	finalRun := service.executeRun(context.Background(), store.tasks[0], run)
+	if finalRun.Status != ScheduledTaskRunStatusCanceled {
+		t.Fatalf("final run status = %q, want %q", finalRun.Status, ScheduledTaskRunStatusCanceled)
+	}
+	if finalRun.ErrorCode != "codex_run_canceled" {
+		t.Fatalf("final run error code = %q, want %q", finalRun.ErrorCode, "codex_run_canceled")
+	}
+	if len(store.admittedRuns) != 1 {
+		t.Fatalf("admittedRuns count = %d, want %d", len(store.admittedRuns), 1)
+	}
+}
+
 type fakeScheduledGateway struct {
 	mu     sync.Mutex
 	inputs []CodexTurnInput
+	err    error
 }
 
 func (g *fakeScheduledGateway) RunTurn(ctx context.Context, threadID string, input CodexTurnInput) (RunTurnResult, error) {
 	g.mu.Lock()
 	g.inputs = append(g.inputs, input)
 	g.mu.Unlock()
+
+	if g.err != nil {
+		return RunTurnResult{}, g.err
+	}
 
 	return RunTurnResult{
 		ThreadID:     "thread-1",
