@@ -35,7 +35,7 @@ The user-visible proof is concrete. A contributor should be able to run the bot 
 - Observation: The current Codex CLI can register a local MCP server entirely through one `--config` override and does not require a managed `CODEX_HOME`, which made it possible to expose the scheduled-task tools from the running 39claw process itself.
   Evidence: the implementation now injects a config string shaped like `mcp_servers.scheduled-tasks={url = "http://127.0.0.1:<port>/mcp/scheduled-tasks"}` into `internal/codex/exec.go`, and `cmd/39claw/main.go` starts the loopback streamable HTTP endpoint before the Discord runtime begins serving.
 
-- Observation: A recurring cron schedule can admit more than one overdue occurrence on one scheduler tick if the creation time and current time span multiple matching schedule boundaries.
+- Observation: The first implementation admitted every overdue recurring cron occurrence on one scheduler tick, but for personal-instance use that created an undesirable backlog flood after downtime. The current design now admits only the latest currently due recurring occurrence and skips older missed cron boundaries.
   Evidence: the first scheduler test initially admitted two `* * * * *` runs until the fixture creation time was moved off the previous minute boundary in `internal/app/scheduled_task_service_test.go`.
 
 - Observation: The hand-rolled transport was not accepted by the real Codex CLI during initialization, and a first `mcp-go` SSE variant still mismatched Codex's expectations for `url`-based MCP registration, so the scheduled-task endpoint had to move onto `github.com/mark3labs/mcp-go` streamable HTTP.

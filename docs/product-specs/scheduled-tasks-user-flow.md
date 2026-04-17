@@ -232,6 +232,9 @@ Expected user perception:
 - “The task ran against the same repository context as normal bot work.”
 - “In task mode, the scheduled run used its own temporary workspace instead of reusing an interactive task workspace.”
 
+If the bot instance was offline or blocked long enough to miss several recurring cron boundaries, 39claw should not replay the full backlog for personal-instance use.
+When scheduling resumes, it should execute only the latest currently due recurring occurrence and skip the older missed ones.
+
 ### Scenario: A one-shot `at` task runs once
 
 Expected flow:

@@ -90,7 +90,7 @@ func TestScheduledTaskServiceTickExecutesAndDeliversDueRun(t *testing.T) {
 	}
 }
 
-func TestScheduledTaskServiceTickCatchesUpMultipleDueRuns(t *testing.T) {
+func TestScheduledTaskServiceTickAdmitsOnlyLatestDueRunWithoutBackfill(t *testing.T) {
 	t.Parallel()
 
 	location, err := time.LoadLocation("Asia/Tokyo")
@@ -134,23 +134,17 @@ func TestScheduledTaskServiceTickCatchesUpMultipleDueRuns(t *testing.T) {
 	service.tick(context.Background())
 	service.runWG.Wait()
 
-	if len(store.admittedRuns) != 3 {
-		t.Fatalf("admittedRuns count = %d, want %d", len(store.admittedRuns), 3)
+	if len(store.admittedRuns) != 1 {
+		t.Fatalf("admittedRuns count = %d, want %d", len(store.admittedRuns), 1)
 	}
 
-	wantDueTimes := []time.Time{
-		time.Date(2026, time.April, 12, 8, 1, 0, 0, location).UTC(),
-		time.Date(2026, time.April, 12, 8, 2, 0, 0, location).UTC(),
-		time.Date(2026, time.April, 12, 8, 3, 0, 0, location).UTC(),
-	}
-	for index, run := range store.admittedRuns {
-		if !run.ScheduledFor.Equal(wantDueTimes[index]) {
-			t.Fatalf("admittedRuns[%d].ScheduledFor = %v, want %v", index, run.ScheduledFor, wantDueTimes[index])
-		}
+	wantDueTime := time.Date(2026, time.April, 12, 8, 3, 0, 0, location).UTC()
+	if !store.admittedRuns[0].ScheduledFor.Equal(wantDueTime) {
+		t.Fatalf("admittedRuns[0].ScheduledFor = %v, want %v", store.admittedRuns[0].ScheduledFor, wantDueTime)
 	}
 
-	if gateway.runCount() != 3 {
-		t.Fatalf("gateway run count = %d, want %d", gateway.runCount(), 3)
+	if gateway.runCount() != 1 {
+		t.Fatalf("gateway run count = %d, want %d", gateway.runCount(), 1)
 	}
 }
 
@@ -208,18 +202,13 @@ func TestScheduledTaskServiceTickUsesLatestRunAsAnchor(t *testing.T) {
 	service.tick(context.Background())
 	service.runWG.Wait()
 
-	if len(store.admittedRuns) != 2 {
-		t.Fatalf("admittedRuns count = %d, want %d", len(store.admittedRuns), 2)
+	if len(store.admittedRuns) != 1 {
+		t.Fatalf("admittedRuns count = %d, want %d", len(store.admittedRuns), 1)
 	}
 
-	wantDueTimes := []time.Time{
-		time.Date(2026, time.April, 12, 8, 3, 0, 0, location).UTC(),
-		time.Date(2026, time.April, 12, 8, 4, 0, 0, location).UTC(),
-	}
-	for index, run := range store.admittedRuns {
-		if !run.ScheduledFor.Equal(wantDueTimes[index]) {
-			t.Fatalf("admittedRuns[%d].ScheduledFor = %v, want %v", index, run.ScheduledFor, wantDueTimes[index])
-		}
+	wantDueTime := time.Date(2026, time.April, 12, 8, 4, 0, 0, location).UTC()
+	if !store.admittedRuns[0].ScheduledFor.Equal(wantDueTime) {
+		t.Fatalf("admittedRuns[0].ScheduledFor = %v, want %v", store.admittedRuns[0].ScheduledFor, wantDueTime)
 	}
 }
 

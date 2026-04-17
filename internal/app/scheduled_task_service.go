@@ -269,35 +269,54 @@ func (s *ScheduledTaskService) tick(ctx context.Context) {
 			"now", now,
 		)
 
+		var latestDue time.Time
+		skippedBackfillCount := 0
 		for due := schedule.Next(anchor); !due.IsZero() && !due.After(now); due = schedule.Next(due) {
 			totalDue++
-			taskLogger.Info("scheduled task due run identified", "scheduled_for", due)
-
-			run, admitted, err := s.store.AdmitScheduledTaskRun(ctx, ScheduledTaskRun{
-				ScheduledRunID:  s.newRunID(),
-				ScheduledTaskID: task.ScheduledTaskID,
-				Mode:            string(s.mode),
-				ScheduledFor:    due.UTC(),
-				Attempt:         1,
-				Status:          ScheduledTaskRunStatusPending,
-			})
-			if err != nil {
-				taskLogger.Error("admit scheduled task run", "scheduled_for", due, "error", err)
-				break
+			if !latestDue.IsZero() {
+				skippedBackfillCount++
 			}
-			if !admitted {
-				taskLogger.Info("scheduled task run already admitted", "scheduled_for", due)
-				continue
-			}
-			totalAdmitted++
-			taskLogger.Info("scheduled task run admitted", "scheduled_for", due, "run_id", run.ScheduledRunID)
-
-			s.runWG.Add(1)
-			go func(task ScheduledTask, run ScheduledTaskRun) {
-				defer s.runWG.Done()
-				s.executeRun(ctx, task, run)
-			}(task, run)
+			latestDue = due
 		}
+
+		if latestDue.IsZero() {
+			taskLogger.Info("scheduled task evaluation found no due run")
+			continue
+		}
+
+		taskLogger.Info("scheduled task due run identified", "scheduled_for", latestDue)
+		if skippedBackfillCount > 0 {
+			taskLogger.Info(
+				"scheduled task skipped overdue backfill runs",
+				"latest_scheduled_for", latestDue,
+				"skipped_count", skippedBackfillCount,
+			)
+		}
+
+		run, admitted, err := s.store.AdmitScheduledTaskRun(ctx, ScheduledTaskRun{
+			ScheduledRunID:  s.newRunID(),
+			ScheduledTaskID: task.ScheduledTaskID,
+			Mode:            string(s.mode),
+			ScheduledFor:    latestDue.UTC(),
+			Attempt:         1,
+			Status:          ScheduledTaskRunStatusPending,
+		})
+		if err != nil {
+			taskLogger.Error("admit scheduled task run", "scheduled_for", latestDue, "error", err)
+			continue
+		}
+		if !admitted {
+			taskLogger.Info("scheduled task run already admitted", "scheduled_for", latestDue)
+			continue
+		}
+		totalAdmitted++
+		taskLogger.Info("scheduled task run admitted", "scheduled_for", latestDue, "run_id", run.ScheduledRunID)
+
+		s.runWG.Add(1)
+		go func(task ScheduledTask, run ScheduledTaskRun) {
+			defer s.runWG.Done()
+			s.executeRun(ctx, task, run)
+		}(task, run)
 	}
 
 	s.logger.Info(
