@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/HatsuneMiku3939/39claw/internal/app"
 	"github.com/HatsuneMiku3939/39claw/internal/codex"
@@ -16,15 +17,17 @@ import (
 	"github.com/HatsuneMiku3939/39claw/internal/dailymemory"
 	"github.com/HatsuneMiku3939/39claw/internal/observe"
 	runtimediscord "github.com/HatsuneMiku3939/39claw/internal/runtime/discord"
+	"github.com/HatsuneMiku3939/39claw/internal/scheduled"
 	sqlitestore "github.com/HatsuneMiku3939/39claw/internal/store/sqlite"
 	"github.com/HatsuneMiku3939/39claw/internal/thread"
 	"github.com/HatsuneMiku3939/39claw/version"
 )
 
 const (
-	exitCodeSuccess = 0
-	exitCodeFailure = 1
-	exitCodeUsage   = 2
+	exitCodeSuccess              = 0
+	exitCodeFailure              = 1
+	exitCodeUsage                = 2
+	scheduledTaskShutdownTimeout = 30 * time.Second
 )
 
 type cliCommand string
@@ -34,9 +37,14 @@ const (
 	cliCommandVersion cliCommand = "version"
 )
 
+type cliInvocation struct {
+	command cliCommand
+}
+
 type discordRuntime interface {
 	Start(ctx context.Context) error
 	Close() error
+	app.ScheduledTaskReportSender
 }
 
 var newDiscordRuntime = func(deps runtimediscord.Dependencies) (discordRuntime, error) {
@@ -59,13 +67,13 @@ func runCLI(
 	stdout io.Writer,
 	stderr io.Writer,
 ) int {
-	command, err := parseCLIArgs(args)
+	invocation, err := parseCLIArgs(args)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return exitCodeUsage
 	}
 
-	if command == cliCommandVersion {
+	if invocation.command == cliCommandVersion {
 		_, _ = fmt.Fprintln(stdout, version.Version)
 		return exitCodeSuccess
 	}
@@ -81,20 +89,20 @@ func runCLI(
 	return exitCodeSuccess
 }
 
-func parseCLIArgs(args []string) (cliCommand, error) {
+func parseCLIArgs(args []string) (cliInvocation, error) {
 	if len(args) == 0 {
-		return cliCommandServe, nil
+		return cliInvocation{command: cliCommandServe}, nil
 	}
 
 	switch args[0] {
 	case string(cliCommandVersion):
 		if len(args) > 1 {
-			return "", errors.New("version command does not accept arguments")
+			return cliInvocation{}, errors.New("version command does not accept arguments")
 		}
 
-		return cliCommandVersion, nil
+		return cliInvocation{command: cliCommandVersion}, nil
 	default:
-		return "", fmt.Errorf("unknown command %q", args[0])
+		return cliInvocation{}, fmt.Errorf("unknown command %q", args[0])
 	}
 }
 
@@ -131,6 +139,11 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 
 	store := sqlitestore.New(db)
 
+	scheduledMCPServer, scheduledMCPServerURL, err := startScheduledMCPServer(ctx, store, cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	client := newCodexClient(codex.Options{
 		ExecutablePath: cfg.CodexExecutable,
 		Env:            codexProcessEnv(cfg),
@@ -142,6 +155,11 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	if err != nil {
 		return err
 	}
+
+	threadOptions.ConfigOverrides = append(
+		threadOptions.ConfigOverrides,
+		scheduled.BuildMCPURLConfigOverride(scheduledMCPServerURL),
+	)
 
 	if cfg.Mode == config.ModeDaily {
 		if threadOptions.SandboxMode == codex.SandboxModeReadOnly {
@@ -179,8 +197,9 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	}
 
 	var workspaceManager app.TaskWorkspaceManager
+	var scheduledWorkspaceManager app.ScheduledTaskWorkspaceManager
 	if cfg.Mode == config.ModeTask {
-		workspaceManager, err = app.NewTaskWorkspaceManager(ctx, app.TaskWorkspaceManagerDependencies{
+		taskWorkspaceManager, err := app.NewTaskWorkspaceManager(ctx, app.TaskWorkspaceManagerDependencies{
 			Store:            store,
 			SourceRepository: cfg.CodexWorkdir,
 			DataDir:          cfg.DataDir,
@@ -189,6 +208,8 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		if err != nil {
 			return fmt.Errorf("build task workspace manager: %w", err)
 		}
+		workspaceManager = taskWorkspaceManager
+		scheduledWorkspaceManager = taskWorkspaceManager
 	}
 
 	policy, err := thread.NewPolicy(cfg.Mode, cfg.Timezone, store)
@@ -231,22 +252,54 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		return fmt.Errorf("build discord runtime: %w", err)
 	}
 
+	scheduledTaskService, err := app.NewScheduledTaskService(app.ScheduledTaskServiceDependencies{
+		Mode:                   cfg.Mode,
+		Timezone:               cfg.Timezone,
+		Workdir:                cfg.CodexWorkdir,
+		DefaultReportChannelID: cfg.ScheduledReportChannelID,
+		Store:                  store,
+		Gateway:                gateway,
+		ReportSender:           runtime,
+		WorkspaceManager:       scheduledWorkspaceManager,
+		Logger:                 logger,
+	})
+	if err != nil {
+		return fmt.Errorf("build scheduled task service: %w", err)
+	}
+	scheduledMCPServer.SetExecutor(scheduledTaskService)
+
 	if err := runtime.Start(ctx); err != nil {
 		return fmt.Errorf("start discord runtime: %w", err)
 	}
 
+	if err := scheduledTaskService.Start(ctx); err != nil {
+		return fmt.Errorf("start scheduled task service: %w", err)
+	}
+
 	<-ctx.Done()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), scheduledTaskShutdownTimeout)
+	defer shutdownCancel()
+	if err := scheduledTaskService.Close(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+		return fmt.Errorf("close scheduled task service: %w", err)
+	}
 
 	if err := runtime.Close(); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("close discord runtime: %w", err)
+	}
+
+	if err := scheduledMCPServer.Close(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+		return fmt.Errorf("close scheduled MCP HTTP server: %w", err)
 	}
 
 	return nil
 }
 
 var (
-	_ app.ThreadStore  = (*sqlitestore.Store)(nil)
-	_ app.CodexGateway = (*codex.Gateway)(nil)
+	_ app.ThreadStore               = (*sqlitestore.Store)(nil)
+	_ app.ScheduledTaskStore        = (*sqlitestore.Store)(nil)
+	_ app.CodexGateway              = (*codex.Gateway)(nil)
+	_ app.ScheduledTaskReportSender = (*runtimediscord.Runtime)(nil)
 )
 
 func loadThreadOptions(cfg config.Config) (codex.ThreadOptions, error) {
@@ -308,6 +361,36 @@ func codexProcessEnv(cfg config.Config) map[string]string {
 	return map[string]string{
 		"CODEX_HOME": cfg.CodexHome,
 	}
+}
+
+func startScheduledMCPServer(
+	ctx context.Context,
+	store app.ScheduledTaskStore,
+	cfg config.Config,
+	logger *slog.Logger,
+) (*scheduled.HTTPServer, string, error) {
+	server, err := scheduled.NewHTTPServer(scheduled.HTTPServerDependencies{
+		Store:                  store,
+		Timezone:               cfg.Timezone,
+		DefaultReportChannelID: cfg.ScheduledReportChannelID,
+		Logger:                 logger,
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("build scheduled MCP HTTP server: %w", err)
+	}
+
+	serverURL, err := server.Start(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("start scheduled MCP HTTP server: %w", err)
+	}
+
+	logger.Info(
+		"scheduled MCP HTTP server started",
+		"url", serverURL,
+		"mode", cfg.Mode,
+	)
+
+	return server, serverURL, nil
 }
 
 func cloneBoolPointer(value *bool) *bool {

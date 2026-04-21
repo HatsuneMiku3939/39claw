@@ -110,6 +110,13 @@ func (e *executor) buildArgs(request execRequest) []string {
 		args = append(args, "--config", "openai_base_url="+strconv.Quote(e.baseURL))
 	}
 
+	for _, override := range request.threadOptions.ConfigOverrides {
+		if strings.TrimSpace(override) == "" {
+			continue
+		}
+		args = append(args, "--config", override)
+	}
+
 	if request.threadOptions.Model != "" {
 		args = append(args, "--model", request.threadOptions.Model)
 	}

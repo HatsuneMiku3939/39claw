@@ -455,6 +455,8 @@ The first normal message for a new task may spend a moment preparing that task's
   - provide an API key when needed
 - `CLAW_CODEX_HOME`
   - when set, 39claw injects it into the Codex CLI process as `CODEX_HOME`
+  - scheduled-task MCP registration is added per-run through Codex `--config` overrides rather than by rewriting the user's Codex home
+  - the override points Codex at a loopback streamable HTTP MCP endpoint hosted by the running 39claw process, so scheduled-task tools share the same SQLite connection as the scheduler runtime
 - `CLAW_CODEX_SANDBOX_MODE`
   - `read-only`, `workspace-write`, or `danger-full-access`
 - `CLAW_CODEX_ADDITIONAL_DIRECTORIES`
@@ -470,6 +472,8 @@ The first normal message for a new task may spend a moment preparing that task's
   - `disabled`, `cached`, or `live`
 - `CLAW_CODEX_NETWORK_ACCESS`
   - `true` or `false`
+- `CLAW_SCHEDULED_REPORT_CHANNEL_ID`
+  - default Discord channel used for scheduled-task reports when a task definition does not provide its own `report_channel_id`
 
 ## Observability
 
@@ -491,6 +495,16 @@ High-value runtime events include:
   - fields include `outcome=success|failure|dropped_on_shutdown`
 
 Most message-path events also carry routing context such as `component`, `mode`, `logical_key`, `channel_id`, `reply_to_id`, `user_id`, and `task_id` when available.
+
+For manual scheduled-task MCP debugging against a running 39claw process, use:
+
+```bash
+scripts/debug-scheduled-mcp.sh http://127.0.0.1:34725/mcp/scheduled-tasks list-tools
+scripts/debug-scheduled-mcp.sh http://127.0.0.1:34725/mcp/scheduled-tasks list-tasks
+scripts/debug-scheduled-mcp.sh http://127.0.0.1:34725/mcp/scheduled-tasks call scheduled_tasks_execute_now '{"name":"nightly-report"}'
+```
+
+The helper performs `initialize`, reuses the returned `Mcp-Session-Id`, and can also call individual tools with raw JSON arguments.
 
 ## Automated Validation
 

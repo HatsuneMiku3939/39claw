@@ -35,8 +35,8 @@ func TestMigrateIsIdempotent(t *testing.T) {
 		t.Fatalf("query schema_migrations count error = %v", err)
 	}
 
-	if count != 3 {
-		t.Fatalf("schema_migrations count = %d, want %d", count, 3)
+	if count != 5 {
+		t.Fatalf("schema_migrations count = %d, want %d", count, 5)
 	}
 }
 
@@ -634,6 +634,123 @@ func TestStoreUpdateTaskAndListClosedReadyTasks(t *testing.T) {
 	}
 }
 
+func TestStoreAdmitScheduledTaskRunRejectsDuplicateAttempt(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := context.Background()
+	createScheduledTaskForTest(t, ctx, store, app.ScheduledTask{
+		ScheduledTaskID: "scheduled-task-1",
+		Name:            "daily-report",
+		ScheduleKind:    app.ScheduledTaskScheduleKindCron,
+		ScheduleExpr:    "0 9 * * *",
+		Prompt:          "Write the report.",
+		Enabled:         true,
+	})
+
+	dueTime := time.Date(2026, time.April, 12, 0, 0, 0, 0, time.UTC)
+	run := app.ScheduledTaskRun{
+		ScheduledRunID:  "run-1",
+		ScheduledTaskID: "scheduled-task-1",
+		Mode:            "daily",
+		ScheduledFor:    dueTime,
+		Attempt:         1,
+		Status:          app.ScheduledTaskRunStatusPending,
+	}
+
+	admittedRun, admitted, err := store.AdmitScheduledTaskRun(ctx, run)
+	if err != nil {
+		t.Fatalf("AdmitScheduledTaskRun() error = %v", err)
+	}
+	if !admitted {
+		t.Fatal("AdmitScheduledTaskRun() admitted = false, want true")
+	}
+	if admittedRun.ScheduledRunID != "run-1" {
+		t.Fatalf("admitted run ID = %q, want %q", admittedRun.ScheduledRunID, "run-1")
+	}
+
+	if _, admitted, err := store.AdmitScheduledTaskRun(ctx, run); err != nil {
+		t.Fatalf("AdmitScheduledTaskRun() duplicate error = %v", err)
+	} else if admitted {
+		t.Fatal("AdmitScheduledTaskRun() duplicate admitted = true, want false")
+	}
+
+	retryRun, admitted, err := store.AdmitScheduledTaskRun(ctx, app.ScheduledTaskRun{
+		ScheduledRunID:  "run-2",
+		ScheduledTaskID: "scheduled-task-1",
+		Mode:            "daily",
+		ScheduledFor:    dueTime,
+		Attempt:         2,
+		Status:          app.ScheduledTaskRunStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("AdmitScheduledTaskRun() retry error = %v", err)
+	}
+	if !admitted {
+		t.Fatal("AdmitScheduledTaskRun() retry admitted = false, want true")
+	}
+	if retryRun.Attempt != 2 {
+		t.Fatalf("retry attempt = %d, want %d", retryRun.Attempt, 2)
+	}
+}
+
+func TestStoreListScheduledTaskRunsForDueTimeOrdersAttempts(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := context.Background()
+	createScheduledTaskForTest(t, ctx, store, app.ScheduledTask{
+		ScheduledTaskID: "scheduled-task-1",
+		Name:            "daily-report",
+		ScheduleKind:    app.ScheduledTaskScheduleKindCron,
+		ScheduleExpr:    "0 9 * * *",
+		Prompt:          "Write the report.",
+		Enabled:         true,
+	})
+
+	dueTime := time.Date(2026, time.April, 12, 0, 0, 0, 0, time.UTC)
+	runs := []app.ScheduledTaskRun{
+		{
+			ScheduledRunID:  "run-2",
+			ScheduledTaskID: "scheduled-task-1",
+			Mode:            "daily",
+			ScheduledFor:    dueTime,
+			Attempt:         2,
+			Status:          app.ScheduledTaskRunStatusFailed,
+		},
+		{
+			ScheduledRunID:  "run-1",
+			ScheduledTaskID: "scheduled-task-1",
+			Mode:            "daily",
+			ScheduledFor:    dueTime,
+			Attempt:         1,
+			Status:          app.ScheduledTaskRunStatusSucceeded,
+		},
+	}
+
+	for _, run := range runs {
+		if _, admitted, err := store.AdmitScheduledTaskRun(ctx, run); err != nil {
+			t.Fatalf("AdmitScheduledTaskRun(%s) error = %v", run.ScheduledRunID, err)
+		} else if !admitted {
+			t.Fatalf("AdmitScheduledTaskRun(%s) admitted = false, want true", run.ScheduledRunID)
+		}
+	}
+
+	listedRuns, err := store.ListScheduledTaskRunsForDueTime(ctx, "scheduled-task-1", dueTime)
+	if err != nil {
+		t.Fatalf("ListScheduledTaskRunsForDueTime() error = %v", err)
+	}
+	if len(listedRuns) != 2 {
+		t.Fatalf("listed run count = %d, want %d", len(listedRuns), 2)
+	}
+	if listedRuns[0].ScheduledRunID != "run-1" {
+		t.Fatalf("listedRuns[0].ScheduledRunID = %q, want %q", listedRuns[0].ScheduledRunID, "run-1")
+	}
+	if listedRuns[1].ScheduledRunID != "run-2" {
+		t.Fatalf("listedRuns[1].ScheduledRunID = %q, want %q", listedRuns[1].ScheduledRunID, "run-2")
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 
@@ -669,4 +786,12 @@ func newMigratedStoreAtPath(t *testing.T, path string) *Store {
 
 func timePtr(value time.Time) *time.Time {
 	return &value
+}
+
+func createScheduledTaskForTest(t *testing.T, ctx context.Context, store *Store, task app.ScheduledTask) {
+	t.Helper()
+
+	if err := store.CreateScheduledTask(ctx, task); err != nil {
+		t.Fatalf("CreateScheduledTask(%s) error = %v", task.ScheduledTaskID, err)
+	}
 }

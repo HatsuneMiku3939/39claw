@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,17 +23,17 @@ func TestParseCLIArgs(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    []string
-		want    cliCommand
+		want    cliInvocation
 		wantErr string
 	}{
 		{
 			name: "defaults to serve",
-			want: cliCommandServe,
+			want: cliInvocation{command: cliCommandServe},
 		},
 		{
 			name: "supports version command",
 			args: []string{"version"},
-			want: cliCommandVersion,
+			want: cliInvocation{command: cliCommandVersion},
 		},
 		{
 			name:    "rejects unknown command",
@@ -69,8 +70,8 @@ func TestParseCLIArgs(t *testing.T) {
 				t.Fatalf("parseCLIArgs() error = %v", err)
 			}
 
-			if got != tt.want {
-				t.Fatalf("parseCLIArgs() = %q, want %q", got, tt.want)
+			if got.command != tt.want.command {
+				t.Fatalf("parseCLIArgs().command = %q, want %q", got.command, tt.want.command)
 			}
 		})
 	}
@@ -317,6 +318,11 @@ func TestRun(t *testing.T) {
 				t.Fatalf("run() error = %v", err)
 			}
 
+			if tt.wantErr == "" {
+				assertScheduledTaskMCPConfigOverride(t, capturedOptions.ThreadOptions.ConfigOverrides)
+				capturedOptions.ThreadOptions.ConfigOverrides = nil
+			}
+
 			assertThreadOptionsEqual(t, capturedOptions.ThreadOptions, tt.wantThreadOptions)
 			assertStringMapEqual(t, capturedClientOptions.Env, tt.wantCodexEnv)
 
@@ -474,6 +480,50 @@ func TestCodexProcessEnv(t *testing.T) {
 	}
 }
 
+func TestStartScheduledMCPServerLogsURL(t *testing.T) {
+	t.Parallel()
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	location, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("time.LoadLocation() error = %v", err)
+	}
+
+	server, serverURL, err := startScheduledMCPServer(
+		context.Background(),
+		noopScheduledTaskStore{},
+		config.Config{
+			Mode:                     config.ModeTask,
+			Timezone:                 location,
+			ScheduledReportChannelID: "1234567890",
+		},
+		logger,
+	)
+	if err != nil {
+		t.Fatalf("startScheduledMCPServer() error = %v", err)
+	}
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := server.Close(shutdownCtx); err != nil {
+			t.Fatalf("server.Close() error = %v", err)
+		}
+	})
+
+	if !strings.HasPrefix(serverURL, "http://") {
+		t.Fatalf("serverURL = %q, want http:// prefix", serverURL)
+	}
+
+	logOutput := logs.String()
+	if !strings.Contains(logOutput, "scheduled MCP HTTP server started") {
+		t.Fatalf("log output = %q, want startup message", logOutput)
+	}
+	if !strings.Contains(logOutput, serverURL) {
+		t.Fatalf("log output = %q, want server URL %q", logOutput, serverURL)
+	}
+}
+
 type stubDiscordRuntime struct{}
 
 func (r *stubDiscordRuntime) Start(ctx context.Context) error {
@@ -485,10 +535,72 @@ func (r *stubDiscordRuntime) Close() error {
 	return nil
 }
 
+func (r *stubDiscordRuntime) SendScheduledReport(ctx context.Context, channelID string, text string) (string, error) {
+	return "scheduled-message", nil
+}
+
 type stubCodexGateway struct{}
 
 func (stubCodexGateway) RunTurn(ctx context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
 	return app.RunTurnResult{}, nil
+}
+
+type noopScheduledTaskStore struct{}
+
+func (noopScheduledTaskStore) ListScheduledTasks(ctx context.Context) ([]app.ScheduledTask, error) {
+	return nil, nil
+}
+
+func (noopScheduledTaskStore) ListEnabledScheduledTasks(ctx context.Context) ([]app.ScheduledTask, error) {
+	return nil, nil
+}
+
+func (noopScheduledTaskStore) GetScheduledTaskByID(ctx context.Context, scheduledTaskID string) (app.ScheduledTask, bool, error) {
+	return app.ScheduledTask{}, false, nil
+}
+
+func (noopScheduledTaskStore) GetScheduledTaskByName(ctx context.Context, name string) (app.ScheduledTask, bool, error) {
+	return app.ScheduledTask{}, false, nil
+}
+
+func (noopScheduledTaskStore) CreateScheduledTask(ctx context.Context, task app.ScheduledTask) error {
+	return nil
+}
+
+func (noopScheduledTaskStore) UpdateScheduledTask(ctx context.Context, task app.ScheduledTask) error {
+	return nil
+}
+
+func (noopScheduledTaskStore) DeleteScheduledTask(ctx context.Context, scheduledTaskID string) error {
+	return nil
+}
+
+func (noopScheduledTaskStore) GetLatestScheduledTaskRunForTask(ctx context.Context, scheduledTaskID string) (app.ScheduledTaskRun, bool, error) {
+	return app.ScheduledTaskRun{}, false, nil
+}
+
+func (noopScheduledTaskStore) AdmitScheduledTaskRun(ctx context.Context, run app.ScheduledTaskRun) (app.ScheduledTaskRun, bool, error) {
+	return app.ScheduledTaskRun{}, false, nil
+}
+
+func (noopScheduledTaskStore) UpdateScheduledTaskRun(ctx context.Context, run app.ScheduledTaskRun) error {
+	return nil
+}
+
+func (noopScheduledTaskStore) ListScheduledTaskRunsForDueTime(
+	ctx context.Context,
+	scheduledTaskID string,
+	scheduledFor time.Time,
+) ([]app.ScheduledTaskRun, error) {
+	return nil, nil
+}
+
+func (noopScheduledTaskStore) CreateScheduledTaskDelivery(ctx context.Context, delivery app.ScheduledTaskDelivery) error {
+	return nil
+}
+
+func (noopScheduledTaskStore) UpdateScheduledTaskDelivery(ctx context.Context, delivery app.ScheduledTaskDelivery) error {
+	return nil
 }
 
 func createTaskModeRemoteBackedRepository(t *testing.T) string {
@@ -585,6 +697,21 @@ func assertThreadOptionsEqual(t *testing.T, got codex.ThreadOptions, want codex.
 		t.Fatalf("SkipGitRepoCheck = %t, want %t", got.SkipGitRepoCheck, want.SkipGitRepoCheck)
 	}
 
+	if len(got.ConfigOverrides) != len(want.ConfigOverrides) {
+		t.Fatalf("ConfigOverrides length = %d, want %d", len(got.ConfigOverrides), len(want.ConfigOverrides))
+	}
+
+	for index := range got.ConfigOverrides {
+		if got.ConfigOverrides[index] != want.ConfigOverrides[index] {
+			t.Fatalf(
+				"ConfigOverrides[%d] = %q, want %q",
+				index,
+				got.ConfigOverrides[index],
+				want.ConfigOverrides[index],
+			)
+		}
+	}
+
 	if got.ModelReasoningEffort != want.ModelReasoningEffort {
 		t.Fatalf("ModelReasoningEffort = %q, want %q", got.ModelReasoningEffort, want.ModelReasoningEffort)
 	}
@@ -603,6 +730,25 @@ func assertThreadOptionsEqual(t *testing.T, got codex.ThreadOptions, want codex.
 
 	if got.ApprovalPolicy != want.ApprovalPolicy {
 		t.Fatalf("ApprovalPolicy = %q, want %q", got.ApprovalPolicy, want.ApprovalPolicy)
+	}
+}
+
+func assertScheduledTaskMCPConfigOverride(t *testing.T, got []string) {
+	t.Helper()
+
+	if len(got) != 1 {
+		t.Fatalf("ConfigOverrides length = %d, want %d", len(got), 1)
+	}
+
+	override := got[0]
+	for _, want := range []string{
+		`mcp_servers.scheduled-tasks={`,
+		`url = "http://127.0.0.1:`,
+		`/mcp/scheduled-tasks"`,
+	} {
+		if !strings.Contains(override, want) {
+			t.Fatalf("ConfigOverrides[0] = %q, want substring %q", override, want)
+		}
 	}
 }
 

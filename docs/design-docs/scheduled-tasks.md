@@ -27,6 +27,7 @@ This document answers those questions at the concept level without turning 39cla
 - When the bot instance runs in `task` mode, a scheduled run executes in its own fresh temporary worktree created for that scheduled run and removed after the run finishes.
 - Scheduled tasks are defined by a deliberately small schema: name, schedule, prompt, enabled state, and optional report-channel override.
 - Infrastructure-level execution failure may trigger at most one automatic retry for the due run; content-level failure is reported by Codex output rather than by a separate 39claw policy engine.
+- Recurring cron schedules do not backfill missed occurrences from before the current scheduler process started; those older overdue boundaries are skipped instead of replayed after downtime.
 - Delivery to Discord is a separate step from Codex execution and should be recorded separately.
 
 ## Architectural Placement
@@ -216,6 +217,12 @@ The scheduler should remain intentionally small.
 The scheduler must admit a due occurrence at most once, even across process restarts, using durable run-state checks rather than in-memory timers alone.
 
 This is the key requirement that keeps scheduled tasks reliable enough without introducing distributed coordination as a v1 requirement.
+
+### Overdue recurring runs
+
+For personal-instance cron automation, missed recurring occurrences should not produce an unbounded backlog after downtime.
+When the scheduler process starts, overdue recurring cron boundaries that happened before that startup moment should be skipped instead of replayed.
+One-shot `at` schedules still admit their single due occurrence normally.
 
 ## Failure Model
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/HatsuneMiku3939/39claw/internal/app"
@@ -20,8 +21,10 @@ type Store struct {
 
 func New(db *sql.DB) *Store {
 	return &Store{
-		db:    db,
-		clock: time.Now().UTC,
+		db: db,
+		clock: func() time.Time {
+			return time.Now().UTC()
+		},
 	}
 }
 
@@ -436,6 +439,516 @@ func (s *Store) CloseTask(ctx context.Context, discordUserID string, taskID stri
 	return nil
 }
 
+func (s *Store) ListScheduledTasks(ctx context.Context) ([]app.ScheduledTask, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_channel_id,
+			created_at, updated_at, disabled_at
+		FROM scheduled_tasks
+		ORDER BY name ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query scheduled tasks: %w", err)
+	}
+	defer rows.Close()
+
+	tasks := make([]app.ScheduledTask, 0)
+	for rows.Next() {
+		task, _, err := scanScheduledTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate scheduled tasks: %w", err)
+	}
+
+	return tasks, nil
+}
+
+func (s *Store) ListEnabledScheduledTasks(ctx context.Context) ([]app.ScheduledTask, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_channel_id,
+			created_at, updated_at, disabled_at
+		FROM scheduled_tasks
+		WHERE enabled = 1
+		ORDER BY name ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query enabled scheduled tasks: %w", err)
+	}
+	defer rows.Close()
+
+	tasks := make([]app.ScheduledTask, 0)
+	for rows.Next() {
+		task, _, err := scanScheduledTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate enabled scheduled tasks: %w", err)
+	}
+
+	return tasks, nil
+}
+
+func (s *Store) GetScheduledTaskByID(ctx context.Context, scheduledTaskID string) (app.ScheduledTask, bool, error) {
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_channel_id,
+			created_at, updated_at, disabled_at
+		FROM scheduled_tasks
+		WHERE scheduled_task_id = ?`,
+		scheduledTaskID,
+	)
+
+	return scanScheduledTask(row)
+}
+
+func (s *Store) GetScheduledTaskByName(ctx context.Context, name string) (app.ScheduledTask, bool, error) {
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_channel_id,
+			created_at, updated_at, disabled_at
+		FROM scheduled_tasks
+		WHERE name = ?`,
+		name,
+	)
+
+	return scanScheduledTask(row)
+}
+
+func (s *Store) CreateScheduledTask(ctx context.Context, task app.ScheduledTask) error {
+	now := s.clock()
+	if task.CreatedAt.IsZero() {
+		task.CreatedAt = now
+	}
+	if task.UpdatedAt.IsZero() {
+		task.UpdatedAt = now
+	}
+
+	_, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO scheduled_tasks (
+			scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_channel_id,
+			created_at, updated_at, disabled_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		task.ScheduledTaskID,
+		task.Name,
+		string(task.ScheduleKind),
+		task.ScheduleExpr,
+		task.Prompt,
+		boolToSQLite(task.Enabled),
+		nullableString(task.ReportChannelID),
+		task.CreatedAt.Format(time.RFC3339Nano),
+		task.UpdatedAt.Format(time.RFC3339Nano),
+		nullableTime(task.DisabledAt),
+	)
+	if err != nil {
+		return fmt.Errorf("create scheduled task: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) UpdateScheduledTask(ctx context.Context, task app.ScheduledTask) error {
+	now := s.clock()
+	if task.UpdatedAt.IsZero() {
+		task.UpdatedAt = now
+	}
+
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE scheduled_tasks
+		SET name = ?, schedule_kind = ?, schedule_expr = ?, prompt = ?, enabled = ?, report_channel_id = ?,
+			updated_at = ?, disabled_at = ?
+		WHERE scheduled_task_id = ?`,
+		task.Name,
+		string(task.ScheduleKind),
+		task.ScheduleExpr,
+		task.Prompt,
+		boolToSQLite(task.Enabled),
+		nullableString(task.ReportChannelID),
+		task.UpdatedAt.Format(time.RFC3339Nano),
+		nullableTime(task.DisabledAt),
+		task.ScheduledTaskID,
+	)
+	if err != nil {
+		return fmt.Errorf("update scheduled task: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("scheduled task rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (s *Store) DeleteScheduledTask(ctx context.Context, scheduledTaskID string) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`DELETE FROM scheduled_tasks WHERE scheduled_task_id = ?`,
+		scheduledTaskID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete scheduled task: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) GetLatestScheduledTaskRunForTask(ctx context.Context, scheduledTaskID string) (app.ScheduledTaskRun, bool, error) {
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT scheduled_run_id, scheduled_task_id, mode, scheduled_for, attempt, status, codex_thread_id,
+			workdir_path, temp_worktree_path, started_at, finished_at, error_code, error_message, response_text,
+			created_at, updated_at
+		FROM scheduled_task_runs
+		WHERE scheduled_task_id = ?
+		ORDER BY scheduled_for DESC, attempt DESC
+		LIMIT 1`,
+		scheduledTaskID,
+	)
+
+	return scanScheduledTaskRun(row)
+}
+
+func (s *Store) AdmitScheduledTaskRun(ctx context.Context, run app.ScheduledTaskRun) (app.ScheduledTaskRun, bool, error) {
+	now := s.clock()
+	if run.CreatedAt.IsZero() {
+		run.CreatedAt = now
+	}
+	if run.UpdatedAt.IsZero() {
+		run.UpdatedAt = now
+	}
+	if run.Status == "" {
+		run.Status = app.ScheduledTaskRunStatusPending
+	}
+	if run.Attempt <= 0 {
+		run.Attempt = 1
+	}
+
+	_, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO scheduled_task_runs (
+			scheduled_run_id, scheduled_task_id, mode, scheduled_for, attempt, status, codex_thread_id,
+			workdir_path, temp_worktree_path, started_at, finished_at, error_code, error_message, response_text,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		run.ScheduledRunID,
+		run.ScheduledTaskID,
+		run.Mode,
+		run.ScheduledFor.Format(time.RFC3339Nano),
+		run.Attempt,
+		string(run.Status),
+		nullableString(run.CodexThreadID),
+		nullableString(run.WorkdirPath),
+		nullableString(run.TempWorktreePath),
+		nullableTime(run.StartedAt),
+		nullableTime(run.FinishedAt),
+		nullableString(run.ErrorCode),
+		nullableString(run.ErrorMessage),
+		nullableString(run.ResponseText),
+		run.CreatedAt.Format(time.RFC3339Nano),
+		run.UpdatedAt.Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return app.ScheduledTaskRun{}, false, nil
+		}
+
+		return app.ScheduledTaskRun{}, false, fmt.Errorf("create scheduled task run: %w", err)
+	}
+
+	return run, true, nil
+}
+
+func (s *Store) UpdateScheduledTaskRun(ctx context.Context, run app.ScheduledTaskRun) error {
+	now := s.clock()
+	if run.UpdatedAt.IsZero() {
+		run.UpdatedAt = now
+	}
+
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE scheduled_task_runs
+		SET mode = ?, scheduled_for = ?, attempt = ?, status = ?, codex_thread_id = ?, workdir_path = ?,
+			temp_worktree_path = ?, started_at = ?, finished_at = ?, error_code = ?, error_message = ?,
+			response_text = ?, updated_at = ?
+		WHERE scheduled_run_id = ?`,
+		run.Mode,
+		run.ScheduledFor.Format(time.RFC3339Nano),
+		run.Attempt,
+		string(run.Status),
+		nullableString(run.CodexThreadID),
+		nullableString(run.WorkdirPath),
+		nullableString(run.TempWorktreePath),
+		nullableTime(run.StartedAt),
+		nullableTime(run.FinishedAt),
+		nullableString(run.ErrorCode),
+		nullableString(run.ErrorMessage),
+		nullableString(run.ResponseText),
+		run.UpdatedAt.Format(time.RFC3339Nano),
+		run.ScheduledRunID,
+	)
+	if err != nil {
+		return fmt.Errorf("update scheduled task run: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("scheduled task run rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (s *Store) ListScheduledTaskRunsForDueTime(ctx context.Context, scheduledTaskID string, scheduledFor time.Time) ([]app.ScheduledTaskRun, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT scheduled_run_id, scheduled_task_id, mode, scheduled_for, attempt, status, codex_thread_id,
+			workdir_path, temp_worktree_path, started_at, finished_at, error_code, error_message, response_text,
+			created_at, updated_at
+		FROM scheduled_task_runs
+		WHERE scheduled_task_id = ? AND scheduled_for = ?
+		ORDER BY attempt ASC`,
+		scheduledTaskID,
+		scheduledFor.Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query scheduled task runs: %w", err)
+	}
+	defer rows.Close()
+
+	runs := make([]app.ScheduledTaskRun, 0)
+	for rows.Next() {
+		run, _, err := scanScheduledTaskRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, run)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate scheduled task runs: %w", err)
+	}
+
+	return runs, nil
+}
+
+func (s *Store) CreateScheduledTaskDelivery(ctx context.Context, delivery app.ScheduledTaskDelivery) error {
+	now := s.clock()
+	if delivery.CreatedAt.IsZero() {
+		delivery.CreatedAt = now
+	}
+	if delivery.UpdatedAt.IsZero() {
+		delivery.UpdatedAt = now
+	}
+	if delivery.Status == "" {
+		delivery.Status = app.ScheduledTaskDeliveryStatusPending
+	}
+
+	_, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO scheduled_task_deliveries (
+			scheduled_delivery_id, scheduled_run_id, discord_channel_id, discord_message_id, status, delivered_at,
+			error_code, error_message, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		delivery.ScheduledDeliveryID,
+		delivery.ScheduledRunID,
+		delivery.DiscordChannelID,
+		nullableString(delivery.DiscordMessageID),
+		string(delivery.Status),
+		nullableTime(delivery.DeliveredAt),
+		nullableString(delivery.ErrorCode),
+		nullableString(delivery.ErrorMessage),
+		delivery.CreatedAt.Format(time.RFC3339Nano),
+		delivery.UpdatedAt.Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("create scheduled task delivery: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) UpdateScheduledTaskDelivery(ctx context.Context, delivery app.ScheduledTaskDelivery) error {
+	now := s.clock()
+	if delivery.UpdatedAt.IsZero() {
+		delivery.UpdatedAt = now
+	}
+
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE scheduled_task_deliveries
+		SET discord_channel_id = ?, discord_message_id = ?, status = ?, delivered_at = ?, error_code = ?,
+			error_message = ?, updated_at = ?
+		WHERE scheduled_delivery_id = ?`,
+		delivery.DiscordChannelID,
+		nullableString(delivery.DiscordMessageID),
+		string(delivery.Status),
+		nullableTime(delivery.DeliveredAt),
+		nullableString(delivery.ErrorCode),
+		nullableString(delivery.ErrorMessage),
+		delivery.UpdatedAt.Format(time.RFC3339Nano),
+		delivery.ScheduledDeliveryID,
+	)
+	if err != nil {
+		return fmt.Errorf("update scheduled task delivery: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("scheduled task delivery rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func scanScheduledTask(scanner interface{ Scan(dest ...any) error }) (app.ScheduledTask, bool, error) {
+	var task app.ScheduledTask
+	var scheduleKind string
+	var enabled int
+	var reportChannelID sql.NullString
+	var createdAt string
+	var updatedAt string
+	var disabledAt sql.NullString
+
+	err := scanner.Scan(
+		&task.ScheduledTaskID,
+		&task.Name,
+		&scheduleKind,
+		&task.ScheduleExpr,
+		&task.Prompt,
+		&enabled,
+		&reportChannelID,
+		&createdAt,
+		&updatedAt,
+		&disabledAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return app.ScheduledTask{}, false, nil
+	}
+	if err != nil {
+		return app.ScheduledTask{}, false, fmt.Errorf("scan scheduled task: %w", err)
+	}
+
+	task.ScheduleKind = app.ScheduledTaskScheduleKind(scheduleKind)
+	task.Enabled = enabled != 0
+	task.ReportChannelID = nullableStringValue(reportChannelID)
+
+	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return app.ScheduledTask{}, false, fmt.Errorf("parse scheduled task created_at: %w", err)
+	}
+	task.CreatedAt = parsedCreatedAt
+
+	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return app.ScheduledTask{}, false, fmt.Errorf("parse scheduled task updated_at: %w", err)
+	}
+	task.UpdatedAt = parsedUpdatedAt
+
+	if task.DisabledAt, err = parseNullableTime(disabledAt); err != nil {
+		return app.ScheduledTask{}, false, fmt.Errorf("parse scheduled task disabled_at: %w", err)
+	}
+
+	return task, true, nil
+}
+
+func scanScheduledTaskRun(scanner interface{ Scan(dest ...any) error }) (app.ScheduledTaskRun, bool, error) {
+	var run app.ScheduledTaskRun
+	var status string
+	var scheduledFor string
+	var codexThreadID sql.NullString
+	var workdirPath sql.NullString
+	var tempWorktreePath sql.NullString
+	var startedAt sql.NullString
+	var finishedAt sql.NullString
+	var errorCode sql.NullString
+	var errorMessage sql.NullString
+	var responseText sql.NullString
+	var createdAt string
+	var updatedAt string
+
+	err := scanner.Scan(
+		&run.ScheduledRunID,
+		&run.ScheduledTaskID,
+		&run.Mode,
+		&scheduledFor,
+		&run.Attempt,
+		&status,
+		&codexThreadID,
+		&workdirPath,
+		&tempWorktreePath,
+		&startedAt,
+		&finishedAt,
+		&errorCode,
+		&errorMessage,
+		&responseText,
+		&createdAt,
+		&updatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return app.ScheduledTaskRun{}, false, nil
+	}
+	if err != nil {
+		return app.ScheduledTaskRun{}, false, fmt.Errorf("scan scheduled task run: %w", err)
+	}
+
+	run.Status = app.ScheduledTaskRunStatus(status)
+	run.CodexThreadID = nullableStringValue(codexThreadID)
+	run.WorkdirPath = nullableStringValue(workdirPath)
+	run.TempWorktreePath = nullableStringValue(tempWorktreePath)
+	run.ErrorCode = nullableStringValue(errorCode)
+	run.ErrorMessage = nullableStringValue(errorMessage)
+	run.ResponseText = nullableStringValue(responseText)
+
+	parsedScheduledFor, err := time.Parse(time.RFC3339Nano, scheduledFor)
+	if err != nil {
+		return app.ScheduledTaskRun{}, false, fmt.Errorf("parse scheduled task run scheduled_for: %w", err)
+	}
+	run.ScheduledFor = parsedScheduledFor
+
+	if run.StartedAt, err = parseNullableTime(startedAt); err != nil {
+		return app.ScheduledTaskRun{}, false, fmt.Errorf("parse scheduled task run started_at: %w", err)
+	}
+	if run.FinishedAt, err = parseNullableTime(finishedAt); err != nil {
+		return app.ScheduledTaskRun{}, false, fmt.Errorf("parse scheduled task run finished_at: %w", err)
+	}
+
+	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return app.ScheduledTaskRun{}, false, fmt.Errorf("parse scheduled task run created_at: %w", err)
+	}
+	run.CreatedAt = parsedCreatedAt
+
+	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return app.ScheduledTaskRun{}, false, fmt.Errorf("parse scheduled task run updated_at: %w", err)
+	}
+	run.UpdatedAt = parsedUpdatedAt
+
+	return run, true, nil
+}
+
 func scanTask(scanner interface{ Scan(dest ...any) error }) (app.Task, bool, error) {
 	var task app.Task
 	var status string
@@ -527,6 +1040,14 @@ func nullableString(value string) any {
 	return value
 }
 
+func boolToSQLite(value bool) int {
+	if value {
+		return 1
+	}
+
+	return 0
+}
+
 func nullableTime(value *time.Time) any {
 	if value == nil {
 		return nil
@@ -554,4 +1075,8 @@ func parseNullableTime(value sql.NullString) (*time.Time, error) {
 	}
 
 	return &parsed, nil
+}
+
+func isUniqueConstraintError(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "unique constraint failed")
 }

@@ -13,24 +13,33 @@ The user-visible proof is concrete. A contributor should be able to run the bot 
 ## Progress
 
 - [x] (2026-04-12 08:10Z) Reviewed `.agents/PLANS.md`, `docs/design-docs/scheduled-tasks.md`, `docs/product-specs/scheduled-tasks-user-flow.md`, and the current app/store/codex runtime shape to capture a self-contained implementation plan.
-- [ ] Prototype the Codex-visible management surface for scheduled tasks and record the exact managed `CODEX_HOME` layout required by the current Codex CLI.
-- [ ] Add configuration, SQLite schema, and store APIs for canonical scheduled-task definitions, run records, and delivery records.
-- [ ] Implement the local MCP server and managed bootstrap so Codex can list, inspect, create, update, enable, disable, and delete scheduled tasks through tools rather than by editing files.
-- [ ] Implement the scheduler loop, due-run admission, and fresh-thread execution path, including task-mode temporary worktree preparation and cleanup.
-- [ ] Implement Discord delivery for bot-initiated scheduled-run reports and record delivery outcomes separately from run outcomes.
-- [ ] Add automated coverage for schedule parsing, due admission, MCP management, task-mode temporary worktrees, and Discord delivery behavior.
-- [ ] Run `make test` and `make lint` after implementation lands.
+- [x] (2026-04-12 08:40Z) Added the scheduled-task MCP tool surface and recorded the per-run Codex `--config` override used to register it.
+- [x] (2026-04-12 08:42Z) Added `CLAW_SCHEDULED_REPORT_CHANNEL_ID`, SQLite migrations `0004_scheduled_tasks.sql` and `0005_scheduled_task_history.sql`, and store APIs for scheduled-task definitions, runs, and deliveries.
+- [x] (2026-04-12 08:44Z) Implemented per-run MCP config injection plus MCP-backed create, list, get, update, enable, disable, and delete operations for scheduled tasks.
+- [x] (2026-04-12 08:47Z) Implemented the scheduler loop, due-run admission, fresh-thread execution path, and task-mode temporary scheduled-run worktree creation and cleanup.
+- [x] (2026-04-12 08:48Z) Implemented bot-initiated Discord report delivery and stored delivery outcomes separately from run outcomes.
+- [x] (2026-04-12 08:50Z) Added automated coverage for schedule parsing, MCP config injection, MCP management operations, task-mode temporary worktrees, scheduler execution, and delivery recording.
+- [x] (2026-04-12 08:52Z) Ran `go test ./...` and `make lint` after the implementation landed.
 
 ## Surprises & Discoveries
 
 - Observation: The repository already has strong infrastructure for thread bindings, active tasks, task worktree creation, and Discord reply delivery, but it has no scheduler loop, no scheduled-task persistence, and no local MCP server.
   Evidence: `internal/app/message_service_impl.go`, `internal/app/task_workspace.go`, `internal/store/sqlite/store.go`, and the absence of any scheduled-task package under `internal/`.
 
-- Observation: The Codex gateway already reports `mcp_tool_call` progress events, which means the runtime can surface tool activity once a local MCP server exists, but the repository does not yet materialize any managed `CODEX_HOME` artifacts for tools.
-  Evidence: `internal/codex/gateway.go` handles `item.Type == "mcp_tool_call"`, while the only existing managed bootstrap is the daily-memory skill in `internal/dailymemory/bootstrap.go`.
+- Observation: The Codex gateway already reports `mcp_tool_call` progress events, which means the runtime can surface tool activity once a local MCP server exists, and the CLI can accept MCP registration through `--config` without rewriting the user's Codex home.
+  Evidence: `internal/codex/gateway.go` handles `item.Type == "mcp_tool_call"`, and manual CLI inspection confirmed `codex exec --config 'mcp_servers.<name>=...'` support.
 
 - Observation: `task` mode already owns the managed bare-parent and worktree lifecycle code for interactive tasks, but scheduled tasks intentionally must not reuse an interactive task worktree.
   Evidence: `internal/app/task_workspace.go` and `docs/design-docs/scheduled-tasks.md`.
+
+- Observation: The current Codex CLI can register a local MCP server entirely through one `--config` override and does not require a managed `CODEX_HOME`, which made it possible to expose the scheduled-task tools from the running 39claw process itself.
+  Evidence: the implementation now injects a config string shaped like `mcp_servers.scheduled-tasks={url = "http://127.0.0.1:<port>/mcp/scheduled-tasks"}` into `internal/codex/exec.go`, and `cmd/39claw/main.go` starts the loopback streamable HTTP endpoint before the Discord runtime begins serving.
+
+- Observation: The first implementation admitted every overdue recurring cron occurrence on one scheduler tick, but for personal-instance use that created an undesirable backlog flood after downtime. The current design now skips recurring cron boundaries that happened before the current scheduler process started instead of replaying that backlog after startup.
+  Evidence: the first scheduler test initially admitted two `* * * * *` runs until the fixture creation time was moved off the previous minute boundary in `internal/app/scheduled_task_service_test.go`.
+
+- Observation: The hand-rolled transport was not accepted by the real Codex CLI during initialization, and a first `mcp-go` SSE variant still mismatched Codex's expectations for `url`-based MCP registration, so the scheduled-task endpoint had to move onto `github.com/mark3labs/mcp-go` streamable HTTP.
+  Evidence: live Codex runs failed first with `Deserialize error: expected value at line 1 column 1, when process initialize response` and then with `UnexpectedContentType(Some("text/plain; charset=utf-8; body: Method not allowed\n"))`, and the final implementation now validates the endpoint through `mcp-go`'s own in-process and streamable HTTP clients in `internal/scheduled/*_test.go`.
 
 ## Decision Log
 
@@ -52,9 +61,13 @@ The user-visible proof is concrete. A contributor should be able to run the bot 
 
 ## Outcomes & Retrospective
 
-No implementation work has landed yet. The intended outcome is a complete scheduled-task feature that stays true to the existing Codex-native architecture: 39claw owns canonical definitions, due-run admission, Discord delivery, and local persistence; Codex owns interpreting user intent and executing the scheduled prompt; and the bot remains small enough that contributors can reason about the whole feature from one plan.
+Implementation landed across the runtime, store, Discord adapter, and a new `internal/scheduled` package. 39claw now owns canonical scheduled-task definitions, due-run admission, delivery recording, and MCP exposure through a loopback streamable HTTP server hosted inside the main process, while Codex still owns interpretation and execution of the scheduled prompt.
 
-The main risk area is the management surface. The repository already injects `CODEX_HOME` into the Codex CLI process, but it does not yet manage MCP server configuration. This plan deliberately addresses that risk first with a prototype milestone so the rest of the implementation is not built on an unverified assumption.
+The MCP registration risk was resolved more simply than the original milestone expected. Instead of materializing a managed `CODEX_HOME`, the bot now appends one per-run Codex config override that registers a loopback `scheduled-tasks` MCP endpoint served by the main 39claw process. That keeps user-provided `CODEX_HOME` behavior intact and lets the MCP handlers share the same SQLite-backed store instance as the scheduler runtime.
+
+The final transport layer intentionally does not hand-roll MCP framing. The repository now uses `github.com/mark3labs/mcp-go` for the scheduled-task tool server and verifies the same endpoint shape with `mcp-go` clients in tests, which reduced protocol risk after the first bespoke transport implementations failed against a real Codex session.
+
+The main remaining acceptance gap is operator-level live validation with a real Codex session and a Discord channel. The repository now has automated coverage for the moving pieces, but a future cleanup pass should still capture one manual end-to-end transcript before archiving this plan.
 
 ## Context and Orientation
 
@@ -97,7 +110,7 @@ A “scheduled run record” is the durable row that represents one admitted due
 
 A “delivery record” is the durable row that records whether Discord delivery succeeded, failed, or was skipped. Delivery status must not overwrite the run status.
 
-A “managed `CODEX_HOME`” is a bot-owned directory that 39claw prepares for spawned Codex processes. The repository already supports passing `CODEX_HOME` to the Codex CLI through configuration. This plan extends that concept so scheduled-task management tools can be exposed through a local MCP server.
+A “scheduled-task MCP config override” is the per-run Codex `--config` fragment that registers the loopback streamable HTTP MCP endpoint without mutating the user's `CODEX_HOME`.
 
 A “temporary scheduled-run worktree” is the short-lived Git worktree used only for one scheduled run when the bot instance runs in `task` mode. It is distinct from any interactive task worktree and must be removed after the run reaches a terminal result.
 
@@ -135,13 +148,13 @@ This plan fixes the following implementation choices before coding begins:
 
 ## Milestone 1: Prove and document the Codex-visible management surface
 
-At the end of this milestone, a contributor should know exactly how 39claw exposes schedule-management tools to Codex and how the current Codex CLI discovers those tools through `CODEX_HOME`.
+At the end of this milestone, a contributor should know exactly how 39claw exposes schedule-management tools to Codex and how the current Codex CLI discovers those tools through per-run `--config` overrides.
 
-Add a local MCP server entrypoint to the 39claw binary, for example a hidden subcommand such as `39claw mcp-scheduled-tasks`. That server should speak stdio and expose a minimal first tool such as `scheduled_tasks_list` backed by SQLite. The goal of this milestone is not the full feature. The goal is to prove the integration path end to end.
+Add a local MCP server surface to 39claw and expose it from the running process through a loopback HTTP endpoint. That endpoint should expose a minimal first tool such as `scheduled_tasks_list` backed by SQLite. The goal of this milestone is not the full feature. The goal is to prove the integration path end to end.
 
-Alongside that entrypoint, add a managed bootstrap helper that prepares a bot-owned `CODEX_HOME` directory under `CLAW_DATADIR` when scheduled tasks are enabled. That helper must materialize the exact Codex CLI configuration files or directory layout needed for the current CLI to discover the local MCP server. The contributor executing this plan must record the exact file paths and content shape back into this ExecPlan as soon as the prototype works, because the repository does not currently document this layout anywhere else.
+Alongside that entrypoint, add the smallest possible Codex CLI registration path for the local MCP server. The contributor executing this plan must record the exact override shape back into this ExecPlan as soon as the prototype works, because the repository did not previously document this path anywhere else.
 
-Validation for this milestone is practical. Run a small integration test or manual `codexplay` transcript that starts a Codex thread with the managed `CODEX_HOME`, triggers the prototype tool, and proves that the event stream contains an `mcp_tool_call` item. Do not move to Milestone 2 until this prototype path is working and documented in this plan.
+Validation for this milestone is practical. Run a small integration test or manual `codexplay` transcript that starts a Codex thread with the MCP config override, triggers the prototype tool, and proves that the event stream contains an `mcp_tool_call` item. Do not move to Milestone 2 until this prototype path is working and documented in this plan.
 
 ## Milestone 2: Add canonical persistence and management operations
 
@@ -236,7 +249,7 @@ Add unit and integration coverage for:
 - schedule parsing and next-due computation
 - store CRUD and due-run admission idempotence
 - MCP management-tool handlers
-- managed `CODEX_HOME` bootstrap for the local MCP server
+- per-run MCP config injection for the local MCP server
 - scheduler retry behavior
 - daily-mode working-directory selection
 - task-mode temporary scheduled-run worktree creation and cleanup
@@ -246,7 +259,7 @@ After implementation lands, update `Progress`, `Surprises & Discoveries`, `Decis
 
 ## Plan of Work
 
-Start with the integration risk, not the database. Build the smallest possible local MCP server and prove that Codex can see it through a managed `CODEX_HOME`. Once that path exists, the repository can safely commit to management-through-tools without guessing.
+Start with the integration risk, not the database. Build the smallest possible local MCP server and prove that Codex can see it through a per-run config override. Once that path exists, the repository can safely commit to management-through-tools without guessing.
 
 Next, add the canonical scheduled-task persistence and keep the history tables separate from the definition table. This lets the scheduler, delivery layer, and management surface evolve independently without overloading one row with incompatible responsibilities.
 
@@ -332,7 +345,7 @@ The scheduler itself must be restart-safe. If the process exits after admitting 
 
 The most important proof artifacts to capture during implementation are:
 
-- the exact managed `CODEX_HOME` layout needed for the local MCP server
+- the exact `--config` override shape needed for the local MCP server
 - a short event transcript showing an `mcp_tool_call` item for a scheduled-task management tool
 - SQLite test evidence that one due occurrence is admitted once
 - task-mode test evidence that a scheduled run creates and removes a temporary worktree under `${CLAW_DATADIR}/scheduled-worktrees/<run-id>`
