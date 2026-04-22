@@ -35,8 +35,8 @@ func TestMigrateIsIdempotent(t *testing.T) {
 		t.Fatalf("query schema_migrations count error = %v", err)
 	}
 
-	if count != 5 {
-		t.Fatalf("schema_migrations count = %d, want %d", count, 5)
+	if count != 6 {
+		t.Fatalf("schema_migrations count = %d, want %d", count, 6)
 	}
 }
 
@@ -646,6 +646,7 @@ func TestStoreAdmitScheduledTaskRunRejectsDuplicateAttempt(t *testing.T) {
 		ScheduleExpr:    "0 9 * * *",
 		Prompt:          "Write the report.",
 		Enabled:         true,
+		ReportTarget:    "channel:channel-1",
 	})
 
 	dueTime := time.Date(2026, time.April, 12, 0, 0, 0, 0, time.UTC)
@@ -706,6 +707,7 @@ func TestStoreListScheduledTaskRunsForDueTimeOrdersAttempts(t *testing.T) {
 		ScheduleExpr:    "0 9 * * *",
 		Prompt:          "Write the report.",
 		Enabled:         true,
+		ReportTarget:    "channel:channel-1",
 	})
 
 	dueTime := time.Date(2026, time.April, 12, 0, 0, 0, 0, time.UTC)
@@ -748,6 +750,89 @@ func TestStoreListScheduledTaskRunsForDueTimeOrdersAttempts(t *testing.T) {
 	}
 	if listedRuns[1].ScheduledRunID != "run-2" {
 		t.Fatalf("listedRuns[1].ScheduledRunID = %q, want %q", listedRuns[1].ScheduledRunID, "run-2")
+	}
+}
+
+func TestStoreScheduledTaskAndDeliveryPersistReportTarget(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	task := app.ScheduledTask{
+		ScheduledTaskID: "scheduled-task-1",
+		Name:            "daily-report",
+		ScheduleKind:    app.ScheduledTaskScheduleKindCron,
+		ScheduleExpr:    "0 9 * * *",
+		Prompt:          "Write the report.",
+		Enabled:         true,
+		ReportTarget:    "dm:user-1",
+	}
+	createScheduledTaskForTest(t, ctx, store, task)
+
+	storedTask, ok, err := store.GetScheduledTaskByName(ctx, task.Name)
+	if err != nil {
+		t.Fatalf("GetScheduledTaskByName() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("GetScheduledTaskByName() ok = false, want true")
+	}
+	if storedTask.ReportTarget != task.ReportTarget {
+		t.Fatalf("stored task report target = %q, want %q", storedTask.ReportTarget, task.ReportTarget)
+	}
+
+	run, admitted, err := store.AdmitScheduledTaskRun(ctx, app.ScheduledTaskRun{
+		ScheduledRunID:  "run-1",
+		ScheduledTaskID: task.ScheduledTaskID,
+		Mode:            "daily",
+		ScheduledFor:    time.Date(2026, time.April, 12, 0, 0, 0, 0, time.UTC),
+		Attempt:         1,
+		Status:          app.ScheduledTaskRunStatusSucceeded,
+	})
+	if err != nil {
+		t.Fatalf("AdmitScheduledTaskRun() error = %v", err)
+	}
+	if !admitted {
+		t.Fatal("AdmitScheduledTaskRun() admitted = false, want true")
+	}
+
+	delivery := app.ScheduledTaskDelivery{
+		ScheduledDeliveryID: "delivery-1",
+		ScheduledRunID:      run.ScheduledRunID,
+		ReportTarget:        "dm:user-1",
+		Status:              app.ScheduledTaskDeliveryStatusPending,
+	}
+	if err := store.CreateScheduledTaskDelivery(ctx, delivery); err != nil {
+		t.Fatalf("CreateScheduledTaskDelivery() error = %v", err)
+	}
+
+	if err := store.UpdateScheduledTaskDelivery(ctx, app.ScheduledTaskDelivery{
+		ScheduledDeliveryID: delivery.ScheduledDeliveryID,
+		ScheduledRunID:      delivery.ScheduledRunID,
+		ReportTarget:        delivery.ReportTarget,
+		DiscordMessageID:    "discord-message-1",
+		Status:              app.ScheduledTaskDeliveryStatusSucceeded,
+		DeliveredAt:         timePtr(time.Date(2026, time.April, 12, 0, 1, 0, 0, time.UTC)),
+	}); err != nil {
+		t.Fatalf("UpdateScheduledTaskDelivery() error = %v", err)
+	}
+
+	var persistedReportTarget string
+	var persistedMessageID sql.NullString
+	if err := store.db.QueryRowContext(
+		ctx,
+		`SELECT report_target, discord_message_id
+		FROM scheduled_task_deliveries
+		WHERE scheduled_delivery_id = ?`,
+		delivery.ScheduledDeliveryID,
+	).Scan(&persistedReportTarget, &persistedMessageID); err != nil {
+		t.Fatalf("query scheduled_task_deliveries error = %v", err)
+	}
+	if persistedReportTarget != delivery.ReportTarget {
+		t.Fatalf("persisted report target = %q, want %q", persistedReportTarget, delivery.ReportTarget)
+	}
+	if !persistedMessageID.Valid || persistedMessageID.String != "discord-message-1" {
+		t.Fatalf("persisted message ID = %+v, want %q", persistedMessageID, "discord-message-1")
 	}
 }
 

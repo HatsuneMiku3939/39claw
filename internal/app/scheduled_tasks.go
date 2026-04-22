@@ -19,7 +19,7 @@ type ScheduledTask struct {
 	ScheduleExpr    string
 	Prompt          string
 	Enabled         bool
-	ReportChannelID string
+	ReportTarget    string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	DisabledAt      *time.Time
@@ -66,7 +66,7 @@ const (
 type ScheduledTaskDelivery struct {
 	ScheduledDeliveryID string
 	ScheduledRunID      string
-	DiscordChannelID    string
+	ReportTarget        string
 	DiscordMessageID    string
 	Status              ScheduledTaskDeliveryStatus
 	DeliveredAt         *time.Time
@@ -93,7 +93,7 @@ type ScheduledTaskStore interface {
 }
 
 type ScheduledTaskReportSender interface {
-	SendScheduledReport(ctx context.Context, channelID string, text string) (string, error)
+	SendScheduledReport(ctx context.Context, reportTarget string, text string) (string, error)
 }
 
 type ScheduledTaskWorkspaceManager interface {

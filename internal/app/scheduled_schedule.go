@@ -51,7 +51,7 @@ func ParseScheduledTaskSchedule(task ScheduledTask, location *time.Location) (Pa
 	}
 }
 
-func ValidateScheduledTaskDefinition(task ScheduledTask, location *time.Location, defaultReportChannelID string) error {
+func ValidateScheduledTaskDefinition(task ScheduledTask, location *time.Location, defaultReportTarget string) error {
 	name := strings.TrimSpace(task.Name)
 	if name == "" {
 		return fmt.Errorf("scheduled task name must not be empty")
@@ -69,19 +69,31 @@ func ValidateScheduledTaskDefinition(task ScheduledTask, location *time.Location
 		return err
 	}
 
-	if task.Enabled && ResolveScheduledTaskReportChannel(task, defaultReportChannelID) == "" {
-		return fmt.Errorf("enabled scheduled tasks require report_channel_id or CLAW_SCHEDULED_REPORT_CHANNEL_ID")
+	if reportTarget := strings.TrimSpace(task.ReportTarget); reportTarget != "" {
+		if _, err := ParseScheduledReportTarget(reportTarget); err != nil {
+			return fmt.Errorf("invalid report_target: %w", err)
+		}
+	}
+
+	resolvedReportTarget := ResolveScheduledTaskReportTarget(task, defaultReportTarget)
+	if task.Enabled && resolvedReportTarget == "" {
+		return fmt.Errorf("enabled scheduled tasks require report_target or CLAW_SCHEDULED_REPORT_TARGET")
+	}
+	if task.Enabled {
+		if _, err := ParseScheduledReportTarget(resolvedReportTarget); err != nil {
+			return fmt.Errorf("invalid resolved report target: %w", err)
+		}
 	}
 
 	return nil
 }
 
-func ResolveScheduledTaskReportChannel(task ScheduledTask, defaultReportChannelID string) string {
-	if reportChannelID := strings.TrimSpace(task.ReportChannelID); reportChannelID != "" {
-		return reportChannelID
+func ResolveScheduledTaskReportTarget(task ScheduledTask, defaultReportTarget string) string {
+	if reportTarget := strings.TrimSpace(task.ReportTarget); reportTarget != "" {
+		return reportTarget
 	}
 
-	return strings.TrimSpace(defaultReportChannelID)
+	return strings.TrimSpace(defaultReportTarget)
 }
 
 func ParseScheduledTaskAt(expr string, location *time.Location) (time.Time, error) {

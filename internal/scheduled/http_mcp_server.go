@@ -19,11 +19,11 @@ const (
 )
 
 type HTTPServerDependencies struct {
-	Store                  app.ScheduledTaskStore
-	Executor               app.ScheduledTaskExecutor
-	Timezone               *time.Location
-	DefaultReportChannelID string
-	Logger                 *slog.Logger
+	Store               app.ScheduledTaskStore
+	Executor            app.ScheduledTaskExecutor
+	Timezone            *time.Location
+	DefaultReportTarget string
+	Logger              *slog.Logger
 }
 
 type HTTPServer struct {
@@ -40,10 +40,10 @@ func NewHTTPServer(deps HTTPServerDependencies) (*HTTPServer, error) {
 	}
 
 	mcpTools := &MCPServer{
-		Store:                  deps.Store,
-		Executor:               deps.Executor,
-		Timezone:               deps.Timezone,
-		DefaultReportChannelID: deps.DefaultReportChannelID,
+		Store:               deps.Store,
+		Executor:            deps.Executor,
+		Timezone:            deps.Timezone,
+		DefaultReportTarget: deps.DefaultReportTarget,
 	}
 	mcpHandler, err := mcpTools.BuildServer()
 	if err != nil {

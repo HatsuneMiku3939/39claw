@@ -106,14 +106,14 @@ The storage model uses seven tables:
   - stores `discord_user_id`, `task_id`, and `updated_at`
   - enforces one active task per Discord user within a bot instance
 - `scheduled_task_definitions`
-  - stores `scheduled_task_id`, `name`, `mode`, `schedule_kind`, `schedule_expr`, `prompt`, nullable `task_prompt_prefix`, `report_channel_id`, `is_enabled`, `last_claimed_at`, `last_scheduled_for`, `created_at`, `updated_at`, and nullable `disabled_at`
+  - stores `scheduled_task_id`, `name`, `mode`, `schedule_kind`, `schedule_expr`, `prompt`, nullable `task_prompt_prefix`, `report_target`, `is_enabled`, `last_claimed_at`, `last_scheduled_for`, `created_at`, `updated_at`, and nullable `disabled_at`
   - uses ULID strings for `scheduled_task_id`
   - stores the canonical schedule definition that 39claw owns locally
 - `scheduled_task_runs`
   - stores `scheduled_run_id`, `scheduled_task_id`, `mode`, `scheduled_for`, `status`, nullable `codex_thread_id`, nullable `workdir_path`, nullable `temp_worktree_path`, nullable `started_at`, nullable `finished_at`, nullable `error_code`, nullable `error_message`, `created_at`, and `updated_at`
   - records each scheduled execution attempt before Codex dispatch begins
 - `scheduled_task_deliveries`
-  - stores `scheduled_delivery_id`, `scheduled_run_id`, `discord_channel_id`, nullable `discord_message_id`, `status`, nullable `delivered_at`, nullable `error_code`, nullable `error_message`, `created_at`, and `updated_at`
+  - stores `scheduled_delivery_id`, `scheduled_run_id`, `report_target`, nullable `discord_message_id`, `status`, nullable `delivered_at`, nullable `error_code`, nullable `error_message`, `created_at`, and `updated_at`
   - tracks whether a completed run report reached Discord successfully
 
 Task status is `open` or `closed`.
@@ -207,10 +207,10 @@ The expected variables are:
 - `CLAW_CODEX_NETWORK_ACCESS`
 - `CLAW_LOG_LEVEL`
 - `CLAW_LOG_FORMAT`
-- `CLAW_SCHEDULED_REPORT_CHANNEL_ID`
+- `CLAW_SCHEDULED_REPORT_TARGET`
 
 `CLAW_MODE`, `CLAW_TIMEZONE`, `CLAW_DISCORD_TOKEN`, `CLAW_DISCORD_COMMAND_NAME`, `CLAW_CODEX_WORKDIR`, `CLAW_DATADIR`, and `CLAW_CODEX_EXECUTABLE` are required.
-`CLAW_DISCORD_GUILD_ID`, `CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, `CLAW_CODEX_HOME`, `CLAW_CODEX_MODEL`, `CLAW_CODEX_SANDBOX_MODE`, `CLAW_CODEX_ADDITIONAL_DIRECTORIES`, `CLAW_CODEX_SKIP_GIT_REPO_CHECK`, `CLAW_CODEX_APPROVAL_POLICY`, `CLAW_CODEX_MODEL_REASONING_EFFORT`, `CLAW_CODEX_WEB_SEARCH_MODE`, `CLAW_CODEX_NETWORK_ACCESS`, `CLAW_LOG_LEVEL`, `CLAW_LOG_FORMAT`, and `CLAW_SCHEDULED_REPORT_CHANNEL_ID` are optional.
+`CLAW_DISCORD_GUILD_ID`, `CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, `CLAW_CODEX_HOME`, `CLAW_CODEX_MODEL`, `CLAW_CODEX_SANDBOX_MODE`, `CLAW_CODEX_ADDITIONAL_DIRECTORIES`, `CLAW_CODEX_SKIP_GIT_REPO_CHECK`, `CLAW_CODEX_APPROVAL_POLICY`, `CLAW_CODEX_MODEL_REASONING_EFFORT`, `CLAW_CODEX_WEB_SEARCH_MODE`, `CLAW_CODEX_NETWORK_ACCESS`, `CLAW_LOG_LEVEL`, `CLAW_LOG_FORMAT`, and `CLAW_SCHEDULED_REPORT_TARGET` are optional.
 `CLAW_MODE` accepts `daily` or `task`.
 `CLAW_TIMEZONE` must be set explicitly for each deployment.
 `CLAW_DISCORD_COMMAND_NAME` must be unique per bot instance, normalized to lowercase, and validated conservatively before Discord registration.
@@ -218,7 +218,7 @@ When `CLAW_CODEX_HOME` is set, 39claw must inject it into the spawned Codex CLI 
 When `CLAW_MODE=task`, `CLAW_CODEX_WORKDIR` must point to a Git repository with an `origin` remote and acts as the operator-visible source checkout plus validation target for task-mode startup.
 Task-mode startup and first-use preparation must maintain a managed bare parent repository under `${CLAW_DATADIR}/repos`, and task worktrees must be created from that managed parent rather than directly from the visible source checkout.
 When `CLAW_MODE=daily`, startup must materialize the managed durable-memory skill and the `AGENT_MEMORY` directory inside `CLAW_CODEX_WORKDIR`.
-When `CLAW_SCHEDULED_REPORT_CHANNEL_ID` is set, it becomes the default Discord report target for scheduled tasks that do not override the destination explicitly.
+When `CLAW_SCHEDULED_REPORT_TARGET` is set, it becomes the default report target for scheduled tasks that do not override the destination explicitly. Accepted formats are `channel:<id>` and `dm:<user_id>`.
 `CLAW_LOG_LEVEL` defaults to `info` when omitted.
 When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guild for faster development feedback.
 `CLAW_CODEX_SANDBOX_MODE` defaults to `workspace-write` when omitted.

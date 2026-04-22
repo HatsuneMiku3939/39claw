@@ -140,7 +140,7 @@ The minimum product-visible fields are:
 
 Optional field:
 
-- `report_channel_id`
+- `report_target`
 
 There is no separate per-task policy surface in v1.
 Scheduled tasks inherit the same effective permission model as normal message-driven Codex execution.
@@ -253,7 +253,7 @@ Expected user perception:
 
 Expected flow:
 
-1. The task definition includes `report_channel_id`.
+1. The task definition includes `report_target`.
 2. The task runs on schedule.
 3. 39claw delivers the output to the configured Discord report target for that task.
 
@@ -266,7 +266,7 @@ Expected user perception:
 
 Expected flow:
 
-1. The task definition omits `report_channel_id`.
+1. The task definition omits `report_target`.
 2. The task runs on schedule.
 3. 39claw delivers the output using the instance-level reporting behavior.
 

@@ -187,6 +187,7 @@ type fakeSession struct {
 	interactionHandlers []func(*discordgo.Session, *discordgo.InteractionCreate)
 
 	sentMessages         []*discordgo.MessageSend
+	createdDMUserIDs     []string
 	editedMessages       []*discordgo.MessageEdit
 	deletedMessageIDs    []string
 	reactions            []addedReaction
@@ -279,6 +280,22 @@ func (s *fakeSession) ChannelMessageSendComplex(
 	return &discordgo.Message{
 		ID:        "sent-message-" + strconv.Itoa(index),
 		ChannelID: channelID,
+	}, nil
+}
+
+func (s *fakeSession) UserChannelCreate(
+	recipientID string,
+	options ...discordgo.RequestOption,
+) (*discordgo.Channel, error) {
+	s.mu.Lock()
+	s.createdDMUserIDs = append(s.createdDMUserIDs, recipientID)
+	s.mu.Unlock()
+
+	s.signal()
+
+	return &discordgo.Channel{
+		ID:   "dm-channel-" + recipientID,
+		Type: discordgo.ChannelTypeDM,
 	}, nil
 }
 

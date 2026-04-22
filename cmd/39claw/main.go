@@ -253,15 +253,15 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	}
 
 	scheduledTaskService, err := app.NewScheduledTaskService(app.ScheduledTaskServiceDependencies{
-		Mode:                   cfg.Mode,
-		Timezone:               cfg.Timezone,
-		Workdir:                cfg.CodexWorkdir,
-		DefaultReportChannelID: cfg.ScheduledReportChannelID,
-		Store:                  store,
-		Gateway:                gateway,
-		ReportSender:           runtime,
-		WorkspaceManager:       scheduledWorkspaceManager,
-		Logger:                 logger,
+		Mode:                cfg.Mode,
+		Timezone:            cfg.Timezone,
+		Workdir:             cfg.CodexWorkdir,
+		DefaultReportTarget: cfg.ScheduledReportTarget,
+		Store:               store,
+		Gateway:             gateway,
+		ReportSender:        runtime,
+		WorkspaceManager:    scheduledWorkspaceManager,
+		Logger:              logger,
 	})
 	if err != nil {
 		return fmt.Errorf("build scheduled task service: %w", err)
@@ -370,10 +370,10 @@ func startScheduledMCPServer(
 	logger *slog.Logger,
 ) (*scheduled.HTTPServer, string, error) {
 	server, err := scheduled.NewHTTPServer(scheduled.HTTPServerDependencies{
-		Store:                  store,
-		Timezone:               cfg.Timezone,
-		DefaultReportChannelID: cfg.ScheduledReportChannelID,
-		Logger:                 logger,
+		Store:               store,
+		Timezone:            cfg.Timezone,
+		DefaultReportTarget: cfg.ScheduledReportTarget,
+		Logger:              logger,
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("build scheduled MCP HTTP server: %w", err)

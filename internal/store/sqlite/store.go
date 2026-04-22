@@ -442,7 +442,7 @@ func (s *Store) CloseTask(ctx context.Context, discordUserID string, taskID stri
 func (s *Store) ListScheduledTasks(ctx context.Context) ([]app.ScheduledTask, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_channel_id,
+		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_target,
 			created_at, updated_at, disabled_at
 		FROM scheduled_tasks
 		ORDER BY name ASC`,
@@ -471,7 +471,7 @@ func (s *Store) ListScheduledTasks(ctx context.Context) ([]app.ScheduledTask, er
 func (s *Store) ListEnabledScheduledTasks(ctx context.Context) ([]app.ScheduledTask, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_channel_id,
+		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_target,
 			created_at, updated_at, disabled_at
 		FROM scheduled_tasks
 		WHERE enabled = 1
@@ -501,7 +501,7 @@ func (s *Store) ListEnabledScheduledTasks(ctx context.Context) ([]app.ScheduledT
 func (s *Store) GetScheduledTaskByID(ctx context.Context, scheduledTaskID string) (app.ScheduledTask, bool, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_channel_id,
+		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_target,
 			created_at, updated_at, disabled_at
 		FROM scheduled_tasks
 		WHERE scheduled_task_id = ?`,
@@ -514,7 +514,7 @@ func (s *Store) GetScheduledTaskByID(ctx context.Context, scheduledTaskID string
 func (s *Store) GetScheduledTaskByName(ctx context.Context, name string) (app.ScheduledTask, bool, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_channel_id,
+		`SELECT scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_target,
 			created_at, updated_at, disabled_at
 		FROM scheduled_tasks
 		WHERE name = ?`,
@@ -536,7 +536,7 @@ func (s *Store) CreateScheduledTask(ctx context.Context, task app.ScheduledTask)
 	_, err := s.db.ExecContext(
 		ctx,
 		`INSERT INTO scheduled_tasks (
-			scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_channel_id,
+			scheduled_task_id, name, schedule_kind, schedule_expr, prompt, enabled, report_target,
 			created_at, updated_at, disabled_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.ScheduledTaskID,
@@ -545,7 +545,7 @@ func (s *Store) CreateScheduledTask(ctx context.Context, task app.ScheduledTask)
 		task.ScheduleExpr,
 		task.Prompt,
 		boolToSQLite(task.Enabled),
-		nullableString(task.ReportChannelID),
+		nullableString(task.ReportTarget),
 		task.CreatedAt.Format(time.RFC3339Nano),
 		task.UpdatedAt.Format(time.RFC3339Nano),
 		nullableTime(task.DisabledAt),
@@ -566,7 +566,7 @@ func (s *Store) UpdateScheduledTask(ctx context.Context, task app.ScheduledTask)
 	result, err := s.db.ExecContext(
 		ctx,
 		`UPDATE scheduled_tasks
-		SET name = ?, schedule_kind = ?, schedule_expr = ?, prompt = ?, enabled = ?, report_channel_id = ?,
+		SET name = ?, schedule_kind = ?, schedule_expr = ?, prompt = ?, enabled = ?, report_target = ?,
 			updated_at = ?, disabled_at = ?
 		WHERE scheduled_task_id = ?`,
 		task.Name,
@@ -574,7 +574,7 @@ func (s *Store) UpdateScheduledTask(ctx context.Context, task app.ScheduledTask)
 		task.ScheduleExpr,
 		task.Prompt,
 		boolToSQLite(task.Enabled),
-		nullableString(task.ReportChannelID),
+		nullableString(task.ReportTarget),
 		task.UpdatedAt.Format(time.RFC3339Nano),
 		nullableTime(task.DisabledAt),
 		task.ScheduledTaskID,
@@ -765,12 +765,12 @@ func (s *Store) CreateScheduledTaskDelivery(ctx context.Context, delivery app.Sc
 	_, err := s.db.ExecContext(
 		ctx,
 		`INSERT INTO scheduled_task_deliveries (
-			scheduled_delivery_id, scheduled_run_id, discord_channel_id, discord_message_id, status, delivered_at,
+			scheduled_delivery_id, scheduled_run_id, report_target, discord_message_id, status, delivered_at,
 			error_code, error_message, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		delivery.ScheduledDeliveryID,
 		delivery.ScheduledRunID,
-		delivery.DiscordChannelID,
+		delivery.ReportTarget,
 		nullableString(delivery.DiscordMessageID),
 		string(delivery.Status),
 		nullableTime(delivery.DeliveredAt),
@@ -795,10 +795,10 @@ func (s *Store) UpdateScheduledTaskDelivery(ctx context.Context, delivery app.Sc
 	result, err := s.db.ExecContext(
 		ctx,
 		`UPDATE scheduled_task_deliveries
-		SET discord_channel_id = ?, discord_message_id = ?, status = ?, delivered_at = ?, error_code = ?,
+		SET report_target = ?, discord_message_id = ?, status = ?, delivered_at = ?, error_code = ?,
 			error_message = ?, updated_at = ?
 		WHERE scheduled_delivery_id = ?`,
-		delivery.DiscordChannelID,
+		delivery.ReportTarget,
 		nullableString(delivery.DiscordMessageID),
 		string(delivery.Status),
 		nullableTime(delivery.DeliveredAt),
@@ -826,7 +826,7 @@ func scanScheduledTask(scanner interface{ Scan(dest ...any) error }) (app.Schedu
 	var task app.ScheduledTask
 	var scheduleKind string
 	var enabled int
-	var reportChannelID sql.NullString
+	var reportTarget sql.NullString
 	var createdAt string
 	var updatedAt string
 	var disabledAt sql.NullString
@@ -838,7 +838,7 @@ func scanScheduledTask(scanner interface{ Scan(dest ...any) error }) (app.Schedu
 		&task.ScheduleExpr,
 		&task.Prompt,
 		&enabled,
-		&reportChannelID,
+		&reportTarget,
 		&createdAt,
 		&updatedAt,
 		&disabledAt,
@@ -852,7 +852,7 @@ func scanScheduledTask(scanner interface{ Scan(dest ...any) error }) (app.Schedu
 
 	task.ScheduleKind = app.ScheduledTaskScheduleKind(scheduleKind)
 	task.Enabled = enabled != 0
-	task.ReportChannelID = nullableStringValue(reportChannelID)
+	task.ReportTarget = nullableStringValue(reportTarget)
 
 	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
 	if err != nil {

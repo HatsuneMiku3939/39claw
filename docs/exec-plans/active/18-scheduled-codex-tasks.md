@@ -14,7 +14,7 @@ The user-visible proof is concrete. A contributor should be able to run the bot 
 
 - [x] (2026-04-12 08:10Z) Reviewed `.agents/PLANS.md`, `docs/design-docs/scheduled-tasks.md`, `docs/product-specs/scheduled-tasks-user-flow.md`, and the current app/store/codex runtime shape to capture a self-contained implementation plan.
 - [x] (2026-04-12 08:40Z) Added the scheduled-task MCP tool surface and recorded the per-run Codex `--config` override used to register it.
-- [x] (2026-04-12 08:42Z) Added `CLAW_SCHEDULED_REPORT_CHANNEL_ID`, SQLite migrations `0004_scheduled_tasks.sql` and `0005_scheduled_task_history.sql`, and store APIs for scheduled-task definitions, runs, and deliveries.
+- [x] (2026-04-12 08:42Z) Added the instance-level scheduled report target setting, SQLite migrations `0004_scheduled_tasks.sql` and `0005_scheduled_task_history.sql`, and store APIs for scheduled-task definitions, runs, and deliveries.
 - [x] (2026-04-12 08:44Z) Implemented per-run MCP config injection plus MCP-backed create, list, get, update, enable, disable, and delete operations for scheduled tasks.
 - [x] (2026-04-12 08:47Z) Implemented the scheduler loop, due-run admission, fresh-thread execution path, and task-mode temporary scheduled-run worktree creation and cleanup.
 - [x] (2026-04-12 08:48Z) Implemented bot-initiated Discord report delivery and stored delivery outcomes separately from run outcomes.
@@ -47,15 +47,15 @@ The user-visible proof is concrete. A contributor should be able to run the bot 
   Rationale: The product and design documents already define conversational management through Codex-mediated tools. A local MCP server keeps the implementation aligned with that product contract instead of creating a second management surface that would later need to be replaced.
   Date/Author: 2026-04-12 / Codex
 
-- Decision: Add an optional instance-level default report target as `CLAW_SCHEDULED_REPORT_CHANNEL_ID`.
-  Rationale: The product spec says `report_channel_id` is optional per task and that omitted values should fall back to instance-level reporting behavior. A dedicated environment variable is the smallest explicit way to define that default without tying scheduled delivery to one user's last message context.
+- Decision: Add an optional instance-level default report target as `CLAW_SCHEDULED_REPORT_TARGET`.
+  Rationale: The product spec says `report_target` is optional per task and that omitted values should fall back to instance-level reporting behavior. A dedicated environment variable is the smallest explicit way to define that default without tying scheduled delivery to one user's last message context.
   Date/Author: 2026-04-12 / Codex
 
 - Decision: In `task` mode, scheduled runs must create a fresh temporary worktree for the run and remove it after the run reaches a terminal result.
   Rationale: This matches the current design note and prevents scheduled automation from borrowing or mutating an interactive task worktree that may belong to a different ongoing task context.
   Date/Author: 2026-04-12 / Codex
 
-- Decision: A scheduled task may be created without an explicit `report_channel_id`, but enabling it requires a resolved report target from either the task definition or `CLAW_SCHEDULED_REPORT_CHANNEL_ID`.
+- Decision: A scheduled task may be created without an explicit `report_target`, but enabling it requires a resolved report target from either the task definition or `CLAW_SCHEDULED_REPORT_TARGET`.
   Rationale: This preserves the product-visible small schema while preventing silently “successful” scheduled runs that have nowhere valid to report.
   Date/Author: 2026-04-12 / Codex
 
@@ -138,7 +138,7 @@ This plan fixes the following implementation choices before coding begins:
 
 - scheduled tasks are stored in new SQLite tables instead of in repository files
 - management happens through a local MCP server invoked by Codex, not through new slash commands
-- the repository adds `CLAW_SCHEDULED_REPORT_CHANNEL_ID` as the optional instance default report target
+- the repository adds `CLAW_SCHEDULED_REPORT_TARGET` as the optional instance default report target
 - the scheduler loop runs inside the 39claw process and participates in startup and shutdown
 - scheduled runs always use fresh Codex threads
 - `daily` mode scheduled runs execute directly in `CLAW_CODEX_WORKDIR`
@@ -169,7 +169,7 @@ Add new migrations after the current latest version. Use one migration for the c
   - schedule expression
   - prompt
   - enabled state
-  - nullable `report_channel_id`
+  - nullable `report_target`
   - created and updated timestamps
 - `scheduled_task_runs`
   - run ID
@@ -190,7 +190,7 @@ Add new migrations after the current latest version. Use one migration for the c
 
 Extend the store interface in `internal/app/message_service.go` or a nearby shared interface file with a focused scheduled-task store boundary rather than bloating `ThreadStore` further. Keep the names explicit: list tasks, get one task by ID or name, create, update, delete, admit due run, mark run started, finish run, record delivery, and query due tasks.
 
-Implement the full management operations in the MCP server on top of that store. These operations must validate task names, schedule syntax, prompt non-emptiness, and report-target rules. Enabling a task must fail when neither the task definition nor `CLAW_SCHEDULED_REPORT_CHANNEL_ID` resolves to a report target.
+Implement the full management operations in the MCP server on top of that store. These operations must validate task names, schedule syntax, prompt non-emptiness, and report-target rules. Enabling a task must fail when neither the task definition nor `CLAW_SCHEDULED_REPORT_TARGET` resolves to a report target.
 
 ## Milestone 3: Add scheduler loop and due-run admission
 
@@ -234,8 +234,8 @@ Add a small bot-initiated delivery boundary to the Discord runtime so the schedu
 
 Resolve the target channel by this rule:
 
-1. use the task definition’s `report_channel_id` when present
-2. otherwise use `CLAW_SCHEDULED_REPORT_CHANNEL_ID`
+1. use the task definition’s `report_target` when present
+2. otherwise use `CLAW_SCHEDULED_REPORT_TARGET`
 3. if neither exists, refuse to enable the task, or mark delivery as `skipped` only for legacy rows that predate the validation rule
 
 The message format does not need to be ornate, but it must be identifiable. Include the scheduled task name and enough context for a human to tell that the message came from a scheduled run rather than an interactive reply.
@@ -327,7 +327,7 @@ This plan is complete when all of the following are true:
 - scheduled runs always start fresh Codex threads
 - `daily` mode scheduled runs execute directly in `CLAW_CODEX_WORKDIR`
 - `task` mode scheduled runs execute in fresh temporary worktrees that are removed after completion
-- Discord delivery uses either the per-task `report_channel_id` or `CLAW_SCHEDULED_REPORT_CHANNEL_ID`
+- Discord delivery uses either the per-task `report_target` or `CLAW_SCHEDULED_REPORT_TARGET`
 - delivery status is recorded separately from execution status
 - infrastructure failure retries a due run once and records the retry clearly
 - `make test` passes
@@ -367,9 +367,9 @@ Implement the feature with these concrete interfaces and package directions:
 
 - in `internal/config/config.go`, add:
 
-    Config.ScheduledReportChannelID string
+    Config.ScheduledReportTarget string
 
-  and load it from `CLAW_SCHEDULED_REPORT_CHANNEL_ID`.
+  and load it from `CLAW_SCHEDULED_REPORT_TARGET`.
 
 - in `internal/app/types.go`, add stable scheduled-task data types such as:
 

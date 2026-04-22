@@ -35,9 +35,9 @@ func TestHTTPServerSupportsMCPGoStreamableHTTPClientAndSharesStore(t *testing.T)
 
 	store := sqlitestore.New(db)
 	httpServer, err := NewHTTPServer(HTTPServerDependencies{
-		Store:                  store,
-		Timezone:               location,
-		DefaultReportChannelID: "channel-1",
+		Store:               store,
+		Timezone:            location,
+		DefaultReportTarget: "channel:channel-1",
 	})
 	if err != nil {
 		t.Fatalf("NewHTTPServer() error = %v", err)
