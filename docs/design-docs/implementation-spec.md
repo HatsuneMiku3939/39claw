@@ -57,13 +57,13 @@ The following internal contracts should be treated as stable v1 design targets e
 - `ThreadStore`
   - loads, upserts, and deletes thread bindings and manages task records plus active task state
 - `ScheduledTaskStore`
-  - manages scheduled task definitions, run records, and delivery records
+  - manages `scheduled_tasks`, `scheduled_task_runs`, and `scheduled_task_deliveries` records
 - `CodexGateway`
   - runs a turn against an existing Codex thread when a thread ID is present
   - creates the first remote thread implicitly when the first turn runs without a saved thread ID
   - returns a normalized final response plus the thread ID that should be persisted
 - `ScheduledTaskService`
-  - implements create, list, enable, disable, delete, and execute-now workflows for scheduled tasks
+  - implements MCP-backed conversational create, list, get, update, enable, disable, delete, and execute-now workflows for scheduled tasks
   - owns due-run claiming, execution handoff, and Discord report delivery recording
 - `TaskCommandService`
   - implements the `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, `action:task-close`, and `action:task-reset-context` workflow behind the configured root command
@@ -105,12 +105,12 @@ The storage model uses seven tables:
 - `active_tasks`
   - stores `discord_user_id`, `task_id`, and `updated_at`
   - enforces one active task per Discord user within a bot instance
-- `scheduled_task_definitions`
-  - stores `scheduled_task_id`, `name`, `mode`, `schedule_kind`, `schedule_expr`, `prompt`, nullable `task_prompt_prefix`, `report_target`, `is_enabled`, `last_claimed_at`, `last_scheduled_for`, `created_at`, `updated_at`, and nullable `disabled_at`
+- `scheduled_tasks`
+  - stores `scheduled_task_id`, `name`, `schedule_kind`, `schedule_expr`, `prompt`, `enabled`, nullable `report_target`, `created_at`, `updated_at`, and nullable `disabled_at`
   - uses ULID strings for `scheduled_task_id`
   - stores the canonical schedule definition that 39claw owns locally
 - `scheduled_task_runs`
-  - stores `scheduled_run_id`, `scheduled_task_id`, `mode`, `scheduled_for`, `status`, nullable `codex_thread_id`, nullable `workdir_path`, nullable `temp_worktree_path`, nullable `started_at`, nullable `finished_at`, nullable `error_code`, nullable `error_message`, `created_at`, and `updated_at`
+  - stores `scheduled_run_id`, `scheduled_task_id`, `mode`, `scheduled_for`, `attempt`, `status`, nullable `codex_thread_id`, nullable `workdir_path`, nullable `temp_worktree_path`, nullable `started_at`, nullable `finished_at`, nullable `error_code`, nullable `error_message`, nullable `response_text`, `created_at`, and `updated_at`
   - records each scheduled execution attempt before Codex dispatch begins
 - `scheduled_task_deliveries`
   - stores `scheduled_delivery_id`, `scheduled_run_id`, `report_target`, nullable `discord_message_id`, `status`, nullable `delivered_at`, nullable `error_code`, nullable `error_message`, `created_at`, and `updated_at`
@@ -134,6 +134,7 @@ Queue admission, thread binding lookup, and worktree selection must freeze that 
 When the bot runs in `daily` mode, 39claw also manages a durable memory projection inside `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY`.
 `MEMORY.md` is the primary durable-memory file, and `YYYY-MM-DD.<generation>.md` stores the bridge note created during the first-message preflight for a new daily generation.
 Scheduled tasks are independent from interactive message routing and own their own persisted definition plus run lifecycle.
+Scheduled-task management is not part of the Discord slash-command surface; it is exposed to Codex through a local 39claw-owned MCP server and managed conversationally through the `scheduled_tasks_*` tool family.
 When a scheduled task executes in `daily` mode, it uses `CLAW_CODEX_WORKDIR` directly.
 When a scheduled task executes in `task` mode, it must create a fresh temporary worktree from the managed bare parent, run Codex there, and remove that temporary worktree after the run completes.
 
@@ -150,7 +151,7 @@ Task-control command responses are ephemeral by default.
 When a bot instance runs in `daily` mode, task actions must return a clear not-available response instead of pretending the command worked.
 When a bot instance runs in `daily` mode, the root command should also expose `action:clear`.
 When a bot instance runs in `task` mode, the root command should expose `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, `action:task-close`, and `action:task-reset-context`.
-Scheduled-task control commands should be available in both modes because scheduled execution is orthogonal to the interactive thread mode.
+Scheduled-task management should be available in both modes through MCP-backed conversational management because scheduled execution is orthogonal to the interactive thread mode.
 
 When a bot instance runs in `task` mode, normal messages without an active task must not be routed to Codex.
 They should return actionable guidance that points the user to `action:task-new`, `action:task-list`, or `action:task-switch` on the configured root command.
@@ -218,7 +219,7 @@ When `CLAW_CODEX_HOME` is set, 39claw must inject it into the spawned Codex CLI 
 When `CLAW_MODE=task`, `CLAW_CODEX_WORKDIR` must point to a Git repository with an `origin` remote and acts as the operator-visible source checkout plus validation target for task-mode startup.
 Task-mode startup and first-use preparation must maintain a managed bare parent repository under `${CLAW_DATADIR}/repos`, and task worktrees must be created from that managed parent rather than directly from the visible source checkout.
 When `CLAW_MODE=daily`, startup must materialize the managed durable-memory skill and the `AGENT_MEMORY` directory inside `CLAW_CODEX_WORKDIR`.
-When `CLAW_SCHEDULED_REPORT_TARGET` is set, it becomes the default report target for scheduled tasks that do not override the destination explicitly. Accepted formats are `channel:<id>` and `dm:<user_id>`.
+When `CLAW_SCHEDULED_REPORT_TARGET` is set, it becomes the default `report_target` for scheduled tasks that do not override the destination explicitly. Accepted formats are `channel:<id>` and `dm:<user_id>`.
 `CLAW_LOG_LEVEL` defaults to `info` when omitted.
 When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guild for faster development feedback.
 `CLAW_CODEX_SANDBOX_MODE` defaults to `workspace-write` when omitted.
