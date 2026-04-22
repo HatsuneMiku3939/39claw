@@ -19,6 +19,10 @@ type session interface {
 		data *discordgo.MessageSend,
 		options ...discordgo.RequestOption,
 	) (*discordgo.Message, error)
+	UserChannelCreate(
+		recipientID string,
+		options ...discordgo.RequestOption,
+	) (*discordgo.Channel, error)
 	ChannelMessageEditComplex(
 		data *discordgo.MessageEdit,
 		options ...discordgo.RequestOption,

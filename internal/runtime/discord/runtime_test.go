@@ -106,6 +106,87 @@ func TestRuntimeStartRegistersTaskModeChoices(t *testing.T) {
 	}
 }
 
+func TestRuntimeSendScheduledReportSupportsChannelAndDMTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		reportTarget      string
+		wantCreatedDMUser string
+		wantChannelID     string
+	}{
+		{
+			name:          "channel target",
+			reportTarget:  "channel:channel-1",
+			wantChannelID: "channel-1",
+		},
+		{
+			name:              "dm target",
+			reportTarget:      "dm:user-1",
+			wantCreatedDMUser: "user-1",
+			wantChannelID:     "dm-channel-user-1",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fakeSession := newFakeSession("bot-user")
+			runtime := newTestRuntime(t, config.ModeDaily, fakeSession)
+
+			if err := runtime.Start(context.Background()); err != nil {
+				t.Fatalf("Start() error = %v", err)
+			}
+			t.Cleanup(func() {
+				_ = runtime.Close()
+			})
+
+			messageID, err := runtime.SendScheduledReport(context.Background(), tt.reportTarget, "scheduled hello")
+			if err != nil {
+				t.Fatalf("SendScheduledReport() error = %v", err)
+			}
+			if messageID != "sent-message-1" {
+				t.Fatalf("message ID = %q, want %q", messageID, "sent-message-1")
+			}
+			if len(fakeSession.createdDMUserIDs) != 0 && tt.wantCreatedDMUser == "" {
+				t.Fatalf("created DM users = %v, want none", fakeSession.createdDMUserIDs)
+			}
+			if tt.wantCreatedDMUser != "" {
+				if len(fakeSession.createdDMUserIDs) != 1 || fakeSession.createdDMUserIDs[0] != tt.wantCreatedDMUser {
+					t.Fatalf("created DM users = %v, want [%q]", fakeSession.createdDMUserIDs, tt.wantCreatedDMUser)
+				}
+			}
+			if len(fakeSession.deliveries) != 1 {
+				t.Fatalf("delivery count = %d, want %d", len(fakeSession.deliveries), 1)
+			}
+			if fakeSession.deliveries[0].ChannelID != tt.wantChannelID {
+				t.Fatalf("delivery channel = %q, want %q", fakeSession.deliveries[0].ChannelID, tt.wantChannelID)
+			}
+		})
+	}
+}
+
+func TestRuntimeSendScheduledReportRejectsInvalidTarget(t *testing.T) {
+	t.Parallel()
+
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntime(t, config.ModeDaily, fakeSession)
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	if _, err := runtime.SendScheduledReport(context.Background(), "mail:user-1", "scheduled hello"); err == nil {
+		t.Fatal("SendScheduledReport() error = nil, want invalid target error")
+	}
+}
+
 func TestRuntimeMentionHandlingRepliesToTriggerMessage(t *testing.T) {
 	t.Parallel()
 

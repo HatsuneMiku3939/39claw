@@ -36,9 +36,9 @@ func TestMCPServerCreateAndListScheduledTasks(t *testing.T) {
 	}
 
 	scheduledServer := &MCPServer{
-		Store:                  sqlitestore.New(db),
-		Timezone:               location,
-		DefaultReportChannelID: "12345",
+		Store:               sqlitestore.New(db),
+		Timezone:            location,
+		DefaultReportTarget: "channel:12345",
 		Now: func() time.Time {
 			return time.Date(2026, time.April, 12, 8, 0, 0, 0, time.UTC)
 		},
@@ -105,10 +105,10 @@ func TestMCPServerExecuteNowUsesExecutor(t *testing.T) {
 	}
 
 	scheduledServer := &MCPServer{
-		Store:                  &fakeScheduledTaskStore{},
-		Executor:               fakeScheduledTaskExecutor{},
-		Timezone:               location,
-		DefaultReportChannelID: "12345",
+		Store:               &fakeScheduledTaskStore{},
+		Executor:            fakeScheduledTaskExecutor{},
+		Timezone:            location,
+		DefaultReportTarget: "channel:12345",
 	}
 
 	mcpServer, err := scheduledServer.BuildServer()

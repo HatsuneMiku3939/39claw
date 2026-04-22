@@ -473,7 +473,7 @@ func (r *Runtime) presentMessageResponse(discordSession session, channelID strin
 	return presentMessage(discordSession, channelID, response)
 }
 
-func (r *Runtime) SendScheduledReport(ctx context.Context, channelID string, text string) (string, error) {
+func (r *Runtime) SendScheduledReport(ctx context.Context, reportTarget string, text string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -488,14 +488,41 @@ func (r *Runtime) SendScheduledReport(ctx context.Context, channelID string, tex
 	r.mu.Unlock()
 	defer r.workers.Done()
 
-	messageID, err := r.presentMessageResponse(discordSession, channelID, app.MessageResponse{
-		Text: text,
-	})
+	target, err := app.ParseScheduledReportTarget(reportTarget)
 	if err != nil {
 		return "", err
 	}
 
-	return messageID, nil
+	switch target.Kind {
+	case app.ScheduledReportTargetKindChannel:
+		messageID, err := r.presentMessageResponse(discordSession, target.ID, app.MessageResponse{
+			Text: text,
+		})
+		if err != nil {
+			return "", err
+		}
+
+		return messageID, nil
+	case app.ScheduledReportTargetKindDM:
+		channel, err := discordSession.UserChannelCreate(target.ID)
+		if err != nil {
+			return "", fmt.Errorf("open DM channel: %w", err)
+		}
+		if channel == nil || strings.TrimSpace(channel.ID) == "" {
+			return "", errors.New("open DM channel: discord returned an empty DM channel")
+		}
+
+		messageID, err := r.presentMessageResponse(discordSession, channel.ID, app.MessageResponse{
+			Text: text,
+		})
+		if err != nil {
+			return "", err
+		}
+
+		return messageID, nil
+	default:
+		return "", fmt.Errorf("unsupported scheduled report target kind %q", target.Kind)
+	}
 }
 
 func (r *Runtime) addCompletionReaction(discordSession session, channelID string, messageID string) {

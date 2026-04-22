@@ -68,7 +68,27 @@ func TestValidateScheduledTaskDefinitionRequiresReportTargetWhenEnabled(t *testi
 		ScheduleExpr: "0 9 * * *",
 		Prompt:       "Write the report.",
 		Enabled:      true,
-	}, location, "12345"); err != nil {
-		t.Fatalf("ValidateScheduledTaskDefinition() with default report channel error = %v", err)
+	}, location, "channel:12345"); err != nil {
+		t.Fatalf("ValidateScheduledTaskDefinition() with default report target error = %v", err)
+	}
+}
+
+func TestValidateScheduledTaskDefinitionRejectsInvalidReportTarget(t *testing.T) {
+	t.Parallel()
+
+	location, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("LoadLocation() error = %v", err)
+	}
+
+	err = ValidateScheduledTaskDefinition(ScheduledTask{
+		Name:         "Daily report",
+		ScheduleKind: ScheduledTaskScheduleKindCron,
+		ScheduleExpr: "0 9 * * *",
+		Prompt:       "Write the report.",
+		ReportTarget: "mail:user-1",
+	}, location, "")
+	if err == nil {
+		t.Fatal("ValidateScheduledTaskDefinition() error = nil, want invalid report target error")
 	}
 }

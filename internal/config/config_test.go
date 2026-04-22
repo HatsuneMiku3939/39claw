@@ -38,6 +38,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_CODEX_MODEL_REASONING_EFFORT": "high",
 				"CLAW_CODEX_WEB_SEARCH_MODE":        "cached",
 				"CLAW_CODEX_NETWORK_ACCESS":         "false",
+				"CLAW_SCHEDULED_REPORT_TARGET":      "dm:user-1",
 				"CLAW_LOG_LEVEL":                    "debug",
 				"CLAW_LOG_FORMAT":                   "text",
 			},
@@ -62,6 +63,7 @@ func TestLoadFromLookup(t *testing.T) {
 				CodexModelReasoningEffort:  "high",
 				CodexWebSearchMode:         "cached",
 				CodexNetworkAccess:         boolPtr(false),
+				ScheduledReportTarget:      "dm:user-1",
 				LogLevel:                   "debug",
 				LogFormat:                  "text",
 			},
@@ -282,6 +284,10 @@ func TestLoadFromLookup(t *testing.T) {
 				t.Fatalf("CodexNetworkAccess = %v, want %v", got.CodexNetworkAccess, tt.want.CodexNetworkAccess)
 			case *got.CodexNetworkAccess != *tt.want.CodexNetworkAccess:
 				t.Fatalf("CodexNetworkAccess = %t, want %t", *got.CodexNetworkAccess, *tt.want.CodexNetworkAccess)
+			}
+
+			if got.ScheduledReportTarget != tt.want.ScheduledReportTarget {
+				t.Fatalf("ScheduledReportTarget = %q, want %q", got.ScheduledReportTarget, tt.want.ScheduledReportTarget)
 			}
 
 			if got.LogLevel != tt.want.LogLevel {

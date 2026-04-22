@@ -494,9 +494,9 @@ func TestStartScheduledMCPServerLogsURL(t *testing.T) {
 		context.Background(),
 		noopScheduledTaskStore{},
 		config.Config{
-			Mode:                     config.ModeTask,
-			Timezone:                 location,
-			ScheduledReportChannelID: "1234567890",
+			Mode:                  config.ModeTask,
+			Timezone:              location,
+			ScheduledReportTarget: "channel:1234567890",
 		},
 		logger,
 	)
@@ -535,7 +535,7 @@ func (r *stubDiscordRuntime) Close() error {
 	return nil
 }
 
-func (r *stubDiscordRuntime) SendScheduledReport(ctx context.Context, channelID string, text string) (string, error) {
+func (r *stubDiscordRuntime) SendScheduledReport(ctx context.Context, reportTarget string, text string) (string, error) {
 	return "scheduled-message", nil
 }
 

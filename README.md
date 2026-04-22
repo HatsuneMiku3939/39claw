@@ -472,8 +472,9 @@ The first normal message for a new task may spend a moment preparing that task's
   - `disabled`, `cached`, or `live`
 - `CLAW_CODEX_NETWORK_ACCESS`
   - `true` or `false`
-- `CLAW_SCHEDULED_REPORT_CHANNEL_ID`
-  - default Discord channel used for scheduled-task reports when a task definition does not provide its own `report_channel_id`
+- `CLAW_SCHEDULED_REPORT_TARGET`
+  - default scheduled-task report target when a task definition does not provide its own `report_target`
+  - accepted formats are `channel:<id>` and `dm:<user_id>`
 
 ## Observability
 

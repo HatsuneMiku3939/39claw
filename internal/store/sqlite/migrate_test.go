@@ -27,8 +27,8 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	}
 
 	versions := appliedVersionsForTest(t, db)
-	if !slices.Equal(versions, []int{1, 2, 3, 4, 5}) {
-		t.Fatalf("applied migration versions = %v, want %v", versions, []int{1, 2, 3, 4, 5})
+	if !slices.Equal(versions, []int{1, 2, 3, 4, 5, 6}) {
+		t.Fatalf("applied migration versions = %v, want %v", versions, []int{1, 2, 3, 4, 5, 6})
 	}
 
 	for _, tableName := range []string{
@@ -57,6 +57,28 @@ func TestMigrateFreshDatabase(t *testing.T) {
 
 	if !hasAllColumns(taskColumns, legacyTaskWorktreeColumns) {
 		t.Fatalf("tasks columns = %v, want worktree metadata columns present", taskColumns)
+	}
+
+	scheduledTaskColumns, err := tableColumnNames(context.Background(), db, "scheduled_tasks")
+	if err != nil {
+		t.Fatalf("tableColumnNames(scheduled_tasks) error = %v", err)
+	}
+	if !slices.Contains(scheduledTaskColumns, "report_target") {
+		t.Fatalf("scheduled_tasks columns = %v, want report_target", scheduledTaskColumns)
+	}
+	if slices.Contains(scheduledTaskColumns, "report_channel_id") {
+		t.Fatalf("scheduled_tasks columns = %v, want report_channel_id removed", scheduledTaskColumns)
+	}
+
+	deliveryColumns, err := tableColumnNames(context.Background(), db, "scheduled_task_deliveries")
+	if err != nil {
+		t.Fatalf("tableColumnNames(scheduled_task_deliveries) error = %v", err)
+	}
+	if !slices.Contains(deliveryColumns, "report_target") {
+		t.Fatalf("scheduled_task_deliveries columns = %v, want report_target", deliveryColumns)
+	}
+	if slices.Contains(deliveryColumns, "discord_channel_id") {
+		t.Fatalf("scheduled_task_deliveries columns = %v, want discord_channel_id removed", deliveryColumns)
 	}
 }
 
@@ -146,8 +168,8 @@ func TestMigrateLegacyDatabaseBootstrapRecognizesLatestSchema(t *testing.T) {
 	}
 
 	versions := appliedVersionsForTest(t, reopened)
-	if !slices.Equal(versions, []int{1, 2, 3, 4, 5}) {
-		t.Fatalf("applied migration versions = %v, want %v", versions, []int{1, 2, 3, 4, 5})
+	if !slices.Equal(versions, []int{1, 2, 3, 4, 5, 6}) {
+		t.Fatalf("applied migration versions = %v, want %v", versions, []int{1, 2, 3, 4, 5, 6})
 	}
 
 	store := New(reopened)

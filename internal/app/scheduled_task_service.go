@@ -20,37 +20,37 @@ const (
 )
 
 type ScheduledTaskServiceDependencies struct {
-	Mode                   config.Mode
-	Timezone               *time.Location
-	Workdir                string
-	DefaultReportChannelID string
-	Store                  ScheduledTaskStore
-	Gateway                CodexGateway
-	ReportSender           ScheduledTaskReportSender
-	WorkspaceManager       ScheduledTaskWorkspaceManager
-	Logger                 *slog.Logger
-	TickInterval           time.Duration
-	Now                    func() time.Time
-	StartedAt              time.Time
-	NewRunID               func() string
-	NewDeliveryID          func() string
+	Mode                config.Mode
+	Timezone            *time.Location
+	Workdir             string
+	DefaultReportTarget string
+	Store               ScheduledTaskStore
+	Gateway             CodexGateway
+	ReportSender        ScheduledTaskReportSender
+	WorkspaceManager    ScheduledTaskWorkspaceManager
+	Logger              *slog.Logger
+	TickInterval        time.Duration
+	Now                 func() time.Time
+	StartedAt           time.Time
+	NewRunID            func() string
+	NewDeliveryID       func() string
 }
 
 type ScheduledTaskService struct {
-	mode                   config.Mode
-	timezone               *time.Location
-	workdir                string
-	defaultReportChannelID string
-	store                  ScheduledTaskStore
-	gateway                CodexGateway
-	reportSender           ScheduledTaskReportSender
-	workspaceManager       ScheduledTaskWorkspaceManager
-	logger                 *slog.Logger
-	tickInterval           time.Duration
-	now                    func() time.Time
-	newRunID               func() string
-	newDeliveryID          func() string
-	startedAt              time.Time
+	mode                config.Mode
+	timezone            *time.Location
+	workdir             string
+	defaultReportTarget string
+	store               ScheduledTaskStore
+	gateway             CodexGateway
+	reportSender        ScheduledTaskReportSender
+	workspaceManager    ScheduledTaskWorkspaceManager
+	logger              *slog.Logger
+	tickInterval        time.Duration
+	now                 func() time.Time
+	newRunID            func() string
+	newDeliveryID       func() string
+	startedAt           time.Time
 
 	mu      sync.Mutex
 	cancel  context.CancelFunc
@@ -110,20 +110,20 @@ func NewScheduledTaskService(deps ScheduledTaskServiceDependencies) (*ScheduledT
 	}
 
 	return &ScheduledTaskService{
-		mode:                   deps.Mode,
-		timezone:               deps.Timezone,
-		workdir:                deps.Workdir,
-		defaultReportChannelID: deps.DefaultReportChannelID,
-		store:                  deps.Store,
-		gateway:                deps.Gateway,
-		reportSender:           deps.ReportSender,
-		workspaceManager:       deps.WorkspaceManager,
-		logger:                 logger,
-		tickInterval:           tickInterval,
-		now:                    now,
-		startedAt:              startedAt,
-		newRunID:               newRunID,
-		newDeliveryID:          newDeliveryID,
+		mode:                deps.Mode,
+		timezone:            deps.Timezone,
+		workdir:             deps.Workdir,
+		defaultReportTarget: deps.DefaultReportTarget,
+		store:               deps.Store,
+		gateway:             deps.Gateway,
+		reportSender:        deps.ReportSender,
+		workspaceManager:    deps.WorkspaceManager,
+		logger:              logger,
+		tickInterval:        tickInterval,
+		now:                 now,
+		startedAt:           startedAt,
+		newRunID:            newRunID,
+		newDeliveryID:       newDeliveryID,
 	}, nil
 }
 
@@ -520,26 +520,26 @@ func isCancellationError(err error) bool {
 }
 
 func (s *ScheduledTaskService) deliverRunResult(ctx context.Context, task ScheduledTask, run ScheduledTaskRun) {
-	channelID := ResolveScheduledTaskReportChannel(task, s.defaultReportChannelID)
+	reportTarget := ResolveScheduledTaskReportTarget(task, s.defaultReportTarget)
 	deliveryLogger := s.logger.With(
 		"task", task.Name,
 		"task_id", task.ScheduledTaskID,
 		"run_id", run.ScheduledRunID,
-		"channel_id", channelID,
+		"report_target", reportTarget,
 	)
 	delivery := ScheduledTaskDelivery{
 		ScheduledDeliveryID: s.newDeliveryID(),
 		ScheduledRunID:      run.ScheduledRunID,
-		DiscordChannelID:    channelID,
+		ReportTarget:        reportTarget,
 		Status:              ScheduledTaskDeliveryStatusPending,
 	}
 
-	if channelID == "" {
+	if reportTarget == "" {
 		now := s.now()
 		delivery.Status = ScheduledTaskDeliveryStatusSkipped
 		delivery.DeliveredAt = &now
-		delivery.ErrorCode = "missing_report_channel"
-		delivery.ErrorMessage = "scheduled task does not resolve to a report channel"
+		delivery.ErrorCode = "missing_report_target"
+		delivery.ErrorMessage = "scheduled task does not resolve to a report target"
 		if err := s.store.CreateScheduledTaskDelivery(ctx, delivery); err != nil {
 			deliveryLogger.Error("record skipped scheduled task delivery", "error", err)
 		}
@@ -553,7 +553,7 @@ func (s *ScheduledTaskService) deliverRunResult(ctx context.Context, task Schedu
 	}
 	deliveryLogger.Info("scheduled task delivery started")
 
-	messageID, err := s.reportSender.SendScheduledReport(ctx, channelID, formatScheduledReport(task, run))
+	messageID, err := s.reportSender.SendScheduledReport(ctx, reportTarget, formatScheduledReport(task, run))
 	now := s.now()
 	delivery.DeliveredAt = &now
 	delivery.UpdatedAt = now

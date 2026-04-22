@@ -20,12 +20,12 @@ const (
 )
 
 type MCPServer struct {
-	Store                  app.ScheduledTaskStore
-	Executor               app.ScheduledTaskExecutor
-	Timezone               *time.Location
-	DefaultReportChannelID string
-	Now                    func() time.Time
-	mu                     sync.RWMutex
+	Store               app.ScheduledTaskStore
+	Executor            app.ScheduledTaskExecutor
+	Timezone            *time.Location
+	DefaultReportTarget string
+	Now                 func() time.Time
+	mu                  sync.RWMutex
 }
 
 func (s *MCPServer) BuildServer() (*mcpserver.MCPServer, error) {
@@ -107,12 +107,12 @@ func (s *MCPServer) getTask(ctx context.Context, request mcp.CallToolRequest) (*
 
 func (s *MCPServer) createTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Name            string `json:"name"`
-		ScheduleKind    string `json:"schedule_kind"`
-		ScheduleExpr    string `json:"schedule_expr"`
-		Prompt          string `json:"prompt"`
-		Enabled         bool   `json:"enabled"`
-		ReportChannelID string `json:"report_channel_id"`
+		Name         string `json:"name"`
+		ScheduleKind string `json:"schedule_kind"`
+		ScheduleExpr string `json:"schedule_expr"`
+		Prompt       string `json:"prompt"`
+		Enabled      bool   `json:"enabled"`
+		ReportTarget string `json:"report_target"`
 	}
 	if err := bindToolArguments(request, &args); err != nil {
 		return toolErrorResult("parse scheduled_tasks_create arguments", err), nil
@@ -125,14 +125,14 @@ func (s *MCPServer) createTask(ctx context.Context, request mcp.CallToolRequest)
 		ScheduleExpr:    strings.TrimSpace(args.ScheduleExpr),
 		Prompt:          strings.TrimSpace(args.Prompt),
 		Enabled:         args.Enabled,
-		ReportChannelID: strings.TrimSpace(args.ReportChannelID),
+		ReportTarget:    strings.TrimSpace(args.ReportTarget),
 	}
 	if !task.Enabled {
 		now := s.Now()
 		task.DisabledAt = &now
 	}
 
-	if err := app.ValidateScheduledTaskDefinition(task, s.Timezone, s.DefaultReportChannelID); err != nil {
+	if err := app.ValidateScheduledTaskDefinition(task, s.Timezone, s.DefaultReportTarget); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	if _, ok, err := s.Store.GetScheduledTaskByName(ctx, task.Name); err != nil {
@@ -149,12 +149,12 @@ func (s *MCPServer) createTask(ctx context.Context, request mcp.CallToolRequest)
 
 func (s *MCPServer) updateTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		Name            string  `json:"name"`
-		ScheduleKind    *string `json:"schedule_kind"`
-		ScheduleExpr    *string `json:"schedule_expr"`
-		Prompt          *string `json:"prompt"`
-		Enabled         *bool   `json:"enabled"`
-		ReportChannelID *string `json:"report_channel_id"`
+		Name         string  `json:"name"`
+		ScheduleKind *string `json:"schedule_kind"`
+		ScheduleExpr *string `json:"schedule_expr"`
+		Prompt       *string `json:"prompt"`
+		Enabled      *bool   `json:"enabled"`
+		ReportTarget *string `json:"report_target"`
 	}
 	if err := bindToolArguments(request, &args); err != nil {
 		return toolErrorResult("parse scheduled_tasks_update arguments", err), nil
@@ -186,11 +186,11 @@ func (s *MCPServer) updateTask(ctx context.Context, request mcp.CallToolRequest)
 			task.DisabledAt = &now
 		}
 	}
-	if args.ReportChannelID != nil {
-		task.ReportChannelID = strings.TrimSpace(*args.ReportChannelID)
+	if args.ReportTarget != nil {
+		task.ReportTarget = strings.TrimSpace(*args.ReportTarget)
 	}
 
-	if err := app.ValidateScheduledTaskDefinition(task, s.Timezone, s.DefaultReportChannelID); err != nil {
+	if err := app.ValidateScheduledTaskDefinition(task, s.Timezone, s.DefaultReportTarget); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	if err := s.Store.UpdateScheduledTask(ctx, task); err != nil {
@@ -273,7 +273,7 @@ func (s *MCPServer) toggleTask(
 		task.DisabledAt = &now
 	}
 
-	if err := app.ValidateScheduledTaskDefinition(task, s.Timezone, s.DefaultReportChannelID); err != nil {
+	if err := app.ValidateScheduledTaskDefinition(task, s.Timezone, s.DefaultReportTarget); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	if err := s.Store.UpdateScheduledTask(ctx, task); err != nil {
@@ -312,7 +312,7 @@ func scheduledTasksCreateTool() mcp.Tool {
 		mcp.WithString("schedule_expr", mcp.Required(), mcp.Description("Cron expression or local-time timestamp.")),
 		mcp.WithString("prompt", mcp.Required(), mcp.Description("Prompt to execute on each scheduled run.")),
 		mcp.WithBoolean("enabled", mcp.Required(), mcp.Description("Whether the task starts enabled.")),
-		mcp.WithString("report_channel_id", mcp.Description("Optional Discord channel override for reports.")),
+		mcp.WithString("report_target", mcp.Description("Optional report override in the form channel:<id> or dm:<user_id>.")),
 	)
 }
 
@@ -325,7 +325,7 @@ func scheduledTasksUpdateTool() mcp.Tool {
 		mcp.WithString("schedule_expr", mcp.Description("Optional schedule expression override.")),
 		mcp.WithString("prompt", mcp.Description("Optional prompt override.")),
 		mcp.WithBoolean("enabled", mcp.Description("Optional enabled-state override.")),
-		mcp.WithString("report_channel_id", mcp.Description("Optional Discord channel override.")),
+		mcp.WithString("report_target", mcp.Description("Optional report override in the form channel:<id> or dm:<user_id>.")),
 	)
 }
 

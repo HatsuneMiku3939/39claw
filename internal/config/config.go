@@ -40,7 +40,7 @@ type Config struct {
 	CodexModelReasoningEffort  string
 	CodexWebSearchMode         string
 	CodexNetworkAccess         *bool
-	ScheduledReportChannelID   string
+	ScheduledReportTarget      string
 	LogLevel                   string
 	LogFormat                  string
 }
@@ -77,7 +77,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		"CLAW_CODEX_MODEL_REASONING_EFFORT",
 		"CLAW_CODEX_WEB_SEARCH_MODE",
 		"CLAW_CODEX_NETWORK_ACCESS",
-		"CLAW_SCHEDULED_REPORT_CHANNEL_ID",
+		"CLAW_SCHEDULED_REPORT_TARGET",
 	}
 
 	values := make(map[string]string, len(required)+len(optionalKeys))
@@ -154,7 +154,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		CodexModelReasoningEffort:  values["CLAW_CODEX_MODEL_REASONING_EFFORT"],
 		CodexWebSearchMode:         values["CLAW_CODEX_WEB_SEARCH_MODE"],
 		CodexNetworkAccess:         networkAccess,
-		ScheduledReportChannelID:   values["CLAW_SCHEDULED_REPORT_CHANNEL_ID"],
+		ScheduledReportTarget:      values["CLAW_SCHEDULED_REPORT_TARGET"],
 		LogLevel:                   logLevel,
 		LogFormat:                  logFormat,
 	}, nil

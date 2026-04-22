@@ -98,8 +98,8 @@ The scheduled-task definition should stay intentionally small.
   - the Codex instruction body for the scheduled run
 - `enabled`
   - whether future due times should be admitted
-- `report_channel_id`
-  - optional Discord channel override for delivery
+- `report_target`
+  - optional delivery override in the form `channel:<id>` or `dm:<user_id>`
 - `created_at`
 - `updated_at`
 
@@ -282,7 +282,7 @@ Scheduled output should be delivered through the existing presentation layer rat
 
 The report-target rule is:
 
-- use `report_channel_id` when the task defines one
+- use `report_target` when the task defines one
 - otherwise use the instance default scheduled-task reporting behavior
 
 The exact message template can stay product-facing, but the design should preserve a few invariants:

@@ -38,14 +38,14 @@ func TestScheduledTaskServiceTickExecutesAndDeliversDueRun(t *testing.T) {
 	gateway := &fakeScheduledGateway{}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                   config.ModeDaily,
-		Timezone:               location,
-		Workdir:                "/workspace/project",
-		DefaultReportChannelID: "channel-1",
-		Store:                  store,
-		Gateway:                gateway,
-		ReportSender:           &fakeScheduledReportSender{},
-		Logger:                 nil,
+		Mode:                config.ModeDaily,
+		Timezone:            location,
+		Workdir:             "/workspace/project",
+		DefaultReportTarget: "channel:channel-1",
+		Store:               store,
+		Gateway:             gateway,
+		ReportSender:        &fakeScheduledReportSender{},
+		Logger:              nil,
 		Now: func() time.Time {
 			return time.Date(2026, time.April, 12, 8, 1, 0, 0, location)
 		},
@@ -82,8 +82,8 @@ func TestScheduledTaskServiceTickExecutesAndDeliversDueRun(t *testing.T) {
 	if delivery.Status != ScheduledTaskDeliveryStatusSucceeded {
 		t.Fatalf("delivery status = %q, want %q", delivery.Status, ScheduledTaskDeliveryStatusSucceeded)
 	}
-	if delivery.DiscordChannelID != "channel-1" {
-		t.Fatalf("delivery channel = %q, want %q", delivery.DiscordChannelID, "channel-1")
+	if delivery.ReportTarget != "channel:channel-1" {
+		t.Fatalf("delivery report target = %q, want %q", delivery.ReportTarget, "channel:channel-1")
 	}
 	if gateway.runCount() != 1 {
 		t.Fatalf("gateway run count = %d, want %d", gateway.runCount(), 1)
@@ -114,13 +114,13 @@ func TestScheduledTaskServiceTickSkipsBackfillBeforeServiceStart(t *testing.T) {
 	gateway := &fakeScheduledGateway{}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                   config.ModeDaily,
-		Timezone:               location,
-		Workdir:                "/workspace/project",
-		DefaultReportChannelID: "channel-1",
-		Store:                  store,
-		Gateway:                gateway,
-		ReportSender:           &fakeScheduledReportSender{},
+		Mode:                config.ModeDaily,
+		Timezone:            location,
+		Workdir:             "/workspace/project",
+		DefaultReportTarget: "channel:channel-1",
+		Store:               store,
+		Gateway:             gateway,
+		ReportSender:        &fakeScheduledReportSender{},
 		Now: func() time.Time {
 			return time.Date(2026, time.April, 12, 8, 3, 40, 0, location)
 		},
@@ -177,13 +177,13 @@ func TestScheduledTaskServiceTickUsesLatestRunAsAnchor(t *testing.T) {
 	gateway := &fakeScheduledGateway{}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                   config.ModeDaily,
-		Timezone:               location,
-		Workdir:                "/workspace/project",
-		DefaultReportChannelID: "channel-1",
-		Store:                  store,
-		Gateway:                gateway,
-		ReportSender:           &fakeScheduledReportSender{},
+		Mode:                config.ModeDaily,
+		Timezone:            location,
+		Workdir:             "/workspace/project",
+		DefaultReportTarget: "channel:channel-1",
+		Store:               store,
+		Gateway:             gateway,
+		ReportSender:        &fakeScheduledReportSender{},
 		Now: func() time.Time {
 			return time.Date(2026, time.April, 12, 8, 4, 0, 0, location)
 		},
@@ -235,14 +235,14 @@ func TestScheduledTaskServiceExecuteTaskNowRunsImmediately(t *testing.T) {
 	reportSender := &fakeScheduledReportSender{}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                   config.ModeDaily,
-		Timezone:               location,
-		Workdir:                "/workspace/project",
-		DefaultReportChannelID: "channel-1",
-		Store:                  store,
-		Gateway:                gateway,
-		ReportSender:           reportSender,
-		Logger:                 logger,
+		Mode:                config.ModeDaily,
+		Timezone:            location,
+		Workdir:             "/workspace/project",
+		DefaultReportTarget: "channel:channel-1",
+		Store:               store,
+		Gateway:             gateway,
+		ReportSender:        reportSender,
+		Logger:              logger,
 		Now: func() time.Time {
 			return time.Date(2026, time.April, 12, 8, 5, 10, 0, location)
 		},
@@ -299,13 +299,13 @@ func TestScheduledTaskServiceExecuteRunDoesNotRetryCanceledRun(t *testing.T) {
 	gateway := &fakeScheduledGateway{err: context.Canceled}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                   config.ModeDaily,
-		Timezone:               location,
-		Workdir:                "/workspace/project",
-		DefaultReportChannelID: "channel-1",
-		Store:                  store,
-		Gateway:                gateway,
-		ReportSender:           &fakeScheduledReportSender{},
+		Mode:                config.ModeDaily,
+		Timezone:            location,
+		Workdir:             "/workspace/project",
+		DefaultReportTarget: "channel:channel-1",
+		Store:               store,
+		Gateway:             gateway,
+		ReportSender:        &fakeScheduledReportSender{},
 		Now: func() time.Time {
 			return time.Date(2026, time.April, 12, 8, 5, 10, 0, location)
 		},
@@ -352,13 +352,13 @@ func TestNewScheduledTaskServiceDefaultNowUsesLiveClock(t *testing.T) {
 	}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                   config.ModeDaily,
-		Timezone:               location,
-		Workdir:                "/workspace/project",
-		DefaultReportChannelID: "channel-1",
-		Store:                  &fakeScheduledTaskStore{},
-		Gateway:                &fakeScheduledGateway{},
-		ReportSender:           &fakeScheduledReportSender{},
+		Mode:                config.ModeDaily,
+		Timezone:            location,
+		Workdir:             "/workspace/project",
+		DefaultReportTarget: "channel:channel-1",
+		Store:               &fakeScheduledTaskStore{},
+		Gateway:             &fakeScheduledGateway{},
+		ReportSender:        &fakeScheduledReportSender{},
 	})
 	if err != nil {
 		t.Fatalf("NewScheduledTaskService() error = %v", err)
@@ -404,10 +404,10 @@ type fakeScheduledReportSender struct {
 	messages []string
 }
 
-func (s *fakeScheduledReportSender) SendScheduledReport(ctx context.Context, channelID string, text string) (string, error) {
+func (s *fakeScheduledReportSender) SendScheduledReport(ctx context.Context, reportTarget string, text string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.messages = append(s.messages, channelID+":"+text)
+	s.messages = append(s.messages, reportTarget+":"+text)
 	return "discord-message-1", nil
 }
 
