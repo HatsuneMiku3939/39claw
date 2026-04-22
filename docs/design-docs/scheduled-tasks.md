@@ -25,7 +25,7 @@ This document answers those questions at the concept level without turning 39cla
 - Every scheduled execution starts a fresh Codex thread and never reuses a prior scheduled-run thread ID.
 - Scheduled execution uses the same Codex runtime configuration as normal turns, including the same effective repository root for the current bot mode.
 - When the bot instance runs in `task` mode, a scheduled run executes in its own fresh temporary worktree created for that scheduled run and removed after the run finishes.
-- Scheduled tasks are defined by a deliberately small schema: name, schedule, prompt, enabled state, and optional report-channel override.
+- Scheduled tasks are defined by a deliberately small schema: name, schedule, prompt, enabled state, and optional `report_target` override.
 - Infrastructure-level execution failure may trigger at most one automatic retry for the due run; content-level failure is reported by Codex output rather than by a separate 39claw policy engine.
 - Recurring cron schedules do not backfill missed occurrences from before the current scheduler process started; those older overdue boundaries are skipped instead of replayed after downtime.
 - Delivery to Discord is a separate step from Codex execution and should be recorded separately.
@@ -139,13 +139,14 @@ Scheduled-task management should be exposed to Codex as explicit 39claw-owned to
 
 The concept-level tool surface should cover:
 
-- list scheduled tasks
-- inspect one scheduled task
-- create a scheduled task
-- update a scheduled task
-- enable a scheduled task
-- disable a scheduled task
-- delete a scheduled task
+- `scheduled_tasks_list`
+- `scheduled_tasks_get`
+- `scheduled_tasks_create`
+- `scheduled_tasks_update`
+- `scheduled_tasks_enable`
+- `scheduled_tasks_disable`
+- `scheduled_tasks_delete`
+- `scheduled_tasks_execute_now`
 
 These tools should validate input and mutate the canonical store directly.
 Codex should not be expected to invent hidden file formats or write directly into SQLite-managed state.
@@ -173,6 +174,13 @@ Scheduled tasks should use the same mode-aware repository target as normal inter
 
 This keeps scheduled tasks independent from whichever task context a user last selected.
 The feature is instance-scoped automation, not per-user active-task automation.
+
+The effective report target should resolve in this order:
+
+1. the task definition's `report_target`
+2. `CLAW_SCHEDULED_REPORT_TARGET`
+
+Accepted target forms are `channel:<id>` and `dm:<user_id>`.
 
 ### Task-mode scheduled-run workspace rule
 
