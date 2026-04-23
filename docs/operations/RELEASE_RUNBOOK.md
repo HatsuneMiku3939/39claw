@@ -104,7 +104,7 @@ The release workflow:
 
 1. checks out the repository with full history
 2. sets up Go from `go.mod`
-3. runs GoReleaser with `release --clean`
+3. runs the Node 24-compatible `goreleaser/goreleaser-action` release step with `release --clean`
 4. creates or replaces a draft GitHub Release for the pushed tag
 5. uploads release archives for the supported platforms
 6. uploads Linux `.deb` and `.rpm` package artifacts
