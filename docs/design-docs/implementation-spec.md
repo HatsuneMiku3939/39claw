@@ -63,8 +63,10 @@ The following internal contracts should be treated as stable v1 design targets e
   - creates the first remote thread implicitly when the first turn runs without a saved thread ID
   - returns a normalized final response plus the thread ID that should be persisted
 - `ScheduledTaskService`
+  - owns due-run claiming, execution handoff, execute-now execution, and Discord report delivery recording
+- `ScheduledTaskMCPServer`
   - implements MCP-backed conversational create, list, get, update, enable, disable, delete, and execute-now workflows for scheduled tasks
-  - owns due-run claiming, execution handoff, and Discord report delivery recording
+  - validates tool input and mutates scheduled-task definitions through `ScheduledTaskStore`
 - `TaskCommandService`
   - implements the `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, `action:task-close`, and `action:task-reset-context` workflow behind the configured root command
 - `DailyCommandService`

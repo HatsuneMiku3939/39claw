@@ -187,6 +187,8 @@ In `task` mode, the same root command also supports:
   - switch the active task by name
 - `/<instance-command> action:task-close task_name:<name>`
   - close a task by name
+- `/<instance-command> action:task-reset-context`
+  - keep the active task and worktree but reset only the saved Codex conversation continuity
 
 In `task` mode, a normal message may also start with `task:<name>` to route only that message to another open task without changing the active task.
 Examples:
@@ -211,7 +213,7 @@ Before you start, make sure you have:
 
 - a Discord bot token
 - the `codex` executable available on the machine that runs 39claw
-- a writable SQLite file path
+- a writable data directory for `CLAW_DATADIR`
 - a working directory that Codex should operate in
 - a write-capable Codex workdir if you plan to use `daily` mode, because 39claw manages `AGENT_MEMORY/` files there
 - a Git repository workdir if you plan to use `task` mode

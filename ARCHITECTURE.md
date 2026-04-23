@@ -104,22 +104,26 @@ It should avoid unnecessary local orchestration layers in v1.
 
 Its job is to:
 
-1. receive a Discord message
-2. determine which logical thread bucket it belongs to
-3. resolve or create the corresponding Codex thread
+1. receive a Discord message or detect a due scheduled run
+2. determine which logical thread or scheduled execution path applies
+3. resolve or create the corresponding Codex execution context
 4. send the turn to Codex
-5. return the result to Discord
+5. return the result to Discord immediately, later as a queued follow-up, or as a scheduled report
 
 ## 5. High-Level Architecture
 
 ```text
 Discord Runtime
   -> Message Application Service
-  -> Scheduled Task Service
     -> Thread Policy
     -> Thread Store
     -> Queue Coordinator
     -> Codex Gateway
+  -> Response Presenter
+
+Scheduled Task Service
+  -> Scheduled Task Store
+  -> Codex Gateway
   -> Response Presenter
 ```
 
