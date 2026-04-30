@@ -6,16 +6,16 @@ This document must be maintained in accordance with `.agents/PLANS.md`.
 
 ## Purpose / Big Picture
 
-After this plan, a 39claw operator should configure bot instances with `CLAW_MODE=journal` for the shared day-based assistant flow and `CLAW_MODE=thread` for the explicit task-oriented repository flow. Users should see those names consistently in help text, examples, product documentation, and runtime errors. Existing deployments that still set `CLAW_MODE=daily` or `CLAW_MODE=task` should keep starting during a compatibility period, and existing SQLite thread bindings should continue to resume the same Codex conversations after the mode names change.
+After this plan, a 39claw operator should configure bot instances with `CLAW_MODE=journal` for the shared day-based assistant flow and `CLAW_MODE=thread` for the explicit task-oriented repository flow. Users should see those names consistently in help text, examples, product documentation, and runtime errors. This is intentionally a breaking rename: deployments that still set `CLAW_MODE=daily` or `CLAW_MODE=task` should fail fast with the normal unsupported-mode configuration error until operators update their environment files.
 
-The user-visible proof is concrete. A contributor should be able to load configuration with `CLAW_MODE=journal` and see help output report `Mode: journal`; load configuration with `CLAW_MODE=thread` and see task actions exposed; run a migration over a database containing `thread_bindings.mode = 'daily'` or `thread_bindings.mode = 'task'`; and then observe that those rows are available under `journal` or `thread` without losing their `codex_thread_id`.
+The user-visible proof is concrete. A contributor should be able to load configuration with `CLAW_MODE=journal` and see help output report `Mode: journal`; load configuration with `CLAW_MODE=thread` and see task actions exposed; and load configuration with `CLAW_MODE=daily` or `CLAW_MODE=task` and observe an explicit unsupported-mode error. Existing SQLite rows keyed by the old mode values are not migrated by this plan; a bot started under the new names creates or uses bindings under the new canonical mode names.
 
 ## Progress
 
 - [x] (2026-04-29 22:53Z) Reset the previous unplanned implementation attempt back to `HEAD` and confirmed the working tree was clean before writing this plan.
 - [x] (2026-04-29 22:53Z) Reviewed `.agents/PLANS.md`, the current ExecPlan index, and the current code/documentation references for `daily` and `task` mode.
-- [ ] Implement canonical `journal` and `thread` mode values while keeping `daily` and `task` as legacy input aliases.
-- [ ] Add and test a SQLite migration that renames persisted thread binding mode values without dropping conversation continuity.
+- [ ] Implement canonical `journal` and `thread` mode values and reject `daily` and `task` as unsupported configuration values.
+- [ ] Confirm no SQLite compatibility migration is added for old `thread_bindings.mode` values.
 - [ ] Update user-facing runtime text, generated journal-memory guidance, documentation, and examples to use `journal` and `thread`.
 - [ ] Run the repository validation commands and record the exact results in this plan.
 
@@ -32,9 +32,9 @@ The user-visible proof is concrete. A contributor should be able to load configu
 
 ## Decision Log
 
-- Decision: Make `journal` and `thread` the canonical persisted and displayed mode values, but accept `daily` and `task` as legacy configuration aliases.
-  Rationale: The requested rename should be visible to new deployments, but existing operators should not be forced to update environment files at the same moment the binary is upgraded.
-  Date/Author: 2026-04-29 / Codex
+- Decision: Make `journal` and `thread` the only accepted mode configuration values.
+  Rationale: The user explicitly chose to drop backward compatibility. Rejecting `daily` and `task` avoids carrying alias logic and makes misconfigured deployments fail clearly instead of silently running under renamed behavior.
+  Date/Author: 2026-04-30 / Codex
 
 - Decision: Keep the task entity, task commands, task table, task branch prefix, and `task:<name>` one-shot override named `task`.
   Rationale: In the new naming, `thread` is the mode and `task` remains the work item selected inside that mode. Renaming both at once would make Discord commands and database state churn far beyond the user's requested mode-name change.
@@ -44,9 +44,9 @@ The user-visible proof is concrete. A contributor should be able to load configu
   Rationale: The table stores local-date generation state and does not expose the configured mode value directly. Renaming the table would require a heavier schema migration without improving user-visible clarity.
   Date/Author: 2026-04-29 / Codex
 
-- Decision: Add a new migration for `thread_bindings.mode` values instead of relying only on configuration aliases.
-  Rationale: Thread bindings are looked up by canonical mode string during message execution. Without migrating old rows, upgraded bots would start fresh Codex threads instead of resuming existing conversations.
-  Date/Author: 2026-04-29 / Codex
+- Decision: Do not migrate old `thread_bindings.mode` values from `daily` or `task`.
+  Rationale: Dropping backward compatibility means old conversation continuity can be abandoned. Avoiding a compatibility migration keeps the implementation smaller and makes the new mode names the only persisted values created after the rename.
+  Date/Author: 2026-04-30 / Codex
 
 - Decision: Leave completed ExecPlan files historically named unless an active or current index entry must describe current behavior.
   Rationale: Completed plans are historical records. Current docs, active plans, examples, and runtime behavior should use the new names; old completed plan titles can remain accurate descriptions of the past implementation.
@@ -54,7 +54,7 @@ The user-visible proof is concrete. A contributor should be able to load configu
 
 ## Outcomes & Retrospective
 
-No implementation has landed yet. The immediate outcome is a clean working tree plus this active plan, so the rename can be implemented deliberately instead of as an unplanned broad search-and-replace. Update this section after each major milestone with what changed, what was validated, and any remaining gaps.
+No implementation has landed yet. The immediate outcome is a clean working tree plus this active plan, so the rename can be implemented deliberately instead of as an unplanned broad search-and-replace. The plan has now been reframed as an intentional breaking rename with no legacy aliases or persisted binding migration. Update this section after each major milestone with what changed, what was validated, and any remaining gaps.
 
 ## Context and Orientation
 
@@ -102,13 +102,13 @@ The key current documentation and example locations are:
 
 ## Plan of Work
 
-First, change the canonical mode values in `internal/config/config.go`. Replace `ModeDaily` with `ModeJournal` whose value is `journal`, and replace `ModeTask` with `ModeThread` whose value is `thread`. Update `parseMode` so the normalized strings `journal` and `daily` both return `ModeJournal`, and `thread` and `task` both return `ModeThread`. Update runtime validation errors to say "thread mode" when requiring a Git repository workdir.
+First, change the canonical mode values in `internal/config/config.go`. Replace `ModeDaily` with `ModeJournal` whose value is `journal`, and replace `ModeTask` with `ModeThread` whose value is `thread`. Update `parseMode` so only `journal` returns `ModeJournal` and only `thread` returns `ModeThread`; `daily`, `task`, and any other value should return `unsupported CLAW_MODE`. Update runtime validation errors to say "thread mode" when requiring a Git repository workdir.
 
 Next, update all mode branches in Go code to use the new constant names. This includes `cmd/39claw/main.go`, `internal/thread/policy.go`, `internal/app/message_service_impl.go`, `internal/app/daily_command_service.go`, `internal/app/task_service.go`, `internal/app/scheduled_task_service.go`, `internal/runtime/discord/commands.go`, and `internal/runtime/discord/runtime.go`. User-facing strings should say journal mode or thread mode where they refer to the configured mode. Strings that refer to user-created tasks should keep saying task.
 
-Then, add a new SQLite migration named `migrations/sqlite/0007_rename_conversation_modes.sql`. It should update `thread_bindings.mode` from `daily` to `journal` and from `task` to `thread`. To make the migration safe to retry on databases that may already contain canonical rows, delete a legacy row only when the target canonical row with the same `logical_thread_key` already exists, then update the remaining legacy rows. Do not rename the `daily_sessions`, `tasks`, or `active_tasks` tables.
+Do not add a SQLite migration for old `thread_bindings.mode` values. Existing rows with `mode = 'daily'` or `mode = 'task'` may remain in the database as historical rows, but the renamed runtime should read and write only `journal` or `thread` bindings. Do not rename the `daily_sessions`, `tasks`, or `active_tasks` tables.
 
-After the migration, update tests. Add table-driven tests in `internal/config/config_test.go` showing that `journal` and `thread` load as canonical modes and that `daily` and `task` still load as legacy aliases. Update runtime, app, policy, scheduler, and store tests to expect `journal` and `thread` in persisted `ThreadBinding.Mode`, scheduled run mode strings, help output, and error messages. Add a migration test in `internal/store/sqlite/migrate_test.go` that inserts a legacy task-mode binding, runs `Migrate`, verifies lookup by `task` fails, and verifies lookup by `thread` returns the original `codex_thread_id` and `task_id`.
+Update tests. Add table-driven tests in `internal/config/config_test.go` showing that `journal` and `thread` load as canonical modes and that `daily` and `task` are rejected with the unsupported-mode error. Update runtime, app, policy, scheduler, and store tests to expect `journal` and `thread` in persisted `ThreadBinding.Mode`, scheduled run mode strings, help output, and error messages. Update migration-count tests only if another migration is needed for a different reason; this plan should not increase the migration version just to preserve old mode names.
 
 Then, update the date-based memory bridge language. In `internal/dailymemory/bootstrap.go`, rename the generated managed skill path from `.agents/skills/39claw-daily-memory-refresh/SKILL.md` to `.agents/skills/39claw-journal-memory-refresh/SKILL.md`, update the generated skill frontmatter and headings to say journal, and update `internal/dailymemory/service.go` so the refresh prompt points at the new skill path and looks up thread bindings under mode `journal`. Existing old generated skill files in user workdirs can remain harmlessly unused.
 
@@ -137,7 +137,7 @@ Perform code changes with small patches or clearly scoped mechanical renames. Us
 
     rg -n 'ModeDaily|ModeTask|CLAW_MODE=(daily|task)|daily mode|task mode|daily-mode|task-mode|Mode: daily|Mode: task|39claw-daily-memory-refresh' --glob '!docs/exec-plans/completed/**'
 
-Expected output after implementation should include only intentional legacy references such as config alias tests, migration tests for old values, or historical completed-plan links. It should not show current runtime text, current example setup values, current product spec links, or generated journal-memory skill paths using old mode names.
+Expected output after implementation should include only intentional breaking-change tests that assert old config values are rejected, task-domain concepts such as `task:<name>`, date-based storage implementation names, or historical completed-plan links. It should not show current runtime text, current example setup values, current product spec links, compatibility alias tests, migration tests for old mode values, or generated journal-memory skill paths using old mode names.
 
 When renaming tracked documentation files, use `git mv` so Git records the rename clearly:
 
@@ -175,16 +175,15 @@ The config tests must prove:
 
 - `CLAW_MODE=journal` loads `config.ModeJournal`.
 - `CLAW_MODE=thread` loads `config.ModeThread`.
-- `CLAW_MODE=daily` still loads `config.ModeJournal` as a legacy alias.
-- `CLAW_MODE=task` still loads `config.ModeThread` as a legacy alias.
+- `CLAW_MODE=daily` is rejected with `unsupported CLAW_MODE "daily"`.
+- `CLAW_MODE=task` is rejected with `unsupported CLAW_MODE "task"`.
 - thread-mode path validation errors say "thread mode".
 
 The migration tests must prove:
 
-- A fresh database applies migration versions through `7`.
-- A legacy `thread_bindings` row with `mode='daily'` and logical key `2026-04-05#1` is available under `mode='journal'` after migration.
-- A legacy `thread_bindings` row with `mode='task'`, logical key `user-1:task-1`, and `task_id='task-1'` is available under `mode='thread'` after migration.
+- A fresh database still applies the expected current migration versions.
 - Re-running `Migrate` is idempotent.
+- No compatibility migration is added solely to rewrite `thread_bindings.mode` values from `daily` or `task`.
 
 The Discord/runtime tests must prove:
 
@@ -200,9 +199,9 @@ Manual smoke validation, if a Discord test environment is available, should use 
 
 ## Idempotence and Recovery
 
-The new SQLite migration must be safe to run once through the migration runner and safe to skip on already migrated databases because `schema_migrations` records applied versions. Within the SQL, handle duplicate canonical rows defensively so that a database containing both a legacy and a canonical binding for the same logical key does not fail on the primary key during update. Prefer keeping the canonical row and removing the colliding legacy row before updating the rest.
+Because this is a breaking rename, there is no mode-name recovery path for old environment values. If an operator upgrades the binary but leaves `CLAW_MODE=daily` or `CLAW_MODE=task`, startup should fail with the unsupported-mode error. The recovery is to edit the environment file to `CLAW_MODE=journal` or `CLAW_MODE=thread` and restart.
 
-Configuration aliases are a recovery path for operators. If an operator upgrades the binary but forgets to change `CLAW_MODE=daily` or `CLAW_MODE=task`, startup should still work, but docs should guide them to update to `journal` or `thread`.
+Because this plan does not migrate old mode values in `thread_bindings`, an upgraded bot may start fresh Codex conversation continuity under the new canonical mode names. That is acceptable for this plan. If preserving old thread IDs later becomes important again, write a separate explicit migration plan instead of reintroducing compatibility silently.
 
 If implementation introduces too much churn from renaming internal structs like `DailySession`, stop and update this plan before continuing. The accepted scope is mode naming, persisted mode values, user-facing text, docs, examples, and tests. Internal names that describe date-based generation storage may remain when renaming them would add schema or API churn without user-visible benefit.
 
@@ -218,7 +217,8 @@ The initial repository scan before this plan found current mode references in th
     migrations/sqlite/0003_daily_sessions.sql: backfills legacy daily keys
     README.md and example/*.sample: document CLAW_MODE=daily and CLAW_MODE=task
 
-After implementation, a short final search transcript should be added here showing that current docs and runtime code use journal/thread and that remaining daily/task hits are either legacy aliases, task-domain concepts, date-based storage implementation names, or completed historical records.
+After implementation, a short final search transcript should be added here showing that current docs and runtime code use journal/thread and that remaining daily/task hits are either rejection tests for old config values, task-domain concepts, date-based storage implementation names, or completed historical records.
 
 Revision Note: 2026-04-29 22:53Z / Codex - Created this active ExecPlan after resetting the earlier direct implementation attempt. The plan intentionally separates the mode rename from the task entity so the next implementation can be smaller, safer, and easier to review.
 
+Revision Note: 2026-04-30 04:58Z / Codex - Reframed the plan after the user decided backward compatibility can be dropped. The implementation should reject old `daily` and `task` mode values and should not add a compatibility migration for old `thread_bindings.mode` rows.
