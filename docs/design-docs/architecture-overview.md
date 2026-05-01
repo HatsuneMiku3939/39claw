@@ -21,9 +21,9 @@ Each bot instance is configured against a repository-shaped working directory, a
 
 This leads to two distinct mode families on the same foundation:
 
-- `daily`
+- `journal`
   - knowledge-oriented interaction against repository instructions and documentation, with one active shared generation per local day plus a runtime-managed durable-memory bridge under `AGENT_MEMORY/`
-- `task`
+- `thread`
   - execution-oriented interaction against an operator-visible Git checkout with an `origin` remote, where 39claw manages a separate bare parent repository, each task uses an immutable slug name, and each task eventually runs inside its own task-specific worktree
 
 The detailed rationale for these modes lives in `ARCHITECTURE.md` and `thread-modes.md`.
@@ -55,12 +55,12 @@ Processes one user turn end to end by resolving the thread target, coordinating 
 ### Thread Policy
 
 Converts Discord context into a logical thread bucket according to the globally configured mode.
-In `daily` mode, the policy still resolves only the local date and the application layer expands that bucket into the active generation key.
-In `task` mode, the policy must resolve the effective task from either the saved active task or a one-shot `task:<name>` override present at the first meaningful token.
+In `journal` mode, the policy still resolves only the local date and the application layer expands that bucket into the active generation key.
+In `thread` mode, the policy must resolve the effective task from either the saved active task or a one-shot `task:<name>` override present at the first meaningful token.
 
 ### Thread Store
 
-Persists the local continuity data that lets 39claw resume the correct Codex thread, plus task and task-worktree metadata in `task` mode, plus scheduled-task definitions and run or delivery state.
+Persists the local continuity data that lets 39claw resume the correct Codex thread, plus task and task-worktree metadata in `thread` mode, plus scheduled-task definitions and run or delivery state.
 
 ### Queue Coordinator
 
@@ -87,7 +87,7 @@ Adapts normalized application output into Discord-safe responses.
 3. Application service resolves the logical thread key and any frozen routing context needed for later queued execution
 4. Queue coordinator decides whether the turn runs immediately, waits in the same-key queue, or is rejected because five waiting turns already exist
 5. If the turn was queued, the runtime immediately posts a queued acknowledgment reply
-6. When the turn starts running, `daily` mode may first resolve or create the active same-day generation and then run a hidden preflight refresh against the previous recorded daily generation to update `AGENT_MEMORY`
+6. When the turn starts running, `journal` mode may first resolve or create the active same-day generation and then run a hidden preflight refresh against the previous recorded journal generation to update `AGENT_MEMORY`
 7. Thread store checks whether a Codex thread already exists for the visible generation key
 8. Application service sends the turn through the Codex gateway with the saved thread ID when one exists
 9. If no saved thread exists yet, the first turn creates one and returns its thread ID
@@ -106,8 +106,8 @@ Scheduled runs follow a parallel path:
 1. Scheduler determines that a persisted scheduled task is due
 2. Scheduled task service creates or claims a durable run record
 3. The service chooses the mode-appropriate workdir policy for that run
-4. In `daily` mode, the run executes directly in `CLAW_CODEX_WORKDIR`
-5. In `task` mode, the run executes in a fresh temporary worktree that is removed after completion
+4. In `journal` mode, the run executes directly in `CLAW_CODEX_WORKDIR`
+5. In `thread` mode, the run executes in a fresh temporary worktree that is removed after completion
 6. Codex returns the final output and any resulting thread identity
 7. 39claw records the run outcome and separately records whether Discord delivery succeeded
 ```

@@ -99,7 +99,7 @@ For local development:
 - `docs/design-docs/implementation-spec.md`
   - Short implementation-facing defaults that close the remaining v1 gaps between architecture and product specs
 - `docs/design-docs/thread-modes.md`
-  - `daily` and `task` mode definitions, expected behavior, and tradeoffs
+  - `journal` and `thread` mode definitions, expected behavior, and tradeoffs
 - `docs/design-docs/state-and-storage.md`
   - Local persistence requirements and state model
 
@@ -107,10 +107,10 @@ For local development:
 
 - `docs/product-specs/index.md`
   - Entry point for product-facing behavior and workflow expectations
-- `docs/product-specs/daily-mode-user-flow.md`
-  - Defines the intended user flow and expectations for `daily` mode
-- `docs/product-specs/task-mode-user-flow.md`
-  - Defines the intended user flow and expectations for `task` mode
+- `docs/product-specs/journal-mode-user-flow.md`
+  - Defines the intended user flow and expectations for `journal` mode
+- `docs/product-specs/thread-mode-user-flow.md`
+  - Defines the intended user flow and expectations for `thread` mode
 - `docs/product-specs/discord-command-behavior.md`
   - Defines the intended Discord interaction rules and command UX expectations
 

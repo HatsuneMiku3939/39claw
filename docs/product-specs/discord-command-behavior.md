@@ -84,7 +84,7 @@ Examples:
 v1 should use a small, channel-aware trigger contract for normal-message interaction.
 In guild channels, normal-message interaction remains mention-only.
 In direct messages, normal-message interaction should work without an extra bot mention.
-In `task` mode, the first meaningful token of a qualifying normal message may be a one-shot `task:<name>` override, and guild messages may place that token after the bot mention.
+In `thread` mode, the first meaningful token of a qualifying normal message may be a one-shot `task:<name>` override, and guild messages may place that token after the bot mention.
 When a qualifying normal message is accepted, it may contain typed text, one or more image attachments, or both.
 If a qualifying trigger is present but the message contains neither text nor a usable image attachment, the bot should stay silent.
 If the turn starts immediately, the bot may first post a short placeholder reply and then edit that same reply as Codex streams progress or partial assistant output.
@@ -102,7 +102,7 @@ If the user input does not meet response criteria, the bot should stay silent.
 
 ## Task Command Behavior
 
-`task` mode requires explicit workflow control, so the task interaction surface should be especially clear.
+`thread` mode requires explicit workflow control, so the task interaction surface should be especially clear.
 
 ### Root command decision
 
@@ -112,8 +112,8 @@ The command name should come from the bot-instance configuration, so different d
 This means:
 
 - every bot instance should expose exactly one slash-command search result
-- bot instances configured for `task` mode should expose task actions through that root command
-- bot instances configured for `daily` mode should expose `help` plus `clear` through that root command
+- bot instances configured for `thread` mode should expose task actions through that root command
+- bot instances configured for `journal` mode should expose `help` plus `clear` through that root command
 - users should not need to guess between normal conversation, the one-shot `task:<name>` routing syntax, and slash-command task control
 
 ### Minimum command capabilities
@@ -138,7 +138,7 @@ Every instance should also support:
 - `/<instance-command> action:help`
   - show the commands available for that bot instance
 
-Instances running in `daily` mode should also support:
+Instances running in `journal` mode should also support:
 
 - `/<instance-command> action:clear`
   - rotate the shared same-day daily session to a fresh generation when the current one is idle
@@ -160,7 +160,7 @@ The root-command action surface should be:
 
 ### Task-name and one-shot override rules
 
-In `task` mode, task names should be treated as stable routing-safe slugs rather than as free-form labels.
+In `thread` mode, task names should be treated as stable routing-safe slugs rather than as free-form labels.
 
 Product rules:
 
@@ -202,7 +202,7 @@ For `action:task-reset-context`, the success response should say clearly that:
 
 When `action:help` succeeds, the response should give a concise list of supported actions and a short explanation of when to use them.
 
-When `action:clear` succeeds in `daily` mode, the response should tell the user that the next mention will use a fresh shared same-day thread.
+When `action:clear` succeeds in `journal` mode, the response should tell the user that the next mention will use a fresh shared same-day thread.
 When `action:clear` is rejected because the current shared generation is busy or queued, the response should explain that the user needs to retry after the current work finishes.
 
 ### Failure behavior
@@ -213,7 +213,7 @@ When a task action fails, the response should:
 - explain the reason in user-facing language
 - suggest the next action when possible
 
-If a task action is invoked against a bot instance running in `daily` mode, the bot should explain that task actions are not available for that instance rather than pretending the command was accepted.
+If a task action is invoked against a bot instance running in `journal` mode, the bot should explain that task actions are not available for that instance rather than pretending the command was accepted.
 
 If `action:task-reset-context` is requested while the active task still has running or queued work, the bot should reject the request and tell the user to retry after pending replies finish.
 If a one-shot `task:<name>` override is invalid or targets no open task, the bot should reject that message explicitly and tell the user how to recover.
@@ -222,7 +222,7 @@ If a one-shot `task:<name>` override is invalid or targets no open task, the bot
 
 ### Missing task context
 
-If `task` mode requires an active task and none exists, the bot should not guess.
+If `thread` mode requires an active task and none exists, the bot should not guess.
 It should tell the user what is missing and what `/<instance-command> action:task-*` command to use next.
 
 ### Workspace preparation failure
@@ -284,13 +284,13 @@ The product should make it easy for users to discover supported command behavior
 Possible mechanisms include:
 
 - an instance-specific root command with `action:help`
-- a `daily`-mode `action:clear` response that confirms the next mention will start fresh
-- task-mode guidance that points users toward task actions when task context is missing
+- a `journal`-mode `action:clear` response that confirms the next mention will start fresh
+- thread-mode guidance that points users toward task actions when task context is missing
 - short affordance text after successful state-changing commands
 
 `action:help` does not need deep mode-specific customization in v1.
 It should still reflect the commands that are actually available in the current bot instance.
-`daily` mode bot instances should avoid advertising unsupported task workflow.
+`journal` mode bot instances should avoid advertising unsupported task workflow.
 In the Discord slash-command UI, task-control behavior should appear as action choices under one root command rather than as multiple searchable leaf commands.
 
 ## Non-Goals
@@ -306,6 +306,6 @@ This command behavior layer is not intended to:
 - v1 normal-message triggering should be mention-only in guild channels and direct-message-triggered in DMs.
 - each bot instance should register exactly one slash command whose name identifies that instance in Discord search.
 - `action:help` should stay structurally simple in v1, but it should only describe commands that are actually available in the current bot instance.
-- `daily` mode may expose `action:clear` on that same root command so users can intentionally rotate the shared same-day generation.
+- `journal` mode may expose `action:clear` on that same root command so users can intentionally rotate the shared same-day generation.
 - Unsupported invocation patterns should be ignored rather than acknowledged with lightweight feedback.
-- In `task` mode, the configured workdir is an operator-visible Git checkout with an `origin` remote, while task worktrees are owned by a managed bare repository under the bot data directory.
+- In `thread` mode, the configured workdir is an operator-visible Git checkout with an `origin` remote, while task worktrees are owned by a managed bare repository under the bot data directory.

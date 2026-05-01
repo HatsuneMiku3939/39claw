@@ -19,7 +19,7 @@ func TestLoadFromLookup(t *testing.T) {
 		{
 			name: "loads required and optional values",
 			env: map[string]string{
-				"CLAW_MODE":                         "task",
+				"CLAW_MODE":                         "thread",
 				"CLAW_TIMEZONE":                     "Asia/Tokyo",
 				"CLAW_DISCORD_TOKEN":                "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME":         " Release-Bot ",
@@ -43,7 +43,7 @@ func TestLoadFromLookup(t *testing.T) {
 				"CLAW_LOG_FORMAT":                   "text",
 			},
 			want: Config{
-				Mode:                       ModeTask,
+				Mode:                       ModeThread,
 				TimezoneName:               "Asia/Tokyo",
 				DiscordToken:               "discord-token",
 				DiscordGuildID:             "guild-1",
@@ -71,19 +71,19 @@ func TestLoadFromLookup(t *testing.T) {
 		{
 			name: "defaults optional values",
 			env: map[string]string{
-				"CLAW_MODE":                 "daily",
+				"CLAW_MODE":                 "journal",
 				"CLAW_TIMEZONE":             "UTC",
 				"CLAW_DISCORD_TOKEN":        "discord-token",
-				"CLAW_DISCORD_COMMAND_NAME": "daily",
+				"CLAW_DISCORD_COMMAND_NAME": "journal",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
 				"CLAW_DATADIR":              "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
 			},
 			want: Config{
-				Mode:               ModeDaily,
+				Mode:               ModeJournal,
 				TimezoneName:       "UTC",
 				DiscordToken:       "discord-token",
-				DiscordCommandName: "daily",
+				DiscordCommandName: "journal",
 				DataDir:            "/tmp/39claw-data",
 				SQLitePath:         filepath.Join("/tmp/39claw-data", "39claw.sqlite"),
 				CodexExecutable:    "codex",
@@ -95,9 +95,35 @@ func TestLoadFromLookup(t *testing.T) {
 		{
 			name: "rejects missing required value",
 			env: map[string]string{
-				"CLAW_MODE": "daily",
+				"CLAW_MODE": "journal",
 			},
 			wantErr: "missing required environment variable CLAW_TIMEZONE",
+		},
+		{
+			name: "rejects legacy daily mode",
+			env: map[string]string{
+				"CLAW_MODE":                 "daily",
+				"CLAW_TIMEZONE":             "UTC",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "release",
+				"CLAW_CODEX_WORKDIR":        "/workspace/project",
+				"CLAW_DATADIR":              "/tmp/39claw-data",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
+			},
+			wantErr: `unsupported CLAW_MODE "daily"`,
+		},
+		{
+			name: "rejects legacy task mode",
+			env: map[string]string{
+				"CLAW_MODE":                 "task",
+				"CLAW_TIMEZONE":             "UTC",
+				"CLAW_DISCORD_TOKEN":        "discord-token",
+				"CLAW_DISCORD_COMMAND_NAME": "release",
+				"CLAW_CODEX_WORKDIR":        "/workspace/project",
+				"CLAW_DATADIR":              "/tmp/39claw-data",
+				"CLAW_CODEX_EXECUTABLE":     "codex",
+			},
+			wantErr: `unsupported CLAW_MODE "task"`,
 		},
 		{
 			name: "rejects unsupported mode",
@@ -115,7 +141,7 @@ func TestLoadFromLookup(t *testing.T) {
 		{
 			name: "rejects invalid discord command name",
 			env: map[string]string{
-				"CLAW_MODE":                 "task",
+				"CLAW_MODE":                 "thread",
 				"CLAW_TIMEZONE":             "UTC",
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "Release_Bot",
@@ -128,7 +154,7 @@ func TestLoadFromLookup(t *testing.T) {
 		{
 			name: "rejects invalid skip git repo check override",
 			env: map[string]string{
-				"CLAW_MODE":                      "task",
+				"CLAW_MODE":                      "thread",
 				"CLAW_TIMEZONE":                  "UTC",
 				"CLAW_DISCORD_TOKEN":             "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME":      "release",
@@ -142,7 +168,7 @@ func TestLoadFromLookup(t *testing.T) {
 		{
 			name: "rejects invalid network access override",
 			env: map[string]string{
-				"CLAW_MODE":                 "task",
+				"CLAW_MODE":                 "thread",
 				"CLAW_TIMEZONE":             "UTC",
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "release",
@@ -156,10 +182,10 @@ func TestLoadFromLookup(t *testing.T) {
 		{
 			name: "rejects invalid timezone",
 			env: map[string]string{
-				"CLAW_MODE":                 "daily",
+				"CLAW_MODE":                 "journal",
 				"CLAW_TIMEZONE":             "Mars/Olympus",
 				"CLAW_DISCORD_TOKEN":        "discord-token",
-				"CLAW_DISCORD_COMMAND_NAME": "daily",
+				"CLAW_DISCORD_COMMAND_NAME": "journal",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
 				"CLAW_DATADIR":              "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
@@ -321,42 +347,42 @@ func TestValidateRuntimePaths(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "allows daily mode non-git workdir",
+			name: "allows journal mode non-git workdir",
 			config: Config{
-				Mode:         ModeDaily,
+				Mode:         ModeJournal,
 				CodexWorkdir: nonRepo,
 			},
 		},
 		{
-			name: "allows task mode git repository root",
+			name: "allows thread mode git repository root",
 			config: Config{
-				Mode:         ModeTask,
+				Mode:         ModeThread,
 				CodexWorkdir: taskRepo,
 			},
 		},
 		{
-			name: "rejects missing task mode workdir",
+			name: "rejects missing thread mode workdir",
 			config: Config{
-				Mode:         ModeTask,
+				Mode:         ModeThread,
 				CodexWorkdir: filepath.Join(t.TempDir(), "missing"),
 			},
-			wantErr: "task mode requires CLAW_CODEX_WORKDIR to exist",
+			wantErr: "thread mode requires CLAW_CODEX_WORKDIR to exist",
 		},
 		{
-			name: "rejects task mode file path",
+			name: "rejects thread mode file path",
 			config: Config{
-				Mode:         ModeTask,
+				Mode:         ModeThread,
 				CodexWorkdir: filePath,
 			},
-			wantErr: "task mode requires CLAW_CODEX_WORKDIR to be a directory",
+			wantErr: "thread mode requires CLAW_CODEX_WORKDIR to be a directory",
 		},
 		{
-			name: "rejects task mode non-git directory",
+			name: "rejects thread mode non-git directory",
 			config: Config{
-				Mode:         ModeTask,
+				Mode:         ModeThread,
 				CodexWorkdir: nonRepo,
 			},
-			wantErr: "task mode requires CLAW_CODEX_WORKDIR to be a Git repository root",
+			wantErr: "thread mode requires CLAW_CODEX_WORKDIR to be a Git repository root",
 		},
 	}
 

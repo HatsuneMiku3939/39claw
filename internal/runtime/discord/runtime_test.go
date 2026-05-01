@@ -21,7 +21,7 @@ func TestRuntimeStartRegistersCommands(t *testing.T) {
 	t.Parallel()
 
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntime(t, config.ModeDaily, fakeSession)
+	runtime := newTestRuntime(t, config.ModeJournal, fakeSession)
 	runtime.config.DiscordGuildID = "guild-1"
 
 	if err := runtime.Start(context.Background()); err != nil {
@@ -78,7 +78,7 @@ func TestRuntimeStartRegistersTaskModeChoices(t *testing.T) {
 	t.Parallel()
 
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntime(t, config.ModeTask, fakeSession)
+	runtime := newTestRuntime(t, config.ModeThread, fakeSession)
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -135,7 +135,7 @@ func TestRuntimeSendScheduledReportSupportsChannelAndDMTargets(t *testing.T) {
 			t.Parallel()
 
 			fakeSession := newFakeSession("bot-user")
-			runtime := newTestRuntime(t, config.ModeDaily, fakeSession)
+			runtime := newTestRuntime(t, config.ModeJournal, fakeSession)
 
 			if err := runtime.Start(context.Background()); err != nil {
 				t.Fatalf("Start() error = %v", err)
@@ -173,7 +173,7 @@ func TestRuntimeSendScheduledReportRejectsInvalidTarget(t *testing.T) {
 	t.Parallel()
 
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntime(t, config.ModeDaily, fakeSession)
+	runtime := newTestRuntime(t, config.ModeJournal, fakeSession)
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -197,7 +197,7 @@ func TestRuntimeMentionHandlingRepliesToTriggerMessage(t *testing.T) {
 		},
 	}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+	runtime := newTestRuntimeWithServices(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{})
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -261,7 +261,7 @@ func TestRuntimeDirectMessageHandlingRepliesWithoutMention(t *testing.T) {
 		},
 	}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+	runtime := newTestRuntimeWithServices(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{})
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -328,7 +328,7 @@ func TestRuntimeMentionHandlingStreamsProgressByEditingReply(t *testing.T) {
 		},
 	}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+	runtime := newTestRuntimeWithServices(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{})
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -390,7 +390,7 @@ func TestRuntimeMentionHandlingSanitizesWorkspacePathsForDiscord(t *testing.T) {
 		},
 	}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+	runtime := newTestRuntimeWithServices(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{})
 	runtime.config.CodexWorkdir = "/home/filepang/Documents/filepang"
 
 	if err := runtime.Start(context.Background()); err != nil {
@@ -449,7 +449,7 @@ func TestRuntimeMentionHandlingPresentsQueuedAcknowledgementAndDeferredReply(t *
 		},
 	}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+	runtime := newTestRuntimeWithServices(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{})
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -537,7 +537,7 @@ func TestRuntimeDeferredReplyDeliveryLogsStructuredSuccess(t *testing.T) {
 	fakeSession := newFakeSession("bot-user")
 	runtime, err := NewRuntime(Dependencies{
 		Config: config.Config{
-			Mode:               config.ModeDaily,
+			Mode:               config.ModeJournal,
 			TimezoneName:       "Asia/Tokyo",
 			DiscordToken:       "discord-token",
 			DiscordCommandName: "release",
@@ -630,7 +630,7 @@ func TestRuntimeCloseWaitsForDeferredQueuedReplyDrain(t *testing.T) {
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithTimeout(
 		t,
-		config.ModeDaily,
+		config.ModeJournal,
 		fakeSession,
 		messageService,
 		&fakeDailyCommandService{},
@@ -722,7 +722,7 @@ func TestRuntimeCloseCancelsDeferredDrainWhenTimeoutExpires(t *testing.T) {
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithTimeout(
 		t,
-		config.ModeDaily,
+		config.ModeJournal,
 		fakeSession,
 		messageService,
 		&fakeDailyCommandService{},
@@ -778,7 +778,7 @@ func TestRuntimeMentionHandlingDownloadsImageAttachments(t *testing.T) {
 		},
 	}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServicesAndClient(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{}, server.Client())
+	runtime := newTestRuntimeWithServicesAndClient(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{}, server.Client())
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -840,7 +840,7 @@ func TestRuntimeMentionHandlingAcceptsImageOnlyMessage(t *testing.T) {
 		},
 	}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServicesAndClient(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{}, server.Client())
+	runtime := newTestRuntimeWithServicesAndClient(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{}, server.Client())
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -886,7 +886,7 @@ func TestRuntimeMentionHandlingIgnoresImageOnlyMessageWithoutUsableImages(t *tes
 
 	messageService := &fakeMessageService{}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+	runtime := newTestRuntimeWithServices(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{})
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -928,7 +928,7 @@ func TestRuntimeMentionHandlingReturnsErrorWhenAttachmentDownloadFails(t *testin
 
 	messageService := &fakeMessageService{}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServicesAndClient(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{}, http.DefaultClient)
+	runtime := newTestRuntimeWithServicesAndClient(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{}, http.DefaultClient)
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -974,7 +974,7 @@ func TestRuntimeIgnoresUnsupportedChatter(t *testing.T) {
 
 	messageService := &fakeMessageService{}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServices(t, config.ModeDaily, fakeSession, messageService, &fakeTaskCommandService{})
+	runtime := newTestRuntimeWithServices(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{})
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -1006,7 +1006,7 @@ func TestRuntimeHelpActionReturnsConfiguredCommandInfo(t *testing.T) {
 	t.Parallel()
 
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntime(t, config.ModeDaily, fakeSession)
+	runtime := newTestRuntime(t, config.ModeJournal, fakeSession)
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -1030,7 +1030,7 @@ func TestRuntimeHelpActionReturnsConfiguredCommandInfo(t *testing.T) {
 		t.Fatalf("response content = %q, want configured command name", response.Data.Content)
 	}
 
-	if !strings.Contains(response.Data.Content, "Mode: daily") {
+	if !strings.Contains(response.Data.Content, "Mode: journal") {
 		t.Fatalf("response content = %q, want mode guidance", response.Data.Content)
 	}
 
@@ -1039,11 +1039,11 @@ func TestRuntimeHelpActionReturnsConfiguredCommandInfo(t *testing.T) {
 	}
 }
 
-func TestRuntimeTaskCommandInDailyModeIsEphemeral(t *testing.T) {
+func TestRuntimeTaskCommandInJournalModeIsEphemeral(t *testing.T) {
 	t.Parallel()
 
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntime(t, config.ModeDaily, fakeSession)
+	runtime := newTestRuntime(t, config.ModeJournal, fakeSession)
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -1094,7 +1094,7 @@ func TestRuntimeDailyClearActionRoutesIdleSuccess(t *testing.T) {
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithTimeout(
 		t,
-		config.ModeDaily,
+		config.ModeJournal,
 		fakeSession,
 		&fakeMessageService{},
 		dailyService,
@@ -1159,7 +1159,7 @@ func TestRuntimeDailyClearActionRejectsBusyGenerationEphemerally(t *testing.T) {
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithTimeout(
 		t,
-		config.ModeDaily,
+		config.ModeJournal,
 		fakeSession,
 		&fakeMessageService{},
 		dailyService,
@@ -1217,7 +1217,7 @@ func TestRuntimeTaskCommandRoutesTaskModeActions(t *testing.T) {
 		},
 	}
 	fakeSession := newFakeSession("bot-user")
-	runtime := newTestRuntimeWithServices(t, config.ModeTask, fakeSession, &fakeMessageService{}, taskService)
+	runtime := newTestRuntimeWithServices(t, config.ModeThread, fakeSession, &fakeMessageService{}, taskService)
 
 	if err := runtime.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)

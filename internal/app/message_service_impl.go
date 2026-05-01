@@ -61,12 +61,12 @@ func NewMessageService(deps MessageServiceDependencies) (*DefaultMessageService,
 		return nil, errors.New("thread store must not be nil")
 	}
 
-	if deps.Mode == config.ModeTask && deps.WorkspaceManager == nil {
-		return nil, errors.New("task workspace manager must not be nil in task mode")
+	if deps.Mode == config.ModeThread && deps.WorkspaceManager == nil {
+		return nil, errors.New("task workspace manager must not be nil in thread mode")
 	}
 
-	if deps.Mode == config.ModeDaily && deps.DailyMemory == nil {
-		return nil, errors.New("daily memory refresher must not be nil in daily mode")
+	if deps.Mode == config.ModeJournal && deps.DailyMemory == nil {
+		return nil, errors.New("journal memory refresher must not be nil in journal mode")
 	}
 
 	if deps.Gateway == nil {
@@ -204,7 +204,7 @@ func (s *DefaultMessageService) prepareMessage(
 	sink DeferredReplySink,
 	cleanup func(),
 ) (preparedMessage, MessageResponse, bool, error) {
-	if s.mode == config.ModeTask {
+	if s.mode == config.ModeThread {
 		override := ParseTaskOverride(request.Content, len(request.ImagePaths) > 0)
 		if override.RejectMessage != "" {
 			return preparedMessage{}, MessageResponse{
@@ -276,7 +276,7 @@ func (s *DefaultMessageService) prepareMessage(
 		cleanup: cleanup,
 	}
 
-	if s.mode == config.ModeDaily {
+	if s.mode == config.ModeJournal {
 		session, err := ResolveActiveDailySession(ctx, s.store, logicalKey)
 		if err != nil {
 			return preparedMessage{}, MessageResponse{}, false, fmt.Errorf("resolve active daily session: %w", err)
@@ -286,7 +286,7 @@ func (s *DefaultMessageService) prepareMessage(
 		prepared.dailySession = session
 	}
 
-	if s.mode == config.ModeTask {
+	if s.mode == config.ModeThread {
 		taskID, err := taskIDFromLogicalKey(request.UserID, logicalKey)
 		if err != nil {
 			return preparedMessage{}, MessageResponse{}, false, err
@@ -310,7 +310,7 @@ func (s *DefaultMessageService) noActiveTaskMessage() string {
 func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prepared preparedMessage) (MessageResponse, error) {
 	defer runCleanup(prepared.cleanup)
 
-	if s.mode == config.ModeTask {
+	if s.mode == config.ModeThread {
 		task, response, handled, err := s.ensureTaskReady(ctx, prepared)
 		if err != nil {
 			return MessageResponse{}, err
@@ -323,9 +323,9 @@ func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prep
 		prepared.input.WorkingDirectory = task.WorktreePath
 	}
 
-	if s.mode == config.ModeDaily {
+	if s.mode == config.ModeJournal {
 		if err := s.dailyMemory.RefreshBeforeFirstDailyTurn(ctx, prepared.dailySession); err != nil {
-			slog.Error("refresh daily memory bridge", "logical_key", prepared.logicalKey, "error", err)
+			slog.Error("refresh journal memory bridge", "logical_key", prepared.logicalKey, "error", err)
 		}
 	}
 
@@ -344,7 +344,7 @@ func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prep
 		}
 	}
 
-	if s.mode == config.ModeTask {
+	if s.mode == config.ModeThread {
 		binding.TaskID = prepared.taskID
 	}
 
@@ -433,7 +433,7 @@ func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prep
 		return MessageResponse{}, fmt.Errorf("persist thread binding: %w", err)
 	}
 
-	if s.mode == config.ModeTask {
+	if s.mode == config.ModeThread {
 		if err := s.touchTaskLastUsed(ctx, prepared.userID, prepared.taskID); err != nil {
 			slog.Error("update task last used timestamp", "task_id", prepared.taskID, "error", err)
 		}

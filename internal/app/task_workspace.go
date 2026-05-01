@@ -539,7 +539,7 @@ func (m *GitTaskWorkspaceManager) sourceOriginConfig(ctx context.Context) (gitRe
 	}
 	if !exists {
 		return gitRemoteConfig{}, fmt.Errorf(
-			"task mode requires CLAW_CODEX_WORKDIR to have an origin remote: %s",
+			"thread mode requires CLAW_CODEX_WORKDIR to have an origin remote: %s",
 			m.sourceRepository,
 		)
 	}

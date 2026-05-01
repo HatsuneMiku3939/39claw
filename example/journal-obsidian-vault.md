@@ -1,6 +1,6 @@
-# Daily Mode Example: Obsidian Vault Knowledge Base
+# Journal Mode Example: Obsidian Vault Knowledge Base
 
-This guide shows how to run one `daily` mode 39claw instance against an Obsidian vault or any other writable notes directory.
+This guide shows how to run one `journal` mode 39claw instance against an Obsidian vault or any other writable notes directory.
 
 This is the right fit when you want:
 
@@ -22,7 +22,7 @@ Prepare these items first:
 
 1. `39claw` installed through Homebrew or a Linux package as described in [README.md](../README.md#installation)
 2. a working `codex` installation on the machine that will run 39claw
-3. a Discord bot token for this specific `daily` instance
+3. a Discord bot token for this specific `journal` instance
 4. a Discord test guild ID if you want faster slash-command registration during setup
 5. an existing Obsidian vault directory, for example `/Users/you/Documents/SecondBrain`
 6. a writable local data directory for 39claw state
@@ -70,13 +70,13 @@ cp .env.example .env.local
 
 If you want a copy-paste starting point, use one of these sample files first:
 
-- [daily-obsidian-vault.macos.env.local.sample](./daily-obsidian-vault.macos.env.local.sample)
-- [daily-obsidian-vault.linux.env.local.sample](./daily-obsidian-vault.linux.env.local.sample)
+- [journal-obsidian-vault.macos.env.local.sample](./journal-obsidian-vault.macos.env.local.sample)
+- [journal-obsidian-vault.linux.env.local.sample](./journal-obsidian-vault.linux.env.local.sample)
 
 Set `.env.local` like this:
 
 ```dotenv
-CLAW_MODE=daily
+CLAW_MODE=journal
 CLAW_TIMEZONE=Asia/Tokyo
 CLAW_DISCORD_TOKEN=replace-with-your-daily-bot-token
 CLAW_DISCORD_COMMAND_NAME=kb
@@ -97,7 +97,7 @@ CLAW_LOG_FORMAT=text
 
 Why these values matter:
 
-1. `CLAW_MODE=daily` enables the shared day-based conversation flow.
+1. `CLAW_MODE=journal` enables the shared day-based conversation flow.
 2. `CLAW_CODEX_WORKDIR` points at the vault where Codex will operate.
 3. `CLAW_CODEX_HOME`, when set, tells 39claw which `CODEX_HOME` value to pass to the spawned Codex CLI.
 4. `CLAW_CODEX_SANDBOX_MODE=workspace-write` allows 39claw to manage `AGENT_MEMORY/` in the vault.
@@ -155,7 +155,7 @@ If you want the bot to use the durable memory files during visible replies, crea
 Add guidance like this:
 
 ```md
-# Daily Memory Guidance
+# Journal Memory Guidance
 
 If `AGENT_MEMORY/` exists in the current workspace, consult its durable memory files when they are relevant to the user's request.
 
@@ -175,7 +175,7 @@ Run:
 
 You should see a version string such as `dev` or a release version.
 
-## Step 7: Start the daily-mode bot
+## Step 7: Start the journal-mode bot
 
 Run:
 
@@ -212,7 +212,7 @@ In the vault, confirm that these paths now exist:
 If startup fails, check these first:
 
 1. `CLAW_CODEX_WORKDIR` must point to a real writable directory.
-2. `CLAW_CODEX_SANDBOX_MODE` must not be `read-only` in `daily` mode.
+2. `CLAW_CODEX_SANDBOX_MODE` must not be `read-only` in `journal` mode.
 3. `CLAW_DISCORD_COMMAND_NAME` must contain only lowercase letters, digits, or hyphens.
 4. `CLAW_DISCORD_TOKEN` must belong to the bot application you invited to the server.
 

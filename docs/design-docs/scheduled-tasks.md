@@ -21,10 +21,10 @@ This document answers those questions at the concept level without turning 39cla
 
 - Scheduled-task definitions are canonical bot-managed state stored under `CLAW_DATADIR`, not repository-authored files.
 - Users manage scheduled tasks through normal Codex conversation, but Codex must use 39claw-owned MCP tools for all create, read, update, enable, disable, and delete operations.
-- There is one scheduled-task set per bot instance, independent from `daily` or `task` thread bindings and independent from whichever user task worktree is currently active.
+- There is one scheduled-task set per bot instance, independent from `journal` or `thread` thread bindings and independent from whichever user task worktree is currently active.
 - Every scheduled execution starts a fresh Codex thread and never reuses a prior scheduled-run thread ID.
 - Scheduled execution uses the same Codex runtime configuration as normal turns, including the same effective repository root for the current bot mode.
-- When the bot instance runs in `task` mode, a scheduled run executes in its own fresh temporary worktree created for that scheduled run and removed after the run finishes.
+- When the bot instance runs in `thread` mode, a scheduled run executes in its own fresh temporary worktree created for that scheduled run and removed after the run finishes.
 - Scheduled tasks are defined by a deliberately small schema: name, schedule, prompt, enabled state, and optional `report_target` override.
 - Infrastructure-level execution failure may trigger at most one automatic retry for the due run; content-level failure is reported by Codex output rather than by a separate 39claw policy engine.
 - Recurring cron schedules do not backfill missed occurrences from before the current scheduler process started; those older overdue boundaries are skipped instead of replayed after downtime.
@@ -112,7 +112,7 @@ The scheduled-task definition should stay intentionally small.
 ### Naming direction
 
 Scheduled-task names should be unique at the bot-instance level.
-Unlike `task` mode task names, these names do not participate in message routing keys, so they can be more presentation-oriented as long as they remain stable enough for conversational reference.
+Unlike `thread` mode task names, these names do not participate in message routing keys, so they can be more presentation-oriented as long as they remain stable enough for conversational reference.
 
 ## Persistence Direction
 
@@ -169,8 +169,8 @@ When a task becomes due:
 
 Scheduled tasks should use the same mode-aware repository target as normal interaction:
 
-- in `daily` mode, the configured `CLAW_CODEX_WORKDIR`
-- in `task` mode, a fresh temporary scheduled-run worktree created from the managed bare parent for the configured source checkout rather than from an arbitrary user task worktree
+- in `journal` mode, the configured `CLAW_CODEX_WORKDIR`
+- in `thread` mode, a fresh temporary scheduled-run worktree created from the managed bare parent for the configured source checkout rather than from an arbitrary user task worktree
 
 This keeps scheduled tasks independent from whichever task context a user last selected.
 The feature is instance-scoped automation, not per-user active-task automation.
@@ -184,7 +184,7 @@ Accepted target forms are `channel:<id>` and `dm:<user_id>`.
 
 ### Task-mode scheduled-run workspace rule
 
-When the bot instance runs in `task` mode, scheduled execution should not borrow a user's existing task worktree.
+When the bot instance runs in `thread` mode, scheduled execution should not borrow a user's existing task worktree.
 Instead, each scheduled run should:
 
 1. create a fresh temporary worktree for the scheduled run
@@ -270,13 +270,13 @@ Result:
 
 Scheduled tasks are instance-scoped automation and should not inherit user-scoped thread routing behavior.
 
-### In `daily` mode
+### In `journal` mode
 
 - scheduled runs share the same repository root as normal daily interaction
 - scheduled runs do not join or mutate the active daily thread binding
 - scheduled runs do not participate in daily-generation rotation semantics
 
-### In `task` mode
+### In `thread` mode
 
 - scheduled runs remain independent from per-user active-task selection
 - scheduled runs do not target user task worktrees

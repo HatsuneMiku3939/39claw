@@ -116,9 +116,9 @@ go build -o ./bin/39claw ./cmd/39claw
 
 39claw runs in exactly one mode per bot instance.
 
-### `daily`
+### `journal`
 
-Use `daily` mode when you want a lightweight shared assistant for day-to-day work.
+Use `journal` mode when you want a lightweight shared assistant for day-to-day work.
 
 - messages route through one active shared generation per local date
 - `/<instance-command> action:clear` can rotate the current day's shared generation to a fresh thread when the current one is idle
@@ -130,7 +130,7 @@ Use `daily` mode when you want a lightweight shared assistant for day-to-day wor
 If you want visible turns to consult the projected memory files, add guidance like this to your own `AGENTS.md`:
 
 ```md
-# Daily Memory Guidance
+# Journal Memory Guidance
 
 If `AGENT_MEMORY/` exists in the current workspace, consult its durable memory files when they are relevant to the user's request.
 
@@ -140,9 +140,9 @@ If `AGENT_MEMORY/` exists in the current workspace, consult its durable memory f
 - Treat `AGENT_MEMORY/` as durable context only. Do not treat it as a source of temporary TODO items or transient chat history.
 ```
 
-### `task`
+### `thread`
 
-Use `task` mode when you want durable work streams that continue across multiple days.
+Use `thread` mode when you want durable work streams that continue across multiple days.
 
 - each user works through an explicit active task
 - task names are immutable slug-style identifiers such as `release-bot-v1`
@@ -170,12 +170,12 @@ For every instance:
 - `/<instance-command> action:help`
   - show the supported command surface for the current bot instance
 
-In `daily` mode, the same root command also supports:
+In `journal` mode, the same root command also supports:
 
 - `/<instance-command> action:clear`
   - rotate the shared same-day daily session to a fresh generation when the current one is idle
 
-In `task` mode, the same root command also supports:
+In `thread` mode, the same root command also supports:
 
 - `/<instance-command> action:task-current`
   - show the active task
@@ -190,7 +190,7 @@ In `task` mode, the same root command also supports:
 - `/<instance-command> action:task-reset-context`
   - keep the active task and worktree but reset only the saved Codex conversation continuity
 
-In `task` mode, a normal message may also start with `task:<name>` to route only that message to another open task without changing the active task.
+In `thread` mode, a normal message may also start with `task:<name>` to route only that message to another open task without changing the active task.
 Examples:
 
 - `task:release-bot-v1 fix the failing tests`
@@ -215,8 +215,8 @@ Before you start, make sure you have:
 - the `codex` executable available on the machine that runs 39claw
 - a writable data directory for `CLAW_DATADIR`
 - a working directory that Codex should operate in
-- a write-capable Codex workdir if you plan to use `daily` mode, because 39claw manages `AGENT_MEMORY/` files there
-- a Git repository workdir if you plan to use `task` mode
+- a write-capable Codex workdir if you plan to use `journal` mode, because 39claw manages `AGENT_MEMORY/` files there
+- a Git repository workdir if you plan to use `thread` mode
 - Go installed if you plan to run from source
 
 ## Local Secret Workflow
@@ -341,7 +341,7 @@ If you set `CLAW_DISCORD_GUILD_ID`, 39claw registers slash commands in that guil
 
 - normal conversation is mention-only in guild channels and works without a mention in DMs
 - slash commands are explicit and do not require a mention
-- in `task` mode, users must create or switch to a task before normal conversation will run
+- in `thread` mode, users must create or switch to a task before normal conversation will run
 
 </details>
 
@@ -349,17 +349,17 @@ If you set `CLAW_DISCORD_GUILD_ID`, 39claw registers slash commands in that guil
 
 If you want a guided setup instead of the condensed quick start, use the step-by-step example guides in [example/README.md](./example/README.md):
 
-- [daily mode in an Obsidian vault](./example/daily-obsidian-vault.md)
-- [task mode for one Git repository](./example/task-repository.md)
+- [journal mode in an Obsidian vault](./example/journal-obsidian-vault.md)
+- [thread mode for one Git repository](./example/thread-repository.md)
 
 ### 1. Choose a mode
 
 Pick one:
 
-- `CLAW_MODE=daily`
-- `CLAW_MODE=task`
+- `CLAW_MODE=journal`
+- `CLAW_MODE=thread`
 
-If you choose `task`, `CLAW_CODEX_WORKDIR` must point to a Git repository with an `origin` remote.
+If you choose `thread`, `CLAW_CODEX_WORKDIR` must point to a Git repository with an `origin` remote.
 39claw treats that checkout as the operator-visible source repository and creates a managed bare parent under `CLAW_DATADIR/repos` plus task-specific worktrees under `CLAW_DATADIR/worktrees`.
 If startup finds a missing, non-Git, or no-`origin` task workdir, the bot exits with a clear configuration error before it connects to Discord.
 
@@ -418,7 +418,7 @@ Try one of these:
 - mention the bot with text plus an image
 - mention the bot with only an image
 
-If you are running in `task` mode, create a task first with `/<your-command> action:task-new task_name:<name>`.
+If you are running in `thread` mode, create a task first with `/<your-command> action:task-new task_name:<name>`.
 Choose a routing-safe slug such as `release-bot-v1`, not a free-form label with spaces.
 The first normal message for a new task may spend a moment preparing that task's dedicated worktree before Codex replies.
 
@@ -427,15 +427,15 @@ The first normal message for a new task may spend a moment preparing that task's
 ### Required variables
 
 - `CLAW_MODE`
-  - `daily` or `task`
+  - `journal` or `thread`
 - `CLAW_TIMEZONE`
-  - the timezone used for daily rollover
+  - the timezone used for journal rollover
 - `CLAW_DISCORD_TOKEN`
   - Discord bot token
 - `CLAW_DISCORD_COMMAND_NAME`
   - the unique root slash command name for this bot instance
 - `CLAW_CODEX_WORKDIR`
-  - in `daily` mode, the working directory passed to Codex; in `task` mode, the operator-visible Git checkout that must have an `origin` remote
+  - in `journal` mode, the working directory passed to Codex; in `thread` mode, the operator-visible Git checkout that must have an `origin` remote
 - `CLAW_DATADIR`
   - directory used for local state; `39claw.sqlite`, managed task repositories under `repos/`, and task worktrees under `worktrees/` all live here
 - `CLAW_CODEX_EXECUTABLE`
@@ -541,7 +541,7 @@ It is most useful for real-platform behaviors such as hosted attachments, comman
 - mention the bot with only an image and confirm the bot still answers
 - send unrelated chatter without a mention and confirm the bot stays silent
 - run `/<your-command> action:help` and confirm it matches the configured mode
-- in `task` mode, run `/<your-command> action:task-new task_name:smoke-test` and confirm the response is ephemeral
+- in `thread` mode, run `/<your-command> action:task-new task_name:smoke-test` and confirm the response is ephemeral
 - send overlapping messages for the same conversation and confirm the later one is queued
 - send a long Codex response and confirm the bot splits it into readable Discord-safe chunks
 
@@ -585,7 +585,7 @@ For the complete release candidate checklist, tagging steps, and post-release ve
 
 - guild mention and direct-message normal conversation
 - guild-mention and direct-message image attachment intake
-- `daily` and `task` conversation modes
+- `journal` and `thread` conversation modes
 - one instance-specific root slash command
 - `action:help`, `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, and `action:task-close`
 - SQLite-backed persistence for thread bindings and task state
@@ -597,8 +597,8 @@ For the complete release candidate checklist, tagging steps, and post-release ve
 For deeper detail, start here:
 
 - [docs/product-specs/discord-command-behavior.md](./docs/product-specs/discord-command-behavior.md)
-- [docs/product-specs/daily-mode-user-flow.md](./docs/product-specs/daily-mode-user-flow.md)
-- [docs/product-specs/task-mode-user-flow.md](./docs/product-specs/task-mode-user-flow.md)
+- [docs/product-specs/journal-mode-user-flow.md](./docs/product-specs/journal-mode-user-flow.md)
+- [docs/product-specs/thread-mode-user-flow.md](./docs/product-specs/thread-mode-user-flow.md)
 - [docs/index.md](./docs/index.md)
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
 - [RELEASE_RUNBOOK.md](./docs/operations/RELEASE_RUNBOOK.md)

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	managedSkillRelativePath = ".agents/skills/39claw-daily-memory-refresh/SKILL.md"
+	managedSkillRelativePath = ".agents/skills/39claw-journal-memory-refresh/SKILL.md"
 	memoryDirName            = "AGENT_MEMORY"
 	memoryFileName           = "MEMORY.md"
 
@@ -30,16 +30,16 @@ func (b Bootstrap) Ensure(ctx context.Context) error {
 
 	workdir := strings.TrimSpace(b.Workdir)
 	if workdir == "" {
-		return errors.New("daily memory bootstrap workdir must not be empty")
+		return errors.New("journal memory bootstrap workdir must not be empty")
 	}
 
 	info, err := os.Stat(workdir)
 	if err != nil {
-		return fmt.Errorf("stat daily memory workdir: %w", err)
+		return fmt.Errorf("stat journal memory workdir: %w", err)
 	}
 
 	if !info.IsDir() {
-		return fmt.Errorf("daily memory workdir must be a directory: %s", workdir)
+		return fmt.Errorf("journal memory workdir must be a directory: %s", workdir)
 	}
 
 	memoryDir := b.resolvedMemoryDir()
@@ -87,13 +87,13 @@ func ensureMemoryFile(memoryDir string) error {
 }
 
 const managedSkillContents = "---\n" +
-	"name: 39claw-daily-memory-refresh\n" +
-	"description: Refresh durable Markdown memory for 39claw daily mode before the first visible turn of a new local day. Use when the runtime resumes the previous daily Codex thread and needs to update the durable memory files under AGENT_MEMORY.\n" +
+	"name: 39claw-journal-memory-refresh\n" +
+	"description: Refresh durable Markdown memory for 39claw journal mode before the first visible turn of a new local day. Use when the runtime resumes the previous journal Codex thread and needs to update the durable memory files under AGENT_MEMORY.\n" +
 	"---\n\n" +
-	"# 39claw Daily Memory Refresh\n\n" +
+	"# 39claw Journal Memory Refresh\n\n" +
 	"## Purpose\n\n" +
-	"Refresh durable memory before the first visible turn of a new local day in 39claw daily mode.\n\n" +
-	"The source of truth is the resumed previous daily thread.\n" +
+	"Refresh durable memory before the first visible turn of a new local day in 39claw journal mode.\n\n" +
+	"The source of truth is the resumed previous journal thread.\n" +
 	"The writable memory directory is `AGENT_MEMORY/` under the current workspace.\n\n" +
 	"## Files\n\n" +
 	"Read and update these files:\n\n" +
@@ -120,7 +120,7 @@ const managedSkillContents = "---\n" +
 	"Use flat bullet lists under the sections.\n\n" +
 	"## Required dated bridge note structure\n\n" +
 	"Ensure today's dated note uses exactly these top-level headings:\n\n" +
-	"- `# Daily Memory Bridge for YYYY-MM-DD`\n" +
+	"- `# Journal Memory Bridge for YYYY-MM-DD`\n" +
 	"- `## Source`\n" +
 	"- `## Durable Facts Promoted`\n" +
 	"- `## MEMORY.md Updates Applied`\n" +

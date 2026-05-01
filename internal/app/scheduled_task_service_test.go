@@ -38,7 +38,7 @@ func TestScheduledTaskServiceTickExecutesAndDeliversDueRun(t *testing.T) {
 	gateway := &fakeScheduledGateway{}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                config.ModeDaily,
+		Mode:                config.ModeJournal,
 		Timezone:            location,
 		Workdir:             "/workspace/project",
 		DefaultReportTarget: "channel:channel-1",
@@ -114,7 +114,7 @@ func TestScheduledTaskServiceTickSkipsBackfillBeforeServiceStart(t *testing.T) {
 	gateway := &fakeScheduledGateway{}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                config.ModeDaily,
+		Mode:                config.ModeJournal,
 		Timezone:            location,
 		Workdir:             "/workspace/project",
 		DefaultReportTarget: "channel:channel-1",
@@ -177,7 +177,7 @@ func TestScheduledTaskServiceTickUsesLatestRunAsAnchor(t *testing.T) {
 	gateway := &fakeScheduledGateway{}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                config.ModeDaily,
+		Mode:                config.ModeJournal,
 		Timezone:            location,
 		Workdir:             "/workspace/project",
 		DefaultReportTarget: "channel:channel-1",
@@ -235,7 +235,7 @@ func TestScheduledTaskServiceExecuteTaskNowRunsImmediately(t *testing.T) {
 	reportSender := &fakeScheduledReportSender{}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                config.ModeDaily,
+		Mode:                config.ModeJournal,
 		Timezone:            location,
 		Workdir:             "/workspace/project",
 		DefaultReportTarget: "channel:channel-1",
@@ -299,7 +299,7 @@ func TestScheduledTaskServiceExecuteRunDoesNotRetryCanceledRun(t *testing.T) {
 	gateway := &fakeScheduledGateway{err: context.Canceled}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                config.ModeDaily,
+		Mode:                config.ModeJournal,
 		Timezone:            location,
 		Workdir:             "/workspace/project",
 		DefaultReportTarget: "channel:channel-1",
@@ -319,7 +319,7 @@ func TestScheduledTaskServiceExecuteRunDoesNotRetryCanceledRun(t *testing.T) {
 	run, admitted, err := store.AdmitScheduledTaskRun(context.Background(), ScheduledTaskRun{
 		ScheduledRunID:  "run-1",
 		ScheduledTaskID: "task-1",
-		Mode:            "daily",
+		Mode:            "journal",
 		ScheduledFor:    time.Date(2026, time.April, 12, 8, 5, 10, 0, location).UTC(),
 		Attempt:         1,
 		Status:          ScheduledTaskRunStatusPending,
@@ -352,7 +352,7 @@ func TestNewScheduledTaskServiceDefaultNowUsesLiveClock(t *testing.T) {
 	}
 
 	service, err := NewScheduledTaskService(ScheduledTaskServiceDependencies{
-		Mode:                config.ModeDaily,
+		Mode:                config.ModeJournal,
 		Timezone:            location,
 		Workdir:             "/workspace/project",
 		DefaultReportTarget: "channel:channel-1",

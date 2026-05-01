@@ -11,7 +11,7 @@ It is organized into a small set of document layers so contributors can quickly 
 - [Release Runbook](./operations/RELEASE_RUNBOOK.md)
   - Operator-facing release readiness, tagging, and post-release verification steps
 - [Example Setups](../example/README.md)
-  - End-user-oriented step-by-step setup guides for common `daily` and `task` deployments
+  - End-user-oriented step-by-step setup guides for common `journal` and `thread` deployments
 - [Product Specs](./product-specs/index.md)
   - Product-facing user journeys, interaction rules, and expected behavior
 - [Design Docs](./design-docs/index.md)
@@ -61,7 +61,7 @@ Use `docs/references` when the question is about:
 
 ## Current Focus Areas
 
-- defining user-facing behavior for `daily` and `task` modes
+- defining user-facing behavior for `journal` and `thread` modes
 - keeping the Codex-native architecture boundaries clear
 - validating the experimental Go Codex integration path
 
