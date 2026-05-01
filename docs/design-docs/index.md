@@ -23,15 +23,15 @@ The project direction is intentionally small and opinionated:
 - [SQLite Migrations](./sqlite-migrations.md) - proposes a versioned migration structure for evolving the local SQLite schema safely
 - [Thread Modes](./thread-modes.md) - explains the mode model, behavior, and tradeoffs
 - [State and Storage](./state-and-storage.md) - explains persistence requirements and storage boundaries
-- [Task Mode Worktrees](./task-mode-worktrees.md) - defines task-isolated Git worktrees, lazy creation, and closed-task pruning
+- [Thread Mode Worktrees](./thread-mode-worktrees.md) - defines task-isolated Git worktrees, lazy creation, and closed-task pruning
 
 ## Current v1 Direction
 
 - Main runtime: Discord
 - LLM backend: Codex only
 - Supported thread modes:
-  - `daily`
-  - `task`
+  - `journal`
+  - `thread`
 - Configuration scope: global per bot instance
 - Persistent local storage: required for Codex thread binding
 - Same-key concurrency: bounded in-memory queueing with deferred replies for queued turns

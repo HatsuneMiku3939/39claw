@@ -1,12 +1,12 @@
-# Daily Mode User Flow
+# Journal Mode User Flow
 
 Status: Active
 
 ## Purpose
 
-This document defines the intended user-facing behavior of 39claw when the bot instance is configured to use `daily` mode.
+This document defines the intended user-facing behavior of 39claw when the bot instance is configured to use `journal` mode.
 
-The goal of `daily` mode is to make the bot feel natural and low-friction for ongoing daily conversation and lightweight work.
+The goal of `journal` mode is to make the bot feel natural and low-friction for ongoing journal conversation and lightweight work.
 
 ## Product Goal
 
@@ -15,7 +15,7 @@ At a product level, this mode should feel like talking to a living knowledge bas
 
 ## User Promise
 
-In `daily` mode, the bot should feel like:
+In `journal` mode, the bot should feel like:
 
 - a shared conversation that continues during the current day
 - a tool that can intentionally start a fresh shared same-day thread when users need to cut down context growth
@@ -35,7 +35,7 @@ Messages handled on the same local date should feel like they continue the same 
 ### 3. Same-day resets should be explicit and shared
 
 If a user invokes `/<instance-command> action:clear`, the bot should start a fresh shared same-day generation for the whole bot instance.
-That reset should apply to the shared daily context, not only to the user who issued the command.
+That reset should apply to the shared journal context, not only to the user who issued the command.
 If the current shared generation is still busy, the bot should reject the clear request and ask the user to retry after the queued work finishes.
 
 ### 4. Day boundaries should reset the thread cleanly without discarding durable memory
@@ -82,7 +82,7 @@ Expected user perception:
 
 Expected flow:
 
-1. The user sends a message for the current daily conversation while an earlier same-day turn is still executing.
+1. The user sends a message for the current journal conversation while an earlier same-day turn is still executing.
 2. 39claw accepts the later message into the active-generation waiting queue if capacity remains.
 3. The bot immediately posts a short queued acknowledgment as a reply to the later message.
 4. After the earlier turn completes, 39claw executes the queued message in the same daily thread.
@@ -98,7 +98,7 @@ Expected user perception:
 Expected flow:
 
 1. A user invokes `/<instance-command> action:clear`.
-2. 39claw checks whether the current active daily generation is idle.
+2. 39claw checks whether the current active journal generation is idle.
 3. If the generation is idle, 39claw rotates the shared same-day session to the next generation and confirms the reset.
 4. The next normal message on the same local date targets that fresh generation.
 5. Before the first visible reply on the new generation, 39claw may run a hidden memory-refresh preflight against the previous generation and update `AGENT_MEMORY/MEMORY.md` plus `AGENT_MEMORY/YYYY-MM-DD.<generation>.md`.
@@ -113,9 +113,9 @@ Expected user perception:
 Expected flow:
 
 1. The user sends a message after the local date has changed.
-2. 39claw resolves a new daily bucket automatically.
+2. 39claw resolves a new journal bucket automatically.
 3. If no active generation exists for the new bucket yet, 39claw creates generation `#1` automatically.
-4. If no thread exists for the new generation and a previous recorded daily generation exists, 39claw first runs a hidden memory-refresh preflight against that previous thread.
+4. If no thread exists for the new generation and a previous recorded journal generation exists, 39claw first runs a hidden memory-refresh preflight against that previous thread.
 5. The preflight updates `AGENT_MEMORY/MEMORY.md` plus today's `AGENT_MEMORY/YYYY-MM-DD.<generation>.md` note.
 6. 39claw creates the new day's visible Codex thread.
 7. The response begins from a fresh thread and may reflect durable remembered preferences or long-lived context when the deployment's own instructions tell Codex to consult the projected memory files.
@@ -129,7 +129,7 @@ Expected user perception:
 
 ### Message routing
 
-The user should not have to manually select a thread for normal use in `daily` mode.
+The user should not have to manually select a thread for normal use in `journal` mode.
 
 ### Continuity boundaries
 
@@ -139,7 +139,7 @@ Continuity should be preserved:
 
 Across different days, same-thread continuity should not be assumed, but durable memory may still be projected forward through the runtime-managed Markdown bridge.
 Whether that projected memory affects normal visible turns depends on the deployment's own instructions rather than on 39claw rewriting user-owned instruction files.
-Changing channels within the same bot instance should not reset the daily context by itself.
+Changing channels within the same bot instance should not reset the journal context by itself.
 
 ### Response tone
 
@@ -168,18 +168,18 @@ If the product exposes date-boundary behavior to users, it should do so in terms
 
 ### Channel changes
 
-If conversation continues in a different channel within the same bot instance, the product should preserve daily continuity rather than silently resetting it.
+If conversation continues in a different channel within the same bot instance, the product should preserve journal continuity rather than silently resetting it.
 If that creates confusion for a specific deployment, the preferred solution is to separate bot instances by purpose rather than keying continuity by channel.
 
 ### Concurrent unrelated topics
 
-If multiple unrelated discussions happen on the same day, `daily` mode may expose some shared context across those turns.
+If multiple unrelated discussions happen on the same day, `journal` mode may expose some shared context across those turns.
 That tradeoff is acceptable when the product is intentionally operating as a shared assistant for a bounded group.
 If multiple same-day requests stack up while one turn is already running, up to five waiting messages may queue before the bot falls back to a retry-later response.
 
 ## Non-Goals
 
-`daily` mode is not intended to optimize for:
+`journal` mode is not intended to optimize for:
 
 - long-lived project management
 - explicit task switching
@@ -189,6 +189,6 @@ If multiple same-day requests stack up while one turn is already running, up to 
 
 - The bot should not proactively mention that a new day created a fresh context.
 - The bot may expose `/<instance-command> action:clear` so users can intentionally rotate the shared same-day generation.
-- There should not be an explicit command for inspecting the current daily context in v1.
-- The configured timezone should not be surfaced proactively to end users in normal daily-mode flow.
+- There should not be an explicit command for inspecting the current journal context in v1.
+- The configured timezone should not be surfaced proactively to end users in normal journal-mode flow.
 - The bot should not provide lightweight guidance when channel changes preserve continuity.

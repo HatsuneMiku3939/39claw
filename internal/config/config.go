@@ -14,8 +14,8 @@ import (
 type Mode string
 
 const (
-	ModeDaily Mode = "daily"
-	ModeTask  Mode = "task"
+	ModeJournal Mode = "journal"
+	ModeThread  Mode = "thread"
 )
 
 type Config struct {
@@ -161,17 +161,17 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 }
 
 func ValidateRuntimePaths(cfg Config) error {
-	if cfg.Mode != ModeTask {
+	if cfg.Mode != ModeThread {
 		return nil
 	}
 
 	info, err := os.Stat(cfg.CodexWorkdir)
 	if err != nil {
-		return fmt.Errorf("task mode requires CLAW_CODEX_WORKDIR to exist: %w", err)
+		return fmt.Errorf("thread mode requires CLAW_CODEX_WORKDIR to exist: %w", err)
 	}
 
 	if !info.IsDir() {
-		return fmt.Errorf("task mode requires CLAW_CODEX_WORKDIR to be a directory: %s", cfg.CodexWorkdir)
+		return fmt.Errorf("thread mode requires CLAW_CODEX_WORKDIR to be a directory: %s", cfg.CodexWorkdir)
 	}
 
 	gitEntryPath := filepath.Join(cfg.CodexWorkdir, ".git")
@@ -181,7 +181,7 @@ func ValidateRuntimePaths(cfg Config) error {
 	}
 
 	if errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("task mode requires CLAW_CODEX_WORKDIR to be a Git repository root: %s", cfg.CodexWorkdir)
+		return fmt.Errorf("thread mode requires CLAW_CODEX_WORKDIR to be a Git repository root: %s", cfg.CodexWorkdir)
 	}
 
 	return fmt.Errorf("inspect CLAW_CODEX_WORKDIR git metadata: %w", err)
@@ -193,10 +193,10 @@ func sqlitePath(dataDir string) string {
 
 func parseMode(raw string) (Mode, error) {
 	switch Mode(strings.ToLower(strings.TrimSpace(raw))) {
-	case ModeDaily:
-		return ModeDaily, nil
-	case ModeTask:
-		return ModeTask, nil
+	case ModeJournal:
+		return ModeJournal, nil
+	case ModeThread:
+		return ModeThread, nil
 	default:
 		return "", fmt.Errorf("unsupported CLAW_MODE %q", raw)
 	}

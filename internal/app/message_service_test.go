@@ -95,7 +95,7 @@ func TestMessageServiceHandleMessageDailyReusesSameDayBinding(t *testing.T) {
 		t.Fatalf("second thread id = %q, want %q", calls[1].threadID, "thread-1")
 	}
 
-	binding, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05#1")
+	binding, ok, err := store.GetThreadBinding(context.Background(), "journal", "2026-04-05#1")
 	if err != nil {
 		t.Fatalf("GetThreadBinding() error = %v", err)
 	}
@@ -201,11 +201,11 @@ func TestMessageServiceHandleMessageDailyRollsOverOnNextDay(t *testing.T) {
 		t.Fatalf("second thread id = %q, want empty", calls[1].threadID)
 	}
 
-	if _, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05#1"); err != nil || !ok {
+	if _, ok, err := store.GetThreadBinding(context.Background(), "journal", "2026-04-05#1"); err != nil || !ok {
 		t.Fatalf("same-day binding lookup = ok:%v err:%v, want ok:true err:nil", ok, err)
 	}
 
-	nextBinding, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-06#1")
+	nextBinding, ok, err := store.GetThreadBinding(context.Background(), "journal", "2026-04-06#1")
 	if err != nil {
 		t.Fatalf("GetThreadBinding() next day error = %v", err)
 	}
@@ -224,8 +224,8 @@ func TestMessageServiceHandleMessageDailyRefreshesBeforeVisibleTurn(t *testing.T
 
 	store := &memoryThreadStore{
 		bindings: map[string]app.ThreadBinding{
-			"daily:2026-04-05#1": {
-				Mode:             "daily",
+			"journal:2026-04-05#1": {
+				Mode:             "journal",
 				LogicalThreadKey: "2026-04-05#1",
 				CodexThreadID:    "thread-previous",
 			},
@@ -330,8 +330,8 @@ func TestMessageServiceHandleMessageDailyTargetsFreshGenerationAfterClear(t *tes
 
 	store := &memoryThreadStore{
 		bindings: map[string]app.ThreadBinding{
-			"daily:2026-04-05#1": {
-				Mode:             "daily",
+			"journal:2026-04-05#1": {
+				Mode:             "journal",
 				LogicalThreadKey: "2026-04-05#1",
 				CodexThreadID:    "thread-previous",
 			},
@@ -394,7 +394,7 @@ func TestMessageServiceHandleMessageDailyTargetsFreshGenerationAfterClear(t *tes
 		)
 	}
 
-	binding, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05#2")
+	binding, ok, err := store.GetThreadBinding(context.Background(), "journal", "2026-04-05#2")
 	if err != nil {
 		t.Fatalf("GetThreadBinding() error = %v", err)
 	}
@@ -410,7 +410,7 @@ func TestMessageServiceHandleMessageReturnsTaskGuidance(t *testing.T) {
 	t.Parallel()
 
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
-		Mode:        config.ModeTask,
+		Mode:        config.ModeThread,
 		CommandName: "release",
 		Policy: stubThreadPolicy{
 			err: app.ErrNoActiveTask,
@@ -511,7 +511,7 @@ func TestMessageServiceHandleMessageTaskOverrideRoutesWithoutChangingActiveTask(
 		t.Fatalf("active task id = %q, want %q", activeTask.TaskID, "task-1")
 	}
 
-	if _, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-2"); err != nil || !ok {
+	if _, ok, err := store.GetThreadBinding(context.Background(), "thread", "user-1:task-2"); err != nil || !ok {
 		t.Fatalf("GetThreadBinding(task-2) = ok:%v err:%v, want ok:true err:nil", ok, err)
 	}
 }
@@ -664,7 +664,7 @@ func TestMessageServiceHandleMessageTaskReusesTaskBindingAcrossDays(t *testing.T
 		t.Fatalf("second working directory = %q, want %q", calls[1].workingDirectory, "/tmp/worktrees/task-1")
 	}
 
-	binding, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1")
+	binding, ok, err := store.GetThreadBinding(context.Background(), "thread", "user-1:task-1")
 	if err != nil {
 		t.Fatalf("GetThreadBinding() error = %v", err)
 	}
@@ -700,8 +700,8 @@ func TestMessageServiceHandleMessageTaskStartsFreshThreadAfterResetContext(t *te
 			},
 		},
 		bindings: map[string]app.ThreadBinding{
-			"task:user-1:task-1": {
-				Mode:             "task",
+			"thread:user-1:task-1": {
+				Mode:             "thread",
 				LogicalThreadKey: "user-1:task-1",
 				CodexThreadID:    "thread-old",
 				TaskID:           "task-1",
@@ -754,7 +754,7 @@ func TestMessageServiceHandleMessageTaskStartsFreshThreadAfterResetContext(t *te
 		t.Fatalf("working directory = %q, want %q", calls[0].workingDirectory, "/tmp/worktrees/task-1")
 	}
 
-	binding, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1")
+	binding, ok, err := store.GetThreadBinding(context.Background(), "thread", "user-1:task-1")
 	if err != nil {
 		t.Fatalf("GetThreadBinding() error = %v", err)
 	}
@@ -848,7 +848,7 @@ func TestMessageServiceHandleMessageTaskSwitchesThreadsByActiveTask(t *testing.T
 	}
 
 	for _, key := range []string{"user-1:task-1", "user-1:task-2"} {
-		if _, ok, err := store.GetThreadBinding(context.Background(), "task", key); err != nil || !ok {
+		if _, ok, err := store.GetThreadBinding(context.Background(), "thread", key); err != nil || !ok {
 			t.Fatalf("GetThreadBinding(%s) = ok:%v err:%v, want ok:true err:nil", key, ok, err)
 		}
 	}
@@ -1385,11 +1385,11 @@ func TestMessageServiceHandleMessageFreezesTaskContextForQueuedWork(t *testing.T
 		t.Fatalf("queued task thread id = %q, want %q", calls[1].threadID, "thread-task-1")
 	}
 
-	if _, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1"); err != nil || !ok {
+	if _, ok, err := store.GetThreadBinding(context.Background(), "thread", "user-1:task-1"); err != nil || !ok {
 		t.Fatalf("GetThreadBinding(task-1) = ok:%v err:%v, want ok:true err:nil", ok, err)
 	}
 
-	if _, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-2"); err != nil {
+	if _, ok, err := store.GetThreadBinding(context.Background(), "thread", "user-1:task-2"); err != nil {
 		t.Fatalf("GetThreadBinding(task-2) error = %v", err)
 	} else if ok {
 		t.Fatal("GetThreadBinding(task-2) ok = true, want false")
@@ -1608,7 +1608,7 @@ func newDailyMessageServiceWithLogger(
 		t.Fatalf("time.LoadLocation() error = %v", err)
 	}
 
-	policy, err := thread.NewPolicy(config.ModeDaily, tokyo, nil)
+	policy, err := thread.NewPolicy(config.ModeJournal, tokyo, nil)
 	if err != nil {
 		t.Fatalf("thread.NewPolicy() error = %v", err)
 	}
@@ -1618,7 +1618,7 @@ func newDailyMessageServiceWithLogger(
 	}
 
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
-		Mode:        config.ModeDaily,
+		Mode:        config.ModeJournal,
 		CommandName: "release",
 		Logger:      logger,
 		Policy:      policy,
@@ -1664,7 +1664,7 @@ func newTaskMessageServiceWithWorktrees(
 		t.Fatalf("time.LoadLocation() error = %v", err)
 	}
 
-	policy, err := thread.NewPolicy(config.ModeTask, tokyo, store)
+	policy, err := thread.NewPolicy(config.ModeThread, tokyo, store)
 	if err != nil {
 		t.Fatalf("thread.NewPolicy() error = %v", err)
 	}
@@ -1674,7 +1674,7 @@ func newTaskMessageServiceWithWorktrees(
 	}
 
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
-		Mode:             config.ModeTask,
+		Mode:             config.ModeThread,
 		CommandName:      "release",
 		Policy:           policy,
 		Store:            store,

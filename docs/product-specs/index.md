@@ -22,10 +22,10 @@ If a document starts describing package boundaries or infrastructure internals, 
 
 ## Current Documents
 
-- [Daily Mode User Flow](./daily-mode-user-flow.md)
-  - Defines the expected user experience for conversation flow in `daily` mode
-- [Task Mode User Flow](./task-mode-user-flow.md)
-  - Defines the expected user experience for explicit task-oriented flow in `task` mode
+- [Journal Mode User Flow](./journal-mode-user-flow.md)
+  - Defines the expected user experience for conversation flow in `journal` mode
+- [Thread Mode User Flow](./thread-mode-user-flow.md)
+  - Defines the expected user experience for explicit task-oriented flow in `thread` mode
 - [Scheduled Tasks User Flow](./scheduled-tasks-user-flow.md)
   - Defines the expected user experience for MCP-managed scheduled Codex tasks
 - [Discord Command Behavior](./discord-command-behavior.md)

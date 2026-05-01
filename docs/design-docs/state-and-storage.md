@@ -25,7 +25,7 @@ Without this mapping:
 
 ### 1. Thread Bindings
 
-This state exists in both `daily` and `task` modes.
+This state exists in both `journal` and `thread` modes.
 
 It stores:
 
@@ -34,9 +34,9 @@ It stores:
 - creation time
 - last update time
 
-### 2. Durable Daily Memory Files
+### 2. Durable Journal Memory Files
 
-This state is required in `daily` mode.
+This state is required in `journal` mode.
 
 It lives inside the configured Codex workdir instead of SQLite:
 
@@ -48,7 +48,7 @@ The dated generation-scoped file records what the preflight promoted, updated, o
 
 ### 3. Daily Session State
 
-This state is only required for `daily` mode.
+This state is only required for `journal` mode.
 
 It stores the active shared generation for each local date and the previous generation used as the durable-memory preflight source.
 
@@ -67,7 +67,7 @@ This metadata allows 39claw to:
 
 ### 4. Active Task State
 
-This state is only required for `task` mode.
+This state is only required for `thread` mode.
 
 It stores the currently selected task identity for a user within the current bot instance.
 
@@ -82,7 +82,7 @@ One-shot `task:<name>` overrides do not mutate this saved active-task mapping.
 
 ### 5. Task Worktree Metadata
 
-This state is only required for `task` mode.
+This state is only required for `thread` mode.
 
 Each task needs enough metadata to create and later manage an isolated Git worktree.
 
@@ -98,7 +98,7 @@ That includes:
 This metadata lets 39claw decide whether a task needs lazy worktree creation, whether a closed task is eligible for pruning, and which working directory Codex should use for the next turn.
 The task-name field also acts as a routing target for one-shot `task:<name>` overrides, so open task names must stay unique per user and must not be silently normalized after creation.
 
-Task mode also owns a repository-shaped on-disk artifact outside SQLite:
+Thread mode also owns a repository-shaped on-disk artifact outside SQLite:
 
 - `${CLAW_DATADIR}/repos/<repo-id>.git`
 
@@ -126,7 +126,7 @@ The current concept points toward:
 - `active_tasks`
 
 SQLite remains the source of truth for remote thread bindings, daily-session metadata, and task metadata.
-The `AGENT_MEMORY` Markdown files are intentionally stored in the Codex workdir so Codex can read and update them directly during the daily memory-bridge preflight.
+The `AGENT_MEMORY` Markdown files are intentionally stored in the Codex workdir so Codex can read and update them directly during the journal memory-bridge preflight.
 
 The design should favor explicit structured columns over packing all data into a single opaque key string, unless implementation simplicity proves more valuable.
 

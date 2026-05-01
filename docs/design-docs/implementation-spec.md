@@ -39,8 +39,8 @@ The expected package direction for v1 is:
 The recommended delivery order is:
 
 1. foundation and shared interfaces
-2. `daily` mode routing and persistence
-3. `task` mode state and command workflow
+2. `journal` mode routing and persistence
+3. `thread` mode state and command workflow
 4. Discord command and presentation refinement
 5. scheduled task orchestration, persistence, and delivery
 
@@ -70,7 +70,7 @@ The following internal contracts should be treated as stable v1 design targets e
 - `TaskCommandService`
   - implements the `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, `action:task-close`, and `action:task-reset-context` workflow behind the configured root command
 - `DailyCommandService`
-  - implements the `action:clear` workflow behind the configured root command when the bot instance runs in `daily` mode
+  - implements the `action:clear` workflow behind the configured root command when the bot instance runs in `journal` mode
 
 The application layer should depend on these responsibilities rather than on Discord SDK details or raw SQL.
 
@@ -78,9 +78,9 @@ The concrete v1 message path lives in the application layer rather than in the D
 The message service is responsible for:
 
 - ignoring unsupported non-mention chatter
-- resolving the logical thread bucket and any active daily generation metadata
+- resolving the logical thread bucket and any active journal generation metadata
 - rejecting overlapping turns for the same logical thread key
-- running the daily durable-memory preflight before the first visible turn of a new daily generation when the previous generation's thread binding exists
+- running the journal durable-memory preflight before the first visible turn of a new journal generation when the previous generation's thread binding exists
 - loading and upserting SQLite thread bindings
 - calling the Codex gateway and returning a normalized reply payload
 
@@ -122,23 +122,23 @@ Task status is `open` or `closed`.
 Task worktree status is `pending`, `ready`, `failed`, or `pruned`.
 Closing a task marks it `closed` and removes its `active_tasks` mapping when that task is currently active.
 `action:task-list` should show open tasks and clearly mark the active task for the requesting user.
-Deleting a task-mode thread binding must not change the task record, active-task mapping, branch name, or worktree path. That operation is how `action:task-reset-context` clears only Codex conversation continuity.
+Deleting a thread-mode thread binding must not change the task record, active-task mapping, branch name, or worktree path. That operation is how `action:task-reset-context` clears only Codex conversation continuity.
 
 The logical thread key defaults are:
 
-- `daily`: configured local date formatted as `YYYY-MM-DD` for the outer bucket, with the active visible thread key normalized to `YYYY-MM-DD#<generation>`
-- `task`: `discord_user_id + task_id`
+- `journal`: configured local date formatted as `YYYY-MM-DD` for the outer bucket, with the active visible thread key normalized to `YYYY-MM-DD#<generation>`
+- `thread`: `discord_user_id + task_id`
 
-In `task` mode, the effective task for a normal message is the saved active task unless the first meaningful token supplies a one-shot `task:<name>` override.
+In `thread` mode, the effective task for a normal message is the saved active task unless the first meaningful token supplies a one-shot `task:<name>` override.
 That override may follow leading whitespace or the guild-channel bot mention, may be followed by body text on the same line or the next line, and applies only to the current message.
 Queue admission, thread binding lookup, and worktree selection must freeze that effective task at acceptance time so later task switches do not reroute already-accepted work.
 
-When the bot runs in `daily` mode, 39claw also manages a durable memory projection inside `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY`.
-`MEMORY.md` is the primary durable-memory file, and `YYYY-MM-DD.<generation>.md` stores the bridge note created during the first-message preflight for a new daily generation.
+When the bot runs in `journal` mode, 39claw also manages a durable memory projection inside `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY`.
+`MEMORY.md` is the primary durable-memory file, and `YYYY-MM-DD.<generation>.md` stores the bridge note created during the first-message preflight for a new journal generation.
 Scheduled tasks are independent from interactive message routing and own their own persisted definition plus run lifecycle.
 Scheduled-task management is not part of the Discord slash-command surface; it is exposed to Codex through a local 39claw-owned MCP server and managed conversationally through the `scheduled_tasks_*` tool family.
-When a scheduled task executes in `daily` mode, it uses `CLAW_CODEX_WORKDIR` directly.
-When a scheduled task executes in `task` mode, it must create a fresh temporary worktree from the managed bare parent, run Codex there, and remove that temporary worktree after the run completes.
+When a scheduled task executes in `journal` mode, it uses `CLAW_CODEX_WORKDIR` directly.
+When a scheduled task executes in `thread` mode, it must create a fresh temporary worktree from the managed bare parent, run Codex there, and remove that temporary worktree after the run completes.
 
 ## Discord Behavior Defaults
 
@@ -150,18 +150,18 @@ When a normal-message reply finishes successfully, 39claw should add a `✅` rea
 Each bot instance should expose one slash-command surface whose root name comes from `CLAW_DISCORD_COMMAND_NAME`.
 That root command should always expose `action:help`.
 Task-control command responses are ephemeral by default.
-When a bot instance runs in `daily` mode, task actions must return a clear not-available response instead of pretending the command worked.
-When a bot instance runs in `daily` mode, the root command should also expose `action:clear`.
-When a bot instance runs in `task` mode, the root command should expose `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, `action:task-close`, and `action:task-reset-context`.
+When a bot instance runs in `journal` mode, task actions must return a clear not-available response instead of pretending the command worked.
+When a bot instance runs in `journal` mode, the root command should also expose `action:clear`.
+When a bot instance runs in `thread` mode, the root command should expose `action:task-current`, `action:task-list`, `action:task-new`, `action:task-switch`, `action:task-close`, and `action:task-reset-context`.
 Scheduled-task management should be available in both modes through MCP-backed conversational management because scheduled execution is orthogonal to the interactive thread mode.
 
-When a bot instance runs in `task` mode, normal messages without an active task must not be routed to Codex.
+When a bot instance runs in `thread` mode, normal messages without an active task must not be routed to Codex.
 They should return actionable guidance that points the user to `action:task-new`, `action:task-list`, or `action:task-switch` on the configured root command.
-When a bot instance runs in `daily` mode, the first visible turn of a new daily generation should still start a fresh Codex thread, but 39claw must first run a hidden durable-memory refresh against the previous recorded generation's thread when that previous binding exists.
+When a bot instance runs in `journal` mode, the first visible turn of a new journal generation should still start a fresh Codex thread, but 39claw must first run a hidden durable-memory refresh against the previous recorded generation's thread when that previous binding exists.
 If that preflight fails or times out, 39claw should log the failure and continue with the visible turn instead of blocking the user.
-If `action:clear` is invoked while the current active daily generation still has in-flight or queued work, 39claw should reject the clear request with an ephemeral retry-later response instead of rotating immediately.
+If `action:clear` is invoked while the current active journal generation still has in-flight or queued work, 39claw should reject the clear request with an ephemeral retry-later response instead of rotating immediately.
 39claw must not create or modify user-owned instruction files such as `AGENTS.md`; if a deployment wants visible turns to consult `AGENT_MEMORY`, the deployment must express that through its own checked-in instructions.
-When a bot instance runs in `task` mode, `CLAW_CODEX_WORKDIR` must be a Git repository with an `origin` remote.
+When a bot instance runs in `thread` mode, `CLAW_CODEX_WORKDIR` must be a Git repository with an `origin` remote.
 `task-new` creates task metadata only and reserves a branch name derived from the task name with Git-safe normalization; if normalization produces no usable suffix, it falls back to the task ID. The first normal message for a pending or failed task creates the task worktree lazily from a managed bare parent under `${CLAW_DATADIR}/repos`, preferring the remote default branch by trying `origin/HEAD`, then `origin/main`, then `origin/master`, and only then falling back to local `main` or `master` inside that managed repository.
 Before detecting that base ref, 39claw should synchronize the managed bare parent against the source checkout's `origin` configuration and try `git fetch origin --prune`; a fetch failure should not block task execution by itself when cached remote refs are already available.
 Those managed-parent mutation steps should be serialized per managed repository path within the running process so concurrent task starts do not overlap on one shared bare parent.
@@ -214,18 +214,18 @@ The expected variables are:
 
 `CLAW_MODE`, `CLAW_TIMEZONE`, `CLAW_DISCORD_TOKEN`, `CLAW_DISCORD_COMMAND_NAME`, `CLAW_CODEX_WORKDIR`, `CLAW_DATADIR`, and `CLAW_CODEX_EXECUTABLE` are required.
 `CLAW_DISCORD_GUILD_ID`, `CLAW_CODEX_BASE_URL`, `CLAW_CODEX_API_KEY`, `CLAW_CODEX_HOME`, `CLAW_CODEX_MODEL`, `CLAW_CODEX_SANDBOX_MODE`, `CLAW_CODEX_ADDITIONAL_DIRECTORIES`, `CLAW_CODEX_SKIP_GIT_REPO_CHECK`, `CLAW_CODEX_APPROVAL_POLICY`, `CLAW_CODEX_MODEL_REASONING_EFFORT`, `CLAW_CODEX_WEB_SEARCH_MODE`, `CLAW_CODEX_NETWORK_ACCESS`, `CLAW_LOG_LEVEL`, `CLAW_LOG_FORMAT`, and `CLAW_SCHEDULED_REPORT_TARGET` are optional.
-`CLAW_MODE` accepts `daily` or `task`.
+`CLAW_MODE` accepts `journal` or `thread`.
 `CLAW_TIMEZONE` must be set explicitly for each deployment.
 `CLAW_DISCORD_COMMAND_NAME` must be unique per bot instance, normalized to lowercase, and validated conservatively before Discord registration.
 When `CLAW_CODEX_HOME` is set, 39claw must inject it into the spawned Codex CLI process as `CODEX_HOME`.
-When `CLAW_MODE=task`, `CLAW_CODEX_WORKDIR` must point to a Git repository with an `origin` remote and acts as the operator-visible source checkout plus validation target for task-mode startup.
+When `CLAW_MODE=thread`, `CLAW_CODEX_WORKDIR` must point to a Git repository with an `origin` remote and acts as the operator-visible source checkout plus validation target for thread-mode startup.
 Task-mode startup and first-use preparation must maintain a managed bare parent repository under `${CLAW_DATADIR}/repos`, and task worktrees must be created from that managed parent rather than directly from the visible source checkout.
-When `CLAW_MODE=daily`, startup must materialize the managed durable-memory skill and the `AGENT_MEMORY` directory inside `CLAW_CODEX_WORKDIR`.
+When `CLAW_MODE=journal`, startup must materialize the managed durable-memory skill and the `AGENT_MEMORY` directory inside `CLAW_CODEX_WORKDIR`.
 When `CLAW_SCHEDULED_REPORT_TARGET` is set, it becomes the default `report_target` for scheduled tasks that do not override the destination explicitly. Accepted formats are `channel:<id>` and `dm:<user_id>`.
 `CLAW_LOG_LEVEL` defaults to `info` when omitted.
 When `CLAW_DISCORD_GUILD_ID` is set, slash commands are overwritten in that guild for faster development feedback.
 `CLAW_CODEX_SANDBOX_MODE` defaults to `workspace-write` when omitted.
-`daily` mode does not support `read-only` sandboxing because the durable-memory bridge must write inside `CLAW_CODEX_WORKDIR`.
+`journal` mode does not support `read-only` sandboxing because the durable-memory bridge must write inside `CLAW_CODEX_WORKDIR`.
 `CLAW_CODEX_APPROVAL_POLICY` defaults to `never` when omitted.
 `CLAW_CODEX_WEB_SEARCH_MODE` defaults to `live` when omitted.
 `CLAW_LOG_FORMAT` defaults to `json` when omitted and may be set to `text` for local debugging.
@@ -258,23 +258,23 @@ The repository should treat validation as three layers:
 The initial implementation should demonstrate the following observable behavior.
 Most of these outcomes should be proven through automated contract coverage plus fake runtime tests, while the narrow live-platform remainder should be handled as optional hardening:
 
-- In `daily` mode, the first qualifying mention creates generation `#1`, a second same-day mention reuses the active generation, and the first mention on the next local date creates a fresh `#1` generation after the durable-memory preflight refreshes `AGENT_MEMORY` from the last active prior-day generation when that previous binding exists.
-- In `daily` mode, `/<instance-command> action:clear` rotates the shared same-day generation only when the current generation is idle, and the next mention creates or resumes a fresh same-day binding after the durable-memory preflight refreshes `AGENT_MEMORY` from the previous recorded generation when that previous binding exists.
-- In `daily` mode, startup does not create or rewrite `AGENTS.md`.
+- In `journal` mode, the first qualifying mention creates generation `#1`, a second same-day mention reuses the active generation, and the first mention on the next local date creates a fresh `#1` generation after the durable-memory preflight refreshes `AGENT_MEMORY` from the last active prior-day generation when that previous binding exists.
+- In `journal` mode, `/<instance-command> action:clear` rotates the shared same-day generation only when the current generation is idle, and the next mention creates or resumes a fresh same-day binding after the durable-memory preflight refreshes `AGENT_MEMORY` from the previous recorded generation when that previous binding exists.
+- In `journal` mode, startup does not create or rewrite `AGENTS.md`.
 - A guild mention or direct message with text plus image attachments reaches Codex as multipart input.
 - A guild mention or direct message with only one or more usable image attachments is accepted and answered.
-- In `task` mode, a normal mention without an active task returns guidance instead of routing to Codex unless that message provides a valid one-shot `task:<name>` override.
+- In `thread` mode, a normal mention without an active task returns guidance instead of routing to Codex unless that message provides a valid one-shot `task:<name>` override.
 - `/<instance-command> action:task-current` shows the active task for the requesting user.
 - `/<instance-command> action:task-new task_name:<name>` creates a task with a routing-safe slug name and sets it active for the requesting user.
 - The first normal message for a new task creates or refreshes a managed bare parent under `${CLAW_DATADIR}/repos`, then creates a task worktree lazily under `${CLAW_DATADIR}/worktrees/<task_id>`, and then runs Codex inside that worktree.
 - `/<instance-command> action:task-switch task_name:<name>` changes the default routing target for later normal messages that do not provide an override, with `task_id` reserved only for compatibility with pre-slug tasks during migration.
 - `/<instance-command> action:task-close task_name:<name>` closes the uniquely named open task and clears active state when the closed task was active.
 - `/<instance-command> action:task-reset-context` keeps the active task and worktree but clears only the saved Codex thread continuity for that task.
-- In `task` mode, `task:<name> <body>` and `task:<name>` followed by a newline route only the current message to the named open task without changing the active task.
-- In `task` mode, `task:<name>` with attachments but no body is valid, while a message that has neither body nor attachments is rejected.
+- In `thread` mode, `task:<name> <body>` and `task:<name>` followed by a newline route only the current message to the named open task without changing the active task.
+- In `thread` mode, `task:<name>` with attachments but no body is valid, while a message that has neither body nor attachments is rejected.
 - Invalid task-name format, missing tasks, closed tasks, and policy failures in one-shot override handling return explicit user-facing guidance instead of guessing a target.
 - Closed-task worktree retention keeps only the fifteen most recently closed ready worktrees and never deletes the task branches held by the managed bare parent.
-- Existing `daily` and `task` bindings survive process restart through SQLite-backed state.
+- Existing `journal` and `thread` bindings survive process restart through SQLite-backed state.
 - Scheduled task definitions survive restart, execute at most once per claimed due time, and persist Discord delivery outcomes separately from Codex execution results.
 - Guild non-mention chatter is ignored, unsupported non-image-only qualifying posts stay silent, supported slash commands respond correctly, and long replies are chunked cleanly.
 - Simultaneous requests for the same logical thread do not execute overlapping Codex turns.

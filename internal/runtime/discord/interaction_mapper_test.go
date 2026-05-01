@@ -48,7 +48,7 @@ func TestMapInteractionCommand(t *testing.T) {
 				Interaction: &discordgo.Interaction{
 					Type: discordgo.InteractionApplicationCommand,
 					Data: discordgo.ApplicationCommandInteractionData{
-						Name: "daily",
+						Name: "journal",
 						Options: []*discordgo.ApplicationCommandInteractionDataOption{
 							{Name: optionAction, Type: discordgo.ApplicationCommandOptionString, Value: actionHelp},
 						},
@@ -57,7 +57,7 @@ func TestMapInteractionCommand(t *testing.T) {
 				},
 			},
 			want: commandRequest{
-				Name:   "daily",
+				Name:   "journal",
 				Action: actionHelp,
 				UserID: "user-2",
 			},

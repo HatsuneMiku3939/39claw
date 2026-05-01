@@ -100,8 +100,8 @@ func NewScheduledTaskService(deps ScheduledTaskServiceDependencies) (*ScheduledT
 		newDeliveryID = func() string { return ulid.Make().String() }
 	}
 
-	if deps.Mode == config.ModeTask && deps.WorkspaceManager == nil {
-		return nil, fmt.Errorf("task mode scheduled execution requires a workspace manager")
+	if deps.Mode == config.ModeThread && deps.WorkspaceManager == nil {
+		return nil, fmt.Errorf("thread mode scheduled execution requires a workspace manager")
 	}
 
 	startedAt := deps.StartedAt
@@ -372,7 +372,7 @@ func (s *ScheduledTaskService) executeRun(ctx context.Context, task ScheduledTas
 
 	workdir := s.workdir
 	cleanup := func(context.Context) error { return nil }
-	if s.mode == config.ModeTask {
+	if s.mode == config.ModeThread {
 		runLogger.Info("scheduled task worktree preparation started")
 		tempWorktreePath, cleanupFn, err := s.workspaceManager.PrepareTemporaryWorktree(ctx, run.ScheduledRunID)
 		if err != nil {

@@ -1,12 +1,12 @@
-# Task Mode User Flow
+# Thread Mode User Flow
 
 Status: Active
 
 ## Purpose
 
-This document defines the intended user-facing behavior of 39claw when the bot instance is configured to use `task` mode.
+This document defines the intended user-facing behavior of 39claw when the bot instance is configured to use `thread` mode.
 
-The goal of `task` mode is to support durable, explicit work streams that can continue across multiple days without relying on date-based buckets.
+The goal of `thread` mode is to support durable, explicit work streams that can continue across multiple days without relying on date-based buckets.
 
 ## Product Goal
 
@@ -15,7 +15,7 @@ At a product level, this mode should feel like driving real repository work thro
 
 ## User Promise
 
-In `task` mode, the bot should feel like:
+In `thread` mode, the bot should feel like:
 
 - a tool for focused ongoing work
 - a system with explicit context boundaries
@@ -58,7 +58,7 @@ That isolation should make task switching feel like switching work streams, not 
 Expected flow:
 
 1. The user sends a normal message in a supported channel.
-2. 39claw determines that `task` mode requires an active task context.
+2. 39claw determines that `thread` mode requires an active task context.
 3. 39claw detects that no active task exists for the user in the current bot instance.
 4. 39claw does not route the message into an arbitrary thread.
 5. The bot responds with a clear explanation and a next step.
@@ -179,7 +179,7 @@ Expected user perception:
 
 ## Minimum UX Requirements
 
-For `task` mode to feel usable, v1 should support at least:
+For `thread` mode to feel usable, v1 should support at least:
 
 - `/<instance-command> action:task-current`
   - show the current task name and ID, plus the current worktree branch when available
@@ -196,7 +196,7 @@ For `task` mode to feel usable, v1 should support at least:
 - one-shot `task:<name>` override syntax on normal messages
   - route only the current message to the named open task without changing the active task
 
-The root-command action surface should stay explicit and stable enough that users can learn it as the standard task-control surface for `task` mode.
+The root-command action surface should stay explicit and stable enough that users can learn it as the standard task-control surface for `thread` mode.
 The task-name syntax should also stay explicit and stable enough that users can type it reliably inside normal Discord messages.
 
 ## UX Requirements
@@ -239,7 +239,7 @@ When no active task exists, the bot should:
 - avoid pretending the user message was processed normally
 
 If a user closes a task and then immediately sends a normal message, the bot should treat that as a missing-active-task case.
-In `task` mode, normal messages should not trigger task creation or implicit recovery on their own.
+In `thread` mode, normal messages should not trigger task creation or implicit recovery on their own.
 One-shot `task:<name>` syntax is the only accepted shortcut for temporarily routing a normal message without changing the active task.
 
 ### Stale or invalid task binding
@@ -279,7 +279,7 @@ The most recent closed task workspaces should remain available longer than older
 
 ## Non-Goals
 
-`task` mode is not intended to optimize for:
+`thread` mode is not intended to optimize for:
 
 - frictionless casual daily chat
 - invisible context management
@@ -292,7 +292,7 @@ The most recent closed task workspaces should remain available longer than older
 - Task names are immutable routing-safe slugs that stay unique among a user's open tasks.
 - If a task is closed and the user then sends a normal message, the bot should respond with missing-active-task guidance rather than routing the message normally.
 - A leading `task:<name>` prefix may route one normal message to another open task, but it never changes the saved active task.
-- `task` mode assumes the configured workdir is a Git repository with an `origin` remote.
+- `thread` mode assumes the configured workdir is a Git repository with an `origin` remote.
 - New tasks create metadata first and prepare their task worktree lazily on the first normal message.
 - Closed-task retention keeps only the fifteen most recently closed ready task worktrees.
 - Task branches are retained in the managed bare parent even when older closed-task worktrees are pruned.

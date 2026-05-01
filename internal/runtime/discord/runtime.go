@@ -61,12 +61,12 @@ func NewRuntime(deps Dependencies) (*Runtime, error) {
 		return nil, errors.New("message service must not be nil")
 	}
 
-	if deps.Config.Mode == config.ModeDaily && deps.DailyCommand == nil {
-		return nil, errors.New("daily command service must not be nil in daily mode")
+	if deps.Config.Mode == config.ModeJournal && deps.DailyCommand == nil {
+		return nil, errors.New("daily command service must not be nil in journal mode")
 	}
 
-	if deps.Config.Mode == config.ModeTask && deps.TaskCommand == nil {
-		return nil, errors.New("task command service must not be nil in task mode")
+	if deps.Config.Mode == config.ModeThread && deps.TaskCommand == nil {
+		return nil, errors.New("task command service must not be nil in thread mode")
 	}
 
 	if deps.Config.DiscordToken == "" {
@@ -566,7 +566,7 @@ func (r *Runtime) routeCommand(ctx context.Context, request commandRequest) (app
 	case actionHelp:
 		return helpResponse(r.config.DiscordCommandName, r.config.Mode), nil
 	case actionClear:
-		if r.config.Mode != config.ModeDaily {
+		if r.config.Mode != config.ModeJournal {
 			return app.MessageResponse{
 				Text:      unsupportedActionText(r.config.DiscordCommandName, r.config.Mode),
 				Ephemeral: true,
@@ -575,9 +575,9 @@ func (r *Runtime) routeCommand(ctx context.Context, request commandRequest) (app
 
 		return r.dailyCommand.Clear(ctx, request.UserID, time.Now())
 	case actionTaskCurrent, actionTaskList, actionTaskNew, actionTaskSwitch, actionTaskClose, actionTaskResetContext:
-		if r.config.Mode != config.ModeTask {
+		if r.config.Mode != config.ModeThread {
 			return app.MessageResponse{
-				Text:      taskUnavailableDailyMode(r.config.DiscordCommandName),
+				Text:      taskUnavailableJournalMode(r.config.DiscordCommandName),
 				Ephemeral: true,
 			}, nil
 		}

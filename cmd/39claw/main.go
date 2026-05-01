@@ -161,13 +161,13 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 		scheduled.BuildMCPURLConfigOverride(scheduledMCPServerURL),
 	)
 
-	if cfg.Mode == config.ModeDaily {
+	if cfg.Mode == config.ModeJournal {
 		if threadOptions.SandboxMode == codex.SandboxModeReadOnly {
-			return errors.New("daily memory bridge requires CLAW_CODEX_SANDBOX_MODE to allow writes inside CLAW_CODEX_WORKDIR")
+			return errors.New("journal memory bridge requires CLAW_CODEX_SANDBOX_MODE to allow writes inside CLAW_CODEX_WORKDIR")
 		}
 
 		if err := (dailymemory.Bootstrap{Workdir: cfg.CodexWorkdir}).Ensure(ctx); err != nil {
-			return fmt.Errorf("bootstrap daily memory bridge: %w", err)
+			return fmt.Errorf("bootstrap journal memory bridge: %w", err)
 		}
 	}
 
@@ -178,7 +178,7 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 	coordinator := thread.NewQueueCoordinator()
 	var dailyMemory app.DailyMemoryRefresher
 	var dailyCommand app.DailyCommandService
-	if cfg.Mode == config.ModeDaily {
+	if cfg.Mode == config.ModeJournal {
 		dailyMemory = dailymemory.Refresher{
 			Store:   store,
 			Gateway: gateway,
@@ -198,7 +198,7 @@ func run(ctx context.Context, lookupEnv func(string) (string, bool)) error {
 
 	var workspaceManager app.TaskWorkspaceManager
 	var scheduledWorkspaceManager app.ScheduledTaskWorkspaceManager
-	if cfg.Mode == config.ModeTask {
+	if cfg.Mode == config.ModeThread {
 		taskWorkspaceManager, err := app.NewTaskWorkspaceManager(ctx, app.TaskWorkspaceManagerDependencies{
 			Store:            store,
 			SourceRepository: cfg.CodexWorkdir,

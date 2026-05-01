@@ -34,7 +34,7 @@ Do not create or push a release tag until all of the following are true:
    - slash-command help or task controls after command-surface changes
    - image attachment handling after attachment-mapping or download changes
    - any other Discord-specific behavior implicated by a recent incident or release risk
-6. When the release touches task-mode repository lifecycle or startup validation, a local task-mode checkout with a real `origin` remote has been exercised far enough to confirm:
+6. When the release touches thread-mode repository lifecycle or startup validation, a local thread-mode checkout with a real `origin` remote has been exercised far enough to confirm:
    - startup accepts the configured checkout
    - a managed bare repository appears under `${CLAW_DATADIR}/repos`
    - a task worktree can still switch to the default branch inside `${CLAW_DATADIR}/worktrees`

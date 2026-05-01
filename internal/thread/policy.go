@@ -21,8 +21,8 @@ func NewPolicy(mode config.Mode, timezone *time.Location, store app.ThreadStore)
 		return nil, errors.New("timezone must not be nil")
 	}
 
-	if mode == config.ModeTask && store == nil {
-		return nil, errors.New("thread store must not be nil in task mode")
+	if mode == config.ModeThread && store == nil {
+		return nil, errors.New("thread store must not be nil in thread mode")
 	}
 
 	return &Policy{
@@ -34,9 +34,9 @@ func NewPolicy(mode config.Mode, timezone *time.Location, store app.ThreadStore)
 
 func (p *Policy) ResolveMessageKey(ctx context.Context, request app.MessageRequest) (string, error) {
 	switch p.mode {
-	case config.ModeDaily:
+	case config.ModeJournal:
 		return request.ReceivedAt.In(p.timezone).Format(time.DateOnly), nil
-	case config.ModeTask:
+	case config.ModeThread:
 		if request.TaskOverrideName != "" {
 			openTasks, err := p.store.ListOpenTasks(ctx, request.UserID)
 			if err != nil {
