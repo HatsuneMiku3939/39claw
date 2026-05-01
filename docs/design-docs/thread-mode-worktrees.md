@@ -1,13 +1,13 @@
-# Task Mode Worktrees
+# Thread Mode Worktrees
 
-This document defines the current v1 design for task-isolated Git worktrees in `task` mode.
+This document defines the current v1 design for task-isolated Git worktrees in `thread` mode.
 
 The goal is to make a `task` mean more than a saved conversation label.
 Each task should represent an isolated repository workspace with its own Codex thread, branch name, and working directory lifecycle.
 
 ## Why This Exists
 
-Without filesystem isolation, `task` mode can preserve conversation context but still mixes file edits in one shared checkout.
+Without filesystem isolation, `thread` mode can preserve conversation context but still mixes file edits in one shared checkout.
 That weakens the meaning of task switching and makes later task-oriented features harder to define.
 
 With task-isolated worktrees:
@@ -16,12 +16,12 @@ With task-isolated worktrees:
 - switching tasks also switches the Codex execution workspace
 - repository state for one task does not silently leak into another task
 
-This turns `task` mode into an execution-oriented workflow instead of a long-lived chat label.
+This turns `thread` mode into an execution-oriented workflow instead of a long-lived chat label.
 
 ## Core Decisions
 
-- `task` mode is valid only when `CLAW_CODEX_WORKDIR` points to a Git repository with an `origin` remote.
-- In `task` mode, `CLAW_CODEX_WORKDIR` is the operator-visible source checkout and startup validation target, not the parent repository that directly owns task worktrees.
+- `thread` mode is valid only when `CLAW_CODEX_WORKDIR` points to a Git repository with an `origin` remote.
+- In `thread` mode, `CLAW_CODEX_WORKDIR` is the operator-visible source checkout and startup validation target, not the parent repository that directly owns task worktrees.
 - Each task owns one task-specific branch name.
 - 39claw maintains one managed bare parent repository under `${CLAW_DATADIR}/repos/<repo-id>.git` for the configured source checkout.
 - Each task may also own one task-specific Git worktree created from that managed bare parent.
@@ -36,16 +36,16 @@ This turns `task` mode into an execution-oriented workflow instead of a long-liv
 
 ## Repository Model
 
-In `daily` mode, the configured Codex working directory remains the directory passed through `CLAW_CODEX_WORKDIR`.
+In `journal` mode, the configured Codex working directory remains the directory passed through `CLAW_CODEX_WORKDIR`.
 
-In `task` mode, the repository model changes:
+In `thread` mode, the repository model changes:
 
 - source checkout root: `CLAW_CODEX_WORKDIR`
 - managed bare parent root: `${CLAW_DATADIR}/repos/<repo-id>.git`
 - task worktree root: `${CLAW_DATADIR}/worktrees/<task_id>`
 - Codex working directory for a task turn: the task's `worktree_path` once the worktree is ready
 
-This means the configured workdir remains globally important, but in `task` mode it acts as the human-facing checkout and remote-configuration source. Task branches and task worktrees belong to the managed bare parent instead of to the visible checkout.
+This means the configured workdir remains globally important, but in `thread` mode it acts as the human-facing checkout and remote-configuration source. Task branches and task worktrees belong to the managed bare parent instead of to the visible checkout.
 
 ## Task State Model
 
@@ -121,7 +121,7 @@ The next normal message determines whether the destination task needs lazy workt
 
 ## One-Shot Task Override
 
-In `task` mode, a normal message may begin with a one-shot `task:<name>` prefix that temporarily targets another open task.
+In `thread` mode, a normal message may begin with a one-shot `task:<name>` prefix that temporarily targets another open task.
 
 That prefix:
 
@@ -211,7 +211,7 @@ That keeps the operator checkout branch-neutral with respect to bot-owned worktr
 
 ## User Experience Consequences
 
-This design changes the meaning of `task` mode in important ways:
+This design changes the meaning of `thread` mode in important ways:
 
 - a task is now an isolated workspace, not only an isolated conversation
 - task switching becomes a context switch between independent repository workspaces
@@ -224,7 +224,7 @@ The tradeoff is that the first normal message for a task may perform extra Git s
 
 This design affects:
 
-- startup validation for `task` mode
+- startup validation for `thread` mode
 - task persistence schema
 - task command orchestration
 - normal-message orchestration before Codex execution

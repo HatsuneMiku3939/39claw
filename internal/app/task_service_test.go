@@ -573,8 +573,8 @@ func TestTaskCommandServiceResetContextClearsBindingWhenIdle(t *testing.T) {
 			},
 		},
 		bindings: map[string]app.ThreadBinding{
-			"task:user-1:task-1": {
-				Mode:             "task",
+			"thread:user-1:task-1": {
+				Mode:             "thread",
 				LogicalThreadKey: "user-1:task-1",
 				CodexThreadID:    "thread-old",
 				TaskID:           "task-1",
@@ -593,7 +593,7 @@ func TestTaskCommandServiceResetContextClearsBindingWhenIdle(t *testing.T) {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
 
-	if _, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1"); err != nil {
+	if _, ok, err := store.GetThreadBinding(context.Background(), "thread", "user-1:task-1"); err != nil {
 		t.Fatalf("GetThreadBinding() error = %v", err)
 	} else if ok {
 		t.Fatal("GetThreadBinding() ok = true, want false")
@@ -651,8 +651,8 @@ func TestTaskCommandServiceResetContextRejectsBusyTask(t *testing.T) {
 			},
 		},
 		bindings: map[string]app.ThreadBinding{
-			"task:user-1:task-1": {
-				Mode:             "task",
+			"thread:user-1:task-1": {
+				Mode:             "thread",
 				LogicalThreadKey: "user-1:task-1",
 				CodexThreadID:    "thread-old",
 				TaskID:           "task-1",
@@ -673,7 +673,7 @@ func TestTaskCommandServiceResetContextRejectsBusyTask(t *testing.T) {
 		t.Fatalf("Text = %q, want %q", response.Text, want)
 	}
 
-	if _, ok, err := store.GetThreadBinding(context.Background(), "task", "user-1:task-1"); err != nil {
+	if _, ok, err := store.GetThreadBinding(context.Background(), "thread", "user-1:task-1"); err != nil {
 		t.Fatalf("GetThreadBinding() error = %v", err)
 	} else if !ok {
 		t.Fatal("GetThreadBinding() ok = false, want true")

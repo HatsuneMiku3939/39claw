@@ -22,14 +22,14 @@ func registeredCommands(cfg config.Config) []*discordgo.ApplicationCommand {
 		},
 	}
 
-	if cfg.Mode == config.ModeDaily {
+	if cfg.Mode == config.ModeJournal {
 		actionChoices = append(
 			actionChoices,
 			&discordgo.ApplicationCommandOptionChoice{Name: actionClear, Value: actionClear},
 		)
 	}
 
-	if cfg.Mode == config.ModeTask {
+	if cfg.Mode == config.ModeThread {
 		actionChoices = append(
 			actionChoices,
 			&discordgo.ApplicationCommandOptionChoice{Name: actionTaskCurrent, Value: actionTaskCurrent},
@@ -51,7 +51,7 @@ func registeredCommands(cfg config.Config) []*discordgo.ApplicationCommand {
 		},
 	}
 
-	if cfg.Mode == config.ModeTask {
+	if cfg.Mode == config.ModeThread {
 		options = append(
 			options,
 			&discordgo.ApplicationCommandOption{
@@ -87,13 +87,13 @@ func helpResponse(commandName string, mode config.Mode) app.MessageResponse {
 		fmt.Sprintf("- `/%s action:%s` shows this help message.", commandName, actionHelp),
 	}
 
-	if mode == config.ModeDaily {
+	if mode == config.ModeJournal {
 		lines = append(lines,
-			fmt.Sprintf("- `/%s action:%s` starts a fresh shared daily generation for today when the current one is idle.", commandName, actionClear),
+			fmt.Sprintf("- `/%s action:%s` starts a fresh shared journal generation for today when the current one is idle.", commandName, actionClear),
 		)
 	}
 
-	if mode == config.ModeTask {
+	if mode == config.ModeThread {
 		lines = append(lines,
 			fmt.Sprintf("- `/%s action:%s` shows the active task.", commandName, actionTaskCurrent),
 			fmt.Sprintf("- `/%s action:%s` lists open tasks.", commandName, actionTaskList),
@@ -101,7 +101,7 @@ func helpResponse(commandName string, mode config.Mode) app.MessageResponse {
 			fmt.Sprintf("- `/%s action:%s task_name:<name>` changes the active task. `task_id` remains available only for legacy selection cases.", commandName, actionTaskSwitch),
 			fmt.Sprintf("- `/%s action:%s task_name:<name>` closes a task. `task_id` remains available only for legacy selection cases.", commandName, actionTaskClose),
 			fmt.Sprintf("- `/%s action:%s` resets only the saved Codex conversation continuity for the active task.", commandName, actionTaskResetContext),
-			"- Normal task-mode messages can start with `task:<name>` to route just that one message without changing the active task.",
+			"- Normal thread-mode messages can start with `task:<name>` to route just that one message without changing the active task.",
 		)
 	}
 
@@ -110,16 +110,16 @@ func helpResponse(commandName string, mode config.Mode) app.MessageResponse {
 	}
 }
 
-func taskUnavailableDailyMode(commandName string) string {
+func taskUnavailableJournalMode(commandName string) string {
 	return fmt.Sprintf(
-		"Task actions are not available in this daily-mode bot. Use `/%s action:%s` or mention the bot to continue today's conversation.",
+		"Task actions are not available in this journal-mode bot. Use `/%s action:%s` or mention the bot to continue today's conversation.",
 		commandName,
 		actionHelp,
 	)
 }
 
 func unsupportedActionText(commandName string, mode config.Mode) string {
-	if mode != config.ModeTask {
+	if mode != config.ModeThread {
 		return fmt.Sprintf("Unsupported action. Use `/%s action:%s` or `/%s action:%s`.", commandName, actionHelp, commandName, actionClear)
 	}
 

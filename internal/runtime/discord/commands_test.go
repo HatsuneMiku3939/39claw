@@ -10,14 +10,14 @@ import (
 func TestUnsupportedActionText(t *testing.T) {
 	t.Parallel()
 
-	daily := unsupportedActionText("miku", config.ModeDaily)
+	journal := unsupportedActionText("miku", config.ModeJournal)
 	for _, want := range []string{"action:help", "action:clear"} {
-		if !strings.Contains(daily, want) {
-			t.Fatalf("daily unsupported action text = %q, want substring %q", daily, want)
+		if !strings.Contains(journal, want) {
+			t.Fatalf("journal unsupported action text = %q, want substring %q", journal, want)
 		}
 	}
 
-	task := unsupportedActionText("miku", config.ModeTask)
+	thread := unsupportedActionText("miku", config.ModeThread)
 	for _, want := range []string{
 		"action:help",
 		"action:task-current",
@@ -27,8 +27,8 @@ func TestUnsupportedActionText(t *testing.T) {
 		"action:task-close task_name:<name>",
 		"action:task-reset-context",
 	} {
-		if !strings.Contains(task, want) {
-			t.Fatalf("task unsupported action text = %q, want substring %q", task, want)
+		if !strings.Contains(thread, want) {
+			t.Fatalf("thread unsupported action text = %q, want substring %q", thread, want)
 		}
 	}
 }
