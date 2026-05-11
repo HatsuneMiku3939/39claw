@@ -283,7 +283,7 @@ func (fakeScheduledTaskExecutor) ExecuteTaskNow(ctx context.Context, taskName st
 	return app.ScheduledTaskRun{
 		ScheduledRunID:  "run-debug-1",
 		ScheduledTaskID: "task-1",
-		Mode:            "daily",
+		Mode:            "journal",
 		ScheduledFor:    time.Date(2026, time.April, 12, 8, 1, 0, 0, time.UTC),
 		Attempt:         1,
 		Status:          app.ScheduledTaskRunStatusSucceeded,

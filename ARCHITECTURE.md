@@ -53,12 +53,12 @@ Codex works against a specific working directory, typically a Git repository, wh
 39claw does not redefine that model locally.
 Instead, it routes Discord interactions into Codex threads that operate against the repository configured for the current bot instance.
 
-The distinction between `daily` mode and `task` mode is therefore not a different execution engine.
+The distinction between `journal` mode and `thread` mode is therefore not a different execution engine.
 It is a difference in the role of the repository that Codex is operating against.
 
-- In `task` mode, the configured workdir must be a Git repository with an `origin` remote. It remains the operator-visible source checkout and validation anchor, while 39claw creates task-isolated worktrees from its own managed bare parent repository under `CLAW_DATADIR`.
-- Shared managed-repository mutation in `task` mode must be serialized per managed repository path within the process so concurrent task starts do not contend on the same bare parent, while already-ready task worktrees keep their existing task-level concurrency behavior.
-- In `daily` mode, the repository is a knowledge-oriented repository that primarily contains instructions and documentation, allowing Codex to answer questions by following local guidance and searching the knowledge base.
+- In `thread` mode, the configured workdir must be a Git repository with an `origin` remote. It remains the operator-visible source checkout and validation anchor, while 39claw creates task-isolated worktrees from its own managed bare parent repository under `CLAW_DATADIR`.
+- Shared managed-repository mutation in `thread` mode must be serialized per managed repository path within the process so concurrent task starts do not contend on the same bare parent, while already-ready task worktrees keep their existing task-level concurrency behavior.
+- In `journal` mode, the repository is a knowledge-oriented repository that primarily contains instructions and documentation, allowing Codex to answer questions by following local guidance and searching the knowledge base.
 
 Both modes share the same Codex-native foundation.
 They differ in repository purpose, continuity policy, and resulting user experience.
@@ -152,7 +152,7 @@ Responsibilities:
 1. accept a normalized message request
 2. ask the thread policy for a logical thread key
 3. coordinate same-key execution and bounded queue admission
-4. in `daily` mode, run the durable-memory preflight before the first visible turn of a new local day when the previous day's binding exists
+4. in `journal` mode, run the durable-memory preflight before the first visible turn of a new local day when the previous day's binding exists
 5. load any existing binding from the thread store
 6. call the Codex gateway with or without an existing thread ID
 7. persist the returned thread ID when a new binding is created or updated
@@ -165,8 +165,8 @@ The thread policy converts message context into a logical thread key.
 
 v1 must support two global modes:
 
-- `daily`
-- `task`
+- `journal`
+- `thread`
 
 The policy layer should contain the mode-specific routing rules.
 
@@ -177,7 +177,7 @@ The thread store persists the mapping between:
 - logical thread key
 - Codex thread ID
 
-In `task` mode, the thread store must also track task records, the currently selected task for a user within the current bot instance, and task worktree metadata such as branch name, worktree path, and worktree lifecycle state.
+In `thread` mode, the thread store must also track task records, the currently selected task for a user within the current bot instance, and task worktree metadata such as branch name, worktree path, and worktree lifecycle state.
 For scheduled tasks, the store must also track persisted task definitions, individual run records, and Discord delivery state for report posting and retry-safe reconciliation.
 
 ### 6.5 Queue Coordinator
@@ -235,11 +235,11 @@ Responsibilities:
 
 ## 7. Thread Modes
 
-## 7.1 `daily`
+## 7.1 `journal`
 
 Purpose:
 
-- support lightweight daily continuity without explicit task management
+- support lightweight journal continuity without explicit task management
 - support shared, knowledge-oriented conversation against a repository that primarily contains instructions and documentation
 
 Logical key concept:
@@ -251,13 +251,13 @@ active_thread_key = local_date + "#" + generation
 
 Behavior:
 
-- incoming messages automatically resolve to today's daily bucket
-- each daily bucket has exactly one active shared generation at a time
+- incoming messages automatically resolve to today's journal bucket
+- each journal bucket has exactly one active shared generation at a time
 - if a thread exists for the active generation key, resume it by passing the saved thread ID into the next turn
 - otherwise run the first turn without a saved thread ID and persist the returned thread ID for that generation
 - `/<instance-command> action:clear` rotates the active shared same-day generation to a fresh logical thread key
 - when the date changes, the active generation resets to `#1` for the new bucket and the next visible turn starts a fresh Codex thread for that new key
-- before the first visible turn of a new generation, 39claw resumes the previous recorded daily generation once and runs a runtime-managed durable-memory refresh into `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/MEMORY.md` plus `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/YYYY-MM-DD.<generation>.md`
+- before the first visible turn of a new generation, 39claw resumes the previous recorded journal generation once and runs a runtime-managed durable-memory refresh into `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/MEMORY.md` plus `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/YYYY-MM-DD.<generation>.md`
 - `action:clear` is rejected while the current active generation still has in-flight or queued work
 - Codex answers by following repository guidance and consulting the documentation in that repository
 
@@ -274,12 +274,12 @@ Properties:
 Tradeoffs:
 
 - long-running work still crosses a fresh remote-thread boundary at the start of a new day
-- unrelated same-day conversations may influence one another inside the shared daily context
-- `action:clear` rotates the shared daily context for the whole bot instance rather than for one user
+- unrelated same-day conversations may influence one another inside the shared journal context
+- `action:clear` rotates the shared journal context for the whole bot instance rather than for one user
 - timezone must be an explicit configuration concern
 - the durable-memory bridge requires a write-capable Codex sandbox because 39claw must update files inside `CLAW_CODEX_WORKDIR`
 
-## 7.2 `task`
+## 7.2 `thread`
 
 Purpose:
 
@@ -294,7 +294,7 @@ thread_key = user + task_id
 
 Behavior:
 
-- `task` mode requires `CLAW_CODEX_WORKDIR` to be a Git repository with an `origin` remote
+- `thread` mode requires `CLAW_CODEX_WORKDIR` to be a Git repository with an `origin` remote
 - task names are immutable routing-safe slugs that use only lowercase ASCII letters, digits, and single interior hyphens, stay 3 to 32 characters long, start with a letter, end with a letter or digit, and remain unique among the requesting user's open tasks
 - normal messages require an active task context unless the first meaningful token provides a one-shot `task:<name>` override
 - each task reserves its own branch identity in a managed bare parent repository under `${CLAW_DATADIR}/repos`
@@ -339,8 +339,8 @@ Behavior:
 
 - scheduled task definitions are owned locally by 39claw rather than by Discord message history
 - scheduled runs inherit the bot instance's configured mode, so mode-specific thread and workdir rules still apply
-- when the bot instance runs in `daily` mode, a scheduled run executes directly in `CLAW_CODEX_WORKDIR`
-- when the bot instance runs in `task` mode, a scheduled run must create a fresh temporary worktree for the run, execute Codex there, and remove that temporary worktree after the run finishes
+- when the bot instance runs in `journal` mode, a scheduled run executes directly in `CLAW_CODEX_WORKDIR`
+- when the bot instance runs in `thread` mode, a scheduled run must create a fresh temporary worktree for the run, execute Codex there, and remove that temporary worktree after the run finishes
 - scheduled task management and execution are initiated through local 39claw-owned orchestration even though the run itself is still executed by Codex
 - report delivery must be durable enough to distinguish run success from Discord-delivery failure
 
@@ -413,8 +413,8 @@ The minimum high-value events are:
 The minimum persistent state for v1 is:
 
 - thread bindings
-- active task selection for `task` mode
-- task records with task worktree metadata for `task` mode
+- active task selection for `thread` mode
+- task records with task worktree metadata for `thread` mode
 - scheduled task definitions
 - scheduled run records
 - scheduled report delivery records
@@ -446,12 +446,12 @@ v1 should include:
 - Discord runtime
 - Codex integration
 - global thread mode selection
-- `daily` mode
-- `task` mode
+- `journal` mode
+- `thread` mode
 - scheduled task definitions and execution
 - local persistent thread binding
 - local persistent active task state
-- task-isolated Git worktrees for `task` mode
+- task-isolated Git worktrees for `thread` mode
 - structured logging with `log/slog`
 
 v1 should not include:

@@ -158,14 +158,14 @@ func TestStoreThreadBindingLifecycle(t *testing.T) {
 	store := newTestStore(t)
 
 	if err := store.UpsertThreadBinding(context.Background(), app.ThreadBinding{
-		Mode:             "daily",
+		Mode:             "journal",
 		LogicalThreadKey: "2026-04-05",
 		CodexThreadID:    "thread-1",
 	}); err != nil {
 		t.Fatalf("UpsertThreadBinding() error = %v", err)
 	}
 
-	binding, ok, err := store.GetThreadBinding(context.Background(), "daily", "2026-04-05")
+	binding, ok, err := store.GetThreadBinding(context.Background(), "journal", "2026-04-05")
 	if err != nil {
 		t.Fatalf("GetThreadBinding() error = %v", err)
 	}
@@ -183,14 +183,14 @@ func TestStoreThreadBindingLifecycle(t *testing.T) {
 	}
 
 	if err := store.UpsertThreadBinding(context.Background(), app.ThreadBinding{
-		Mode:             "daily",
+		Mode:             "journal",
 		LogicalThreadKey: "2026-04-05",
 		CodexThreadID:    "thread-2",
 	}); err != nil {
 		t.Fatalf("UpsertThreadBinding() second error = %v", err)
 	}
 
-	binding, ok, err = store.GetThreadBinding(context.Background(), "daily", "2026-04-05")
+	binding, ok, err = store.GetThreadBinding(context.Background(), "journal", "2026-04-05")
 	if err != nil {
 		t.Fatalf("GetThreadBinding() second error = %v", err)
 	}
@@ -211,7 +211,7 @@ func TestStoreDeleteThreadBinding(t *testing.T) {
 	ctx := context.Background()
 
 	if err := store.UpsertThreadBinding(ctx, app.ThreadBinding{
-		Mode:             "task",
+		Mode:             "thread",
 		LogicalThreadKey: "user-1:task-1",
 		CodexThreadID:    "thread-1",
 		TaskID:           "task-1",
@@ -219,17 +219,17 @@ func TestStoreDeleteThreadBinding(t *testing.T) {
 		t.Fatalf("UpsertThreadBinding() error = %v", err)
 	}
 
-	if err := store.DeleteThreadBinding(ctx, "task", "user-1:task-1"); err != nil {
+	if err := store.DeleteThreadBinding(ctx, "thread", "user-1:task-1"); err != nil {
 		t.Fatalf("DeleteThreadBinding() error = %v", err)
 	}
 
-	if _, ok, err := store.GetThreadBinding(ctx, "task", "user-1:task-1"); err != nil {
+	if _, ok, err := store.GetThreadBinding(ctx, "thread", "user-1:task-1"); err != nil {
 		t.Fatalf("GetThreadBinding() error = %v", err)
 	} else if ok {
 		t.Fatal("GetThreadBinding() ok = true, want false")
 	}
 
-	if err := store.DeleteThreadBinding(ctx, "task", "user-1:task-1"); err != nil {
+	if err := store.DeleteThreadBinding(ctx, "thread", "user-1:task-1"); err != nil {
 		t.Fatalf("DeleteThreadBinding() second error = %v", err)
 	}
 }
@@ -242,7 +242,7 @@ func TestStoreThreadBindingPersistsAcrossReopen(t *testing.T) {
 	store := newMigratedStoreAtPath(t, path)
 
 	if err := store.UpsertThreadBinding(context.Background(), app.ThreadBinding{
-		Mode:             "daily",
+		Mode:             "journal",
 		LogicalThreadKey: "2026-04-05",
 		CodexThreadID:    "thread-1",
 	}); err != nil {
@@ -260,7 +260,7 @@ func TestStoreThreadBindingPersistsAcrossReopen(t *testing.T) {
 		}
 	}()
 
-	binding, ok, err := reopened.GetThreadBinding(context.Background(), "daily", "2026-04-05")
+	binding, ok, err := reopened.GetThreadBinding(context.Background(), "journal", "2026-04-05")
 	if err != nil {
 		t.Fatalf("GetThreadBinding() reopen error = %v", err)
 	}
@@ -653,7 +653,7 @@ func TestStoreAdmitScheduledTaskRunRejectsDuplicateAttempt(t *testing.T) {
 	run := app.ScheduledTaskRun{
 		ScheduledRunID:  "run-1",
 		ScheduledTaskID: "scheduled-task-1",
-		Mode:            "daily",
+		Mode:            "journal",
 		ScheduledFor:    dueTime,
 		Attempt:         1,
 		Status:          app.ScheduledTaskRunStatusPending,
@@ -679,7 +679,7 @@ func TestStoreAdmitScheduledTaskRunRejectsDuplicateAttempt(t *testing.T) {
 	retryRun, admitted, err := store.AdmitScheduledTaskRun(ctx, app.ScheduledTaskRun{
 		ScheduledRunID:  "run-2",
 		ScheduledTaskID: "scheduled-task-1",
-		Mode:            "daily",
+		Mode:            "journal",
 		ScheduledFor:    dueTime,
 		Attempt:         2,
 		Status:          app.ScheduledTaskRunStatusPending,
@@ -715,7 +715,7 @@ func TestStoreListScheduledTaskRunsForDueTimeOrdersAttempts(t *testing.T) {
 		{
 			ScheduledRunID:  "run-2",
 			ScheduledTaskID: "scheduled-task-1",
-			Mode:            "daily",
+			Mode:            "journal",
 			ScheduledFor:    dueTime,
 			Attempt:         2,
 			Status:          app.ScheduledTaskRunStatusFailed,
@@ -723,7 +723,7 @@ func TestStoreListScheduledTaskRunsForDueTimeOrdersAttempts(t *testing.T) {
 		{
 			ScheduledRunID:  "run-1",
 			ScheduledTaskID: "scheduled-task-1",
-			Mode:            "daily",
+			Mode:            "journal",
 			ScheduledFor:    dueTime,
 			Attempt:         1,
 			Status:          app.ScheduledTaskRunStatusSucceeded,
@@ -784,7 +784,7 @@ func TestStoreScheduledTaskAndDeliveryPersistReportTarget(t *testing.T) {
 	run, admitted, err := store.AdmitScheduledTaskRun(ctx, app.ScheduledTaskRun{
 		ScheduledRunID:  "run-1",
 		ScheduledTaskID: task.ScheduledTaskID,
-		Mode:            "daily",
+		Mode:            "journal",
 		ScheduledFor:    time.Date(2026, time.April, 12, 0, 0, 0, 0, time.UTC),
 		Attempt:         1,
 		Status:          app.ScheduledTaskRunStatusSucceeded,

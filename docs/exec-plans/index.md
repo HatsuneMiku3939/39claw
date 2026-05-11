@@ -26,14 +26,14 @@ Plans in this directory should be written and maintained in line with `.agents/P
 These plans are intended to be executed in the order listed below. Most plans follow numeric order, but infrastructure prerequisites may require picking up a later-numbered plan first when it explicitly prepares the repository for another active plan.
 
 - [Implement scheduled Codex tasks with MCP-managed definitions and runtime execution](./active/18-scheduled-codex-tasks.md)
-- [Rename conversation modes to journal and thread](./active/19-rename-conversation-modes.md)
 
 ## Recently Completed Plans
 
-- [Add one-shot task override routing for normal task-mode messages](./completed/17-one-shot-task-override.md)
+- [Rename conversation modes to journal and thread](./completed/19-rename-conversation-modes.md)
+- [Add one-shot task override routing for normal thread-mode messages](./completed/17-one-shot-task-override.md)
 - [Add task-scoped context reset without recreating the worktree](./completed/16-task-reset-context.md)
-- [Replace task-mode source-checkout parenting with a managed bare repository](./completed/15-task-managed-bare-parent.md)
-- [Add shared daily generation rotation and `action:clear` to `daily` mode](./completed/12-daily-clear-generation.md)
+- [Replace thread-mode source-checkout parenting with a managed bare repository](./completed/15-task-managed-bare-parent.md)
+- [Add shared daily generation rotation and `action:clear` to `journal` mode](./completed/12-daily-clear-generation.md)
 - [Build a versioned SQLite migration runner and bootstrap path](./completed/13-sqlite-migration-runner.md)
 - [Prefer the remote default branch when creating `task` worktrees](./completed/14-task-worktree-remote-base.md)
 - [Build fake runtime validation infrastructure for adapter-level tests](./completed/11-fake-runtime-validation.md)
@@ -46,4 +46,4 @@ These plans are intended to be executed in the order listed below. Most plans fo
 - [Implement Discord image attachment intake for Codex turns](./completed/06-discord-image-input.md)
 - [Replace shared `/help` and `/task` slash commands with one instance-specific root command](./completed/07-instance-specific-root-command.md)
 - [Add task-isolated Git worktrees to `task` mode](./completed/08-task-mode-worktree-isolation.md)
-- [Add a durable memory bridge to `daily` mode](./completed/09-daily-memory-bridge.md)
+- [Add a durable memory bridge to `journal` mode](./completed/09-daily-memory-bridge.md)

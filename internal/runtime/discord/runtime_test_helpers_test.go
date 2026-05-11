@@ -1120,7 +1120,7 @@ func newContractDailyMessageService(
 		t.Fatalf("time.LoadLocation() error = %v", err)
 	}
 
-	policy, err := thread.NewPolicy(config.ModeDaily, tokyo, nil)
+	policy, err := thread.NewPolicy(config.ModeJournal, tokyo, nil)
 	if err != nil {
 		t.Fatalf("thread.NewPolicy() error = %v", err)
 	}
@@ -1130,7 +1130,7 @@ func newContractDailyMessageService(
 	}
 
 	service, err := app.NewMessageService(app.MessageServiceDependencies{
-		Mode:        config.ModeDaily,
+		Mode:        config.ModeJournal,
 		CommandName: "release",
 		Policy:      policy,
 		Store:       store,

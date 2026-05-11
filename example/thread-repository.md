@@ -1,6 +1,6 @@
-# Task Mode Example: One Repository With Isolated Task Worktrees
+# Thread Mode Example: One Repository With Isolated Task Worktrees
 
-This guide shows how to run one `task` mode 39claw instance against a real Git repository.
+This guide shows how to run one `thread` mode 39claw instance against a real Git repository.
 
 This is the right fit when you want:
 
@@ -23,7 +23,7 @@ Prepare these items first:
 
 1. `39claw` installed through Homebrew or a Linux package as described in [README.md](../README.md#installation)
 2. a working `codex` installation on the machine that will run 39claw
-3. a Discord bot token for this specific `task` instance
+3. a Discord bot token for this specific `thread` instance
 4. a Discord test guild ID if you want faster slash-command registration during setup
 5. a GitHub repository URL or another clone URL, for example `https://github.com/your-org/project-alpha.git`
 6. a writable local data directory for 39claw state and task worktrees
@@ -92,13 +92,13 @@ cp .env.example .env.local
 
 If you want a copy-paste starting point, use one of these sample files first:
 
-- [task-repository.macos.env.local.sample](./task-repository.macos.env.local.sample)
-- [task-repository.linux.env.local.sample](./task-repository.linux.env.local.sample)
+- [thread-repository.macos.env.local.sample](./thread-repository.macos.env.local.sample)
+- [thread-repository.linux.env.local.sample](./thread-repository.linux.env.local.sample)
 
 Set `.env.local` like this:
 
 ```dotenv
-CLAW_MODE=task
+CLAW_MODE=thread
 CLAW_TIMEZONE=Asia/Tokyo
 CLAW_DISCORD_TOKEN=replace-with-your-task-bot-token
 CLAW_DISCORD_COMMAND_NAME=dev
@@ -118,7 +118,7 @@ CLAW_LOG_FORMAT=text
 
 Why these values matter:
 
-1. `CLAW_MODE=task` enables task creation, switching, and task-specific threads.
+1. `CLAW_MODE=thread` enables task creation, switching, and task-specific threads.
 2. `CLAW_CODEX_WORKDIR` is the operator-visible source checkout and must have an `origin` remote.
 3. `CLAW_CODEX_HOME`, when set, tells 39claw which `CODEX_HOME` value to pass to the spawned Codex CLI.
 4. 39claw creates a managed bare parent under `CLAW_DATADIR/repos/` and each new active task can create its own worktree under `CLAW_DATADIR/worktrees/`.
@@ -173,7 +173,7 @@ Run:
 
 You should see a version string such as `dev` or a release version.
 
-## Step 7: Start the task-mode bot
+## Step 7: Start the thread-mode bot
 
 Run:
 

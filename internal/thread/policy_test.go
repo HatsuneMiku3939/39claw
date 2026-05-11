@@ -36,8 +36,8 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 		newError string
 	}{
 		{
-			name:  "daily uses configured local date",
-			mode:  config.ModeDaily,
+			name:  "journal uses configured local date",
+			mode:  config.ModeJournal,
 			store: nil,
 			request: app.MessageRequest{
 				ReceivedAt: time.Date(2026, time.April, 5, 1, 30, 0, 0, time.UTC),
@@ -45,8 +45,8 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 			want: "2026-04-05",
 		},
 		{
-			name:  "daily rolls over at local midnight",
-			mode:  config.ModeDaily,
+			name:  "journal rolls over at local midnight",
+			mode:  config.ModeJournal,
 			store: nil,
 			request: app.MessageRequest{
 				ReceivedAt: time.Date(2026, time.April, 5, 15, 1, 0, 0, time.UTC),
@@ -55,7 +55,7 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 		},
 		{
 			name:  "task uses active task binding",
-			mode:  config.ModeTask,
+			mode:  config.ModeThread,
 			store: store,
 			request: app.MessageRequest{
 				UserID: "user-1",
@@ -64,7 +64,7 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 		},
 		{
 			name:  "task returns guidance error without active task",
-			mode:  config.ModeTask,
+			mode:  config.ModeThread,
 			store: stubThreadStore{},
 			request: app.MessageRequest{
 				UserID: "user-1",
@@ -73,7 +73,7 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 		},
 		{
 			name: "task override uses exact open task name",
-			mode: config.ModeTask,
+			mode: config.ModeThread,
 			store: stubThreadStore{
 				openTasks: []app.Task{
 					{TaskID: "task-2", DiscordUserID: "user-1", TaskName: "docs-update", Status: app.TaskStatusOpen},
@@ -87,7 +87,7 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 		},
 		{
 			name: "task override reports closed task",
-			mode: config.ModeTask,
+			mode: config.ModeThread,
 			store: stubThreadStore{
 				closedTaskByName: map[string]bool{"docs-update": true},
 			},
@@ -99,7 +99,7 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 		},
 		{
 			name: "task override reports ambiguous open task names",
-			mode: config.ModeTask,
+			mode: config.ModeThread,
 			store: stubThreadStore{
 				openTasks: []app.Task{
 					{TaskID: "task-2", DiscordUserID: "user-1", TaskName: "docs-update", Status: app.TaskStatusOpen},
@@ -114,7 +114,7 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 		},
 		{
 			name:  "task override reports missing task",
-			mode:  config.ModeTask,
+			mode:  config.ModeThread,
 			store: stubThreadStore{},
 			request: app.MessageRequest{
 				UserID:           "user-1",
@@ -123,10 +123,10 @@ func TestPolicyResolveMessageKey(t *testing.T) {
 			wantErr: app.ErrTaskOverrideNotFound,
 		},
 		{
-			name:     "task mode requires store",
-			mode:     config.ModeTask,
+			name:     "thread mode requires store",
+			mode:     config.ModeThread,
 			store:    nil,
-			newError: "thread store must not be nil in task mode",
+			newError: "thread store must not be nil in thread mode",
 		},
 	}
 
@@ -181,7 +181,7 @@ func TestQueueCoordinatorAdmitAndComplete(t *testing.T) {
 	t.Parallel()
 
 	coordinator := NewQueueCoordinator()
-	key := "daily:2026-04-05"
+	key := "journal:2026-04-05"
 	order := make([]int, 0, 5)
 
 	admission, err := coordinator.Admit(key, func() {
@@ -242,7 +242,7 @@ func TestQueueCoordinatorSnapshot(t *testing.T) {
 	t.Parallel()
 
 	coordinator := NewQueueCoordinator()
-	key := "daily:2026-04-05#1"
+	key := "journal:2026-04-05#1"
 
 	if snapshot := coordinator.Snapshot(key); snapshot != (app.QueueSnapshot{}) {
 		t.Fatalf("initial snapshot = %+v, want zero value", snapshot)

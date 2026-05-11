@@ -646,7 +646,7 @@ func TestGitTaskWorkspaceManagerRejectsSourceRepositoryWithoutOriginRemote(t *te
 		t.Fatal("NewTaskWorkspaceManager() error = nil, want missing origin remote")
 	}
 
-	if !strings.Contains(err.Error(), "task mode requires CLAW_CODEX_WORKDIR to have an origin remote") {
+	if !strings.Contains(err.Error(), "thread mode requires CLAW_CODEX_WORKDIR to have an origin remote") {
 		t.Fatalf("NewTaskWorkspaceManager() error = %q, want missing origin remote guidance", err.Error())
 	}
 }
