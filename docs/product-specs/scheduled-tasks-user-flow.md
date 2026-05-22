@@ -91,8 +91,8 @@ Every scheduled run should execute as a fresh Codex thread in the same configure
 
 Scheduled tasks do not get their own separate runtime model or special permission tier.
 
-When the bot instance runs in `daily` mode, the scheduled run should use `CLAW_CODEX_WORKDIR` directly and should not create a temporary worktree.
-When the bot instance runs in `task` mode, the scheduled run should use its own fresh temporary worktree rather than borrowing a user's interactive task worktree.
+When the bot instance runs in `journal` mode, the scheduled run should use `CLAW_CODEX_WORKDIR` directly and should not create a temporary worktree.
+When the bot instance runs in `thread` mode, the scheduled run should use its own fresh temporary worktree rather than borrowing a user's interactive task worktree.
 
 ### 5. Task definitions should stay small and understandable
 
@@ -221,7 +221,7 @@ Expected flow:
 1. A scheduled time is reached according to the bot instance's local time zone.
 2. 39claw starts a new scheduled run for that task.
 3. The run executes as a fresh Codex thread in the configured working directory.
-4. If the bot instance runs in `task` mode, 39claw first creates a fresh temporary worktree for that scheduled run.
+4. If the bot instance runs in `thread` mode, 39claw first creates a fresh temporary worktree for that scheduled run.
 5. After the run finishes, 39claw removes that temporary worktree.
 6. The stored task prompt is sent as the run input.
 7. 39claw bridges the resulting output to Discord delivery behavior.
@@ -230,7 +230,7 @@ Expected user perception:
 
 - “This was a new execution, not a continuation of an old task thread.”
 - “The task ran against the same repository context as normal bot work.”
-- “In task mode, the scheduled run used its own temporary workspace instead of reusing an interactive task workspace.”
+- “In thread mode, the scheduled run used its own temporary workspace instead of reusing an interactive task workspace.”
 
 If the bot instance was offline long enough to miss recurring cron boundaries, 39claw should not replay that old backlog for personal-instance use.
 When the scheduler process starts again, recurring cron boundaries that happened before startup should be skipped rather than replayed.

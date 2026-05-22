@@ -351,7 +351,7 @@ func (s *DefaultTaskCommandService) ResetContext(ctx context.Context, userID str
 	}
 
 	logicalKey := buildTaskLogicalKey(userID, task.TaskID)
-	snapshot := s.coordinator.Snapshot(buildExecutionKey(config.ModeTask, logicalKey))
+	snapshot := s.coordinator.Snapshot(buildExecutionKey(config.ModeThread, logicalKey))
 	if snapshot.InFlight || snapshot.Queued > 0 {
 		return taskCommandResponse(
 			fmt.Sprintf(
@@ -361,12 +361,12 @@ func (s *DefaultTaskCommandService) ResetContext(ctx context.Context, userID str
 		), nil
 	}
 
-	_, hadBinding, err := s.store.GetThreadBinding(ctx, string(config.ModeTask), logicalKey)
+	_, hadBinding, err := s.store.GetThreadBinding(ctx, string(config.ModeThread), logicalKey)
 	if err != nil {
 		return MessageResponse{}, fmt.Errorf("load task thread binding: %w", err)
 	}
 
-	if err := s.store.DeleteThreadBinding(ctx, string(config.ModeTask), logicalKey); err != nil {
+	if err := s.store.DeleteThreadBinding(ctx, string(config.ModeThread), logicalKey); err != nil {
 		return MessageResponse{}, fmt.Errorf("delete task thread binding: %w", err)
 	}
 

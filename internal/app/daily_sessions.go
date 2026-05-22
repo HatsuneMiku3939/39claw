@@ -19,7 +19,7 @@ func BuildDailyLogicalKey(localDate string, generation int) string {
 func ResolveActiveDailySession(ctx context.Context, store ThreadStore, localDate string) (DailySession, error) {
 	active, ok, err := store.GetActiveDailySession(ctx, localDate)
 	if err != nil {
-		return DailySession{}, fmt.Errorf("load active daily session: %w", err)
+		return DailySession{}, fmt.Errorf("load active journal session: %w", err)
 	}
 
 	if ok {
@@ -54,12 +54,12 @@ func ResolveActiveDailySession(ctx context.Context, store ThreadStore, localDate
 func ParseDailyLogicalKey(logicalKey string) (string, int, error) {
 	localDate, generationText, ok := strings.Cut(strings.TrimSpace(logicalKey), "#")
 	if !ok || localDate == "" || generationText == "" {
-		return "", 0, fmt.Errorf("invalid daily logical key %q", logicalKey)
+		return "", 0, fmt.Errorf("invalid journal logical key %q", logicalKey)
 	}
 
 	generation, err := strconv.Atoi(generationText)
 	if err != nil || generation < 1 {
-		return "", 0, fmt.Errorf("invalid daily logical key %q", logicalKey)
+		return "", 0, fmt.Errorf("invalid journal logical key %q", logicalKey)
 	}
 
 	return localDate, generation, nil

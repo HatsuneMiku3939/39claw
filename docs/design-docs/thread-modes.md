@@ -4,16 +4,16 @@ This document defines the two planned v1 thread modes for 39claw.
 
 The selected mode is a global configuration value for each bot instance.
 
-## Mode A: `daily`
+## Mode A: `journal`
 
 ### Intent
 
-`daily` mode is designed for lightweight, natural conversation flow.
+`journal` mode is designed for lightweight, natural conversation flow.
 The user should not need to manage thread state explicitly.
 
 ### Thread Key Concept
 
-The daily routing bucket is derived from:
+The journal routing bucket is derived from:
 
 - current local date
 
@@ -33,7 +33,7 @@ active_thread_key = local_date + "#" + generation
 - `/<instance-command> action:clear` rotates the active shared generation to a fresh same-day key such as `YYYY-MM-DD#2`
 - if the active shared generation still has in-flight or queued work, `action:clear` is rejected instead of interleaving old and new replies
 - when the date changes, a new bucket is used automatically and its first active generation starts at `#1`
-- before the first visible turn for a new generation, 39claw may resume the previous recorded daily generation once to refresh durable Markdown memory under `AGENT_MEMORY/`
+- before the first visible turn for a new generation, 39claw may resume the previous recorded journal generation once to refresh durable Markdown memory under `AGENT_MEMORY/`
 - the visible turn for a new generation still starts a fresh Codex thread even when durable memory is carried forward
 
 ### UX Properties
@@ -61,11 +61,11 @@ Costs:
 - the definition of "day" depends on a configured timezone
 - the durable-memory bridge depends on a write-capable Codex sandbox and managed files inside the configured workdir
 
-## Mode B: `task`
+## Mode B: `thread`
 
 ### Intent
 
-`task` mode is designed for longer-running, explicit work streams.
+`thread` mode is designed for longer-running, explicit work streams.
 The user should be able to keep context attached to a named task instead of a date bucket.
 Each task should also map to an isolated Git worktree instead of sharing one mutable checkout.
 
@@ -98,7 +98,7 @@ thread_key = user + task_id
 
 ### UX Requirements
 
-Unlike `daily`, `task` mode requires task control commands or interactions.
+Unlike `journal`, `thread` mode requires task control commands or interactions.
 
 At a minimum, v1 likely needs:
 
@@ -126,7 +126,7 @@ Costs:
 
 - more operational and UX complexity
 - requires explicit task lifecycle management
-- requires Git-only startup validation for `task` mode
+- requires Git-only startup validation for `thread` mode
 - requires worktree creation, retry, and pruning behavior
 
 ## Why Both Modes Exist
@@ -136,12 +136,12 @@ Codex works against a repository-scoped working directory and follows the instru
 
 The difference is the role of the repository:
 
-- `daily` uses a knowledge-oriented repository that primarily contains instructions and documentation
-- `task` uses an execution-oriented repository where Codex can help perform real operational work
+- `journal` uses a knowledge-oriented repository that primarily contains instructions and documentation
+- `thread` uses an execution-oriented repository where Codex can help perform real operational work
 
 As a result, the modes support different user experiences:
 
-- `daily` is conversation-oriented
-- `task` is work-oriented
+- `journal` is conversation-oriented
+- `thread` is work-oriented
 
 Supporting both allows 39claw to serve different operating styles without changing the Codex-native backend model.

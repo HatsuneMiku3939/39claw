@@ -61,7 +61,7 @@ func (s *Store) CreateDailySession(ctx context.Context, session app.DailySession
 
 	active, ok, err := getActiveDailySessionTx(ctx, tx, session.LocalDate)
 	if err != nil {
-		return app.DailySession{}, fmt.Errorf("load active daily session in transaction: %w", err)
+		return app.DailySession{}, fmt.Errorf("load active journal session in transaction: %w", err)
 	}
 
 	if ok {
@@ -99,7 +99,7 @@ func (s *Store) RotateDailySession(ctx context.Context, localDate string, activa
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return app.DailySession{}, fmt.Errorf("begin rotate daily session transaction: %w", err)
+		return app.DailySession{}, fmt.Errorf("begin rotate journal session transaction: %w", err)
 	}
 	defer func() {
 		rollbackErr := tx.Rollback()
@@ -110,7 +110,7 @@ func (s *Store) RotateDailySession(ctx context.Context, localDate string, activa
 
 	active, ok, err := getActiveDailySessionTx(ctx, tx, localDate)
 	if err != nil {
-		return app.DailySession{}, fmt.Errorf("load active daily session in transaction: %w", err)
+		return app.DailySession{}, fmt.Errorf("load active journal session in transaction: %w", err)
 	}
 	if !ok {
 		return app.DailySession{}, sql.ErrNoRows
@@ -158,7 +158,7 @@ func (s *Store) RotateDailySession(ctx context.Context, localDate string, activa
 	}
 
 	if err := tx.Commit(); err != nil {
-		return app.DailySession{}, fmt.Errorf("commit rotate daily session transaction: %w", err)
+		return app.DailySession{}, fmt.Errorf("commit rotate journal session transaction: %w", err)
 	}
 
 	return next, nil

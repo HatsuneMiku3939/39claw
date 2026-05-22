@@ -27,7 +27,7 @@ func TestRuntimeContractDailyMentionReply(t *testing.T) {
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithServices(
 		t,
-		config.ModeDaily,
+		config.ModeJournal,
 		fakeSession,
 		newContractDailyMessageService(t, store, gateway, nil),
 		&fakeTaskCommandService{},
@@ -79,7 +79,7 @@ func TestRuntimeContractStreamsImmediateReplyEdits(t *testing.T) {
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithServices(
 		t,
-		config.ModeDaily,
+		config.ModeJournal,
 		fakeSession,
 		newContractDailyMessageService(t, store, gateway, nil),
 		&fakeTaskCommandService{},
@@ -135,7 +135,7 @@ func TestRuntimeContractQueuedAcknowledgementAndDeferredReply(t *testing.T) {
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithServices(
 		t,
-		config.ModeDaily,
+		config.ModeJournal,
 		fakeSession,
 		newContractDailyMessageService(t, store, gateway, thread.NewQueueCoordinator()),
 		&fakeTaskCommandService{},
@@ -243,7 +243,7 @@ func TestRuntimeContractTaskCommandUsesRealServiceAndEphemeralResponse(t *testin
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithServices(
 		t,
-		config.ModeTask,
+		config.ModeThread,
 		fakeSession,
 		&fakeMessageService{},
 		taskService,
@@ -304,7 +304,7 @@ func TestRuntimeContractAttachmentAwareMessageUsesDownloadedImagePaths(t *testin
 	fakeSession := newFakeSession("bot-user")
 	runtime := newTestRuntimeWithServicesAndClient(
 		t,
-		config.ModeDaily,
+		config.ModeJournal,
 		fakeSession,
 		newContractDailyMessageService(t, store, gateway, nil),
 		&fakeTaskCommandService{},

@@ -6,9 +6,9 @@ This document must be maintained in accordance with `.agents/PLANS.md`.
 
 ## Purpose / Big Picture
 
-After this plan, a 39claw operator should be able to start the bot, ask it in normal conversation to create a scheduled task, and then observe 39claw execute that task automatically on schedule and deliver the result to Discord. In `daily` mode, the scheduled run should execute directly in `CLAW_CODEX_WORKDIR`. In `task` mode, the scheduled run should execute in its own fresh temporary worktree that is created for that run and removed after the run finishes.
+After this plan, a 39claw operator should be able to start the bot, ask it in normal conversation to create a scheduled task, and then observe 39claw execute that task automatically on schedule and deliver the result to Discord. In `journal` mode, the scheduled run should execute directly in `CLAW_CODEX_WORKDIR`. In `thread` mode, the scheduled run should execute in its own fresh temporary worktree that is created for that run and removed after the run finishes.
 
-The user-visible proof is concrete. A contributor should be able to run the bot with a test schedule, create a task through the Codex-visible management tools, wait for the due time, and observe a Discord delivery that names the scheduled task. The same contributor should also be able to inspect SQLite and see one canonical task definition, one admitted run record for the due occurrence, and a separate delivery record. If the bot runs in `task` mode, the contributor should be able to observe that the scheduled run used a temporary worktree that was cleaned up after completion.
+The user-visible proof is concrete. A contributor should be able to run the bot with a test schedule, create a task through the Codex-visible management tools, wait for the due time, and observe a Discord delivery that names the scheduled task. The same contributor should also be able to inspect SQLite and see one canonical task definition, one admitted run record for the due occurrence, and a separate delivery record. If the bot runs in `thread` mode, the contributor should be able to observe that the scheduled run used a temporary worktree that was cleaned up after completion.
 
 ## Progress
 
@@ -16,9 +16,9 @@ The user-visible proof is concrete. A contributor should be able to run the bot 
 - [x] (2026-04-12 08:40Z) Added the scheduled-task MCP tool surface and recorded the per-run Codex `--config` override used to register it.
 - [x] (2026-04-12 08:42Z) Added the instance-level scheduled report target setting, SQLite migrations `0004_scheduled_tasks.sql` and `0005_scheduled_task_history.sql`, and store APIs for scheduled-task definitions, runs, and deliveries.
 - [x] (2026-04-12 08:44Z) Implemented per-run MCP config injection plus MCP-backed create, list, get, update, enable, disable, and delete operations for scheduled tasks.
-- [x] (2026-04-12 08:47Z) Implemented the scheduler loop, due-run admission, fresh-thread execution path, and task-mode temporary scheduled-run worktree creation and cleanup.
+- [x] (2026-04-12 08:47Z) Implemented the scheduler loop, due-run admission, fresh-thread execution path, and thread-mode temporary scheduled-run worktree creation and cleanup.
 - [x] (2026-04-12 08:48Z) Implemented bot-initiated Discord report delivery and stored delivery outcomes separately from run outcomes.
-- [x] (2026-04-12 08:50Z) Added automated coverage for schedule parsing, MCP config injection, MCP management operations, task-mode temporary worktrees, scheduler execution, and delivery recording.
+- [x] (2026-04-12 08:50Z) Added automated coverage for schedule parsing, MCP config injection, MCP management operations, thread-mode temporary worktrees, scheduler execution, and delivery recording.
 - [x] (2026-04-12 08:52Z) Ran `go test ./...` and `make lint` after the implementation landed.
 
 ## Surprises & Discoveries
@@ -29,7 +29,7 @@ The user-visible proof is concrete. A contributor should be able to run the bot 
 - Observation: The Codex gateway already reports `mcp_tool_call` progress events, which means the runtime can surface tool activity once a local MCP server exists, and the CLI can accept MCP registration through `--config` without rewriting the user's Codex home.
   Evidence: `internal/codex/gateway.go` handles `item.Type == "mcp_tool_call"`, and manual CLI inspection confirmed `codex exec --config 'mcp_servers.<name>=...'` support.
 
-- Observation: `task` mode already owns the managed bare-parent and worktree lifecycle code for interactive tasks, but scheduled tasks intentionally must not reuse an interactive task worktree.
+- Observation: `thread` mode already owns the managed bare-parent and worktree lifecycle code for interactive tasks, but scheduled tasks intentionally must not reuse an interactive task worktree.
   Evidence: `internal/app/task_workspace.go` and `docs/design-docs/scheduled-tasks.md`.
 
 - Observation: The current Codex CLI can register a local MCP server entirely through one `--config` override and does not require a managed `CODEX_HOME`, which made it possible to expose the scheduled-task tools from the running 39claw process itself.
@@ -51,7 +51,7 @@ The user-visible proof is concrete. A contributor should be able to run the bot 
   Rationale: The product spec says `report_target` is optional per task and that omitted values should fall back to instance-level reporting behavior. A dedicated environment variable is the smallest explicit way to define that default without tying scheduled delivery to one user's last message context.
   Date/Author: 2026-04-12 / Codex
 
-- Decision: In `task` mode, scheduled runs must create a fresh temporary worktree for the run and remove it after the run reaches a terminal result.
+- Decision: In `thread` mode, scheduled runs must create a fresh temporary worktree for the run and remove it after the run reaches a terminal result.
   Rationale: This matches the current design note and prevents scheduled automation from borrowing or mutating an interactive task worktree that may belong to a different ongoing task context.
   Date/Author: 2026-04-12 / Codex
 
@@ -75,12 +75,12 @@ The main remaining acceptance gap is operator-level live validation with a real 
 
 Persistent state lives in SQLite through `internal/store/sqlite/store.go`. The current application schema supports thread bindings, daily sessions, tasks, and active-task selection. There is no existing scheduled-task table, no scheduler loop, and no bot-initiated delivery path that originates outside a Discord user message.
 
-The current task-mode worktree behavior matters because scheduled tasks add one more execution path. Interactive `task` mode already uses a managed bare parent repository and task worktrees under `CLAW_DATADIR`. Scheduled tasks must not reuse a user's interactive task worktree. Instead, when the bot runs in `task` mode, a scheduled run should create its own temporary worktree from the managed bare parent, execute the run there, and remove the worktree afterward.
+The current thread-mode worktree behavior matters because scheduled tasks add one more execution path. Interactive `thread` mode already uses a managed bare parent repository and task worktrees under `CLAW_DATADIR`. Scheduled tasks must not reuse a user's interactive task worktree. Instead, when the bot runs in `thread` mode, a scheduled run should create its own temporary worktree from the managed bare parent, execute the run there, and remove the worktree afterward.
 
 The most relevant current files are:
 
 - `docs/design-docs/scheduled-tasks.md`
-  - the implementation-facing design rules for canonical definitions, scheduler behavior, task-mode temporary worktrees, and Discord delivery separation
+  - the implementation-facing design rules for canonical definitions, scheduler behavior, thread-mode temporary worktrees, and Discord delivery separation
 - `docs/product-specs/scheduled-tasks-user-flow.md`
   - the user-facing behavior that the implementation must satisfy
 - `cmd/39claw/main.go`
@@ -92,7 +92,7 @@ The most relevant current files are:
 - `internal/app/message_service_impl.go`
   - the current user-message execution path and queue coordination
 - `internal/app/task_workspace.go`
-  - the managed bare-parent and worktree behavior that scheduled `task`-mode runs should reuse at a lower level
+  - the managed bare-parent and worktree behavior that scheduled `thread`-mode runs should reuse at a lower level
 - `internal/app/task_service.go`
   - the existing task command workflow and task persistence touchpoints
 - `internal/codex/gateway.go` and `internal/codex/exec.go`
@@ -112,7 +112,7 @@ A “delivery record” is the durable row that records whether Discord delivery
 
 A “scheduled-task MCP config override” is the per-run Codex `--config` fragment that registers the loopback streamable HTTP MCP endpoint without mutating the user's `CODEX_HOME`.
 
-A “temporary scheduled-run worktree” is the short-lived Git worktree used only for one scheduled run when the bot instance runs in `task` mode. It is distinct from any interactive task worktree and must be removed after the run reaches a terminal result.
+A “temporary scheduled-run worktree” is the short-lived Git worktree used only for one scheduled run when the bot instance runs in `thread` mode. It is distinct from any interactive task worktree and must be removed after the run reaches a terminal result.
 
 ## Starting State
 
@@ -120,7 +120,7 @@ Begin implementation only after confirming the repository still matches these as
 
 - there is no active scheduled-task implementation under `internal/`
 - `docs/design-docs/scheduled-tasks.md` and `docs/product-specs/scheduled-tasks-user-flow.md` describe the target behavior
-- `internal/app/task_workspace.go` still owns the managed bare-parent and task worktree logic for interactive task mode
+- `internal/app/task_workspace.go` still owns the managed bare-parent and task worktree logic for interactive thread mode
 - `cmd/39claw/main.go` still injects `CODEX_HOME` into the spawned Codex environment when configured
 - `make test` and `make lint` pass before implementation begins
 
@@ -141,8 +141,8 @@ This plan fixes the following implementation choices before coding begins:
 - the repository adds `CLAW_SCHEDULED_REPORT_TARGET` as the optional instance default report target
 - the scheduler loop runs inside the 39claw process and participates in startup and shutdown
 - scheduled runs always use fresh Codex threads
-- `daily` mode scheduled runs execute directly in `CLAW_CODEX_WORKDIR`
-- `task` mode scheduled runs execute in fresh temporary worktrees created from the managed bare parent and removed afterward
+- `journal` mode scheduled runs execute directly in `CLAW_CODEX_WORKDIR`
+- `thread` mode scheduled runs execute in fresh temporary worktrees created from the managed bare parent and removed afterward
 - delivery is recorded separately from execution
 - infrastructure-level failure may retry a due run once, but content-level “failure” is whatever Codex writes into the report
 
@@ -209,15 +209,15 @@ Keep the scheduler lifecycle explicit in `cmd/39claw/main.go`. Start it after st
 
 This milestone must also define the retry rule concretely. When a run fails for infrastructure reasons before a terminal Codex result exists, the scheduler may create exactly one retry attempt. The retry attempt must share the same logical due occurrence but have its own run row or attempt number so history stays auditable.
 
-## Milestone 4: Execute scheduled runs and integrate task-mode temporary worktrees
+## Milestone 4: Execute scheduled runs and integrate thread-mode temporary worktrees
 
 At the end of this milestone, admitted scheduled runs should actually execute through the Codex gateway, using the correct working-directory rule for the current bot mode.
 
 Implement a scheduled-run executor that takes a due run, resolves its working directory, runs Codex in a fresh thread, captures the response, and records the terminal run status. Reuse the existing `CodexGateway` and `CodexTurnInput` path rather than creating a second Codex integration stack.
 
-For `daily` mode, scheduled runs should pass `CLAW_CODEX_WORKDIR` directly as the working directory.
+For `journal` mode, scheduled runs should pass `CLAW_CODEX_WORKDIR` directly as the working directory.
 
-For `task` mode, scheduled runs must not call the interactive `TaskWorkspaceManager.EnsureReady` path with a fake user task. Instead, extract the lower-level managed bare-parent preparation logic from `internal/app/task_workspace.go` into a reusable helper that can do both of these things:
+For `thread` mode, scheduled runs must not call the interactive `TaskWorkspaceManager.EnsureReady` path with a fake user task. Instead, extract the lower-level managed bare-parent preparation logic from `internal/app/task_workspace.go` into a reusable helper that can do both of these things:
 
 - prepare or sync the managed bare parent for the configured source checkout
 - create a temporary worktree rooted at a caller-provided path and base ref
@@ -251,8 +251,8 @@ Add unit and integration coverage for:
 - MCP management-tool handlers
 - per-run MCP config injection for the local MCP server
 - scheduler retry behavior
-- daily-mode working-directory selection
-- task-mode temporary scheduled-run worktree creation and cleanup
+- journal-mode working-directory selection
+- thread-mode temporary scheduled-run worktree creation and cleanup
 - Discord delivery success and failure recording
 
 After implementation lands, update `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` with the real results and command outputs. Do not archive this plan until the full acceptance criteria below are satisfied.
@@ -267,7 +267,7 @@ After persistence is in place, add the scheduler loop and a run executor that re
 
 Then implement Discord delivery for bot-initiated reports and make delivery records explicit. A run that succeeded but could not be delivered must still count as an executed run.
 
-Finally, wire the task-mode temporary worktree path for scheduled runs by extracting the low-level managed bare-parent logic out of the existing interactive task workspace manager. Do not try to fake an interactive task row just to reuse the current API. Scheduled runs are instance-scoped automation, not hidden user tasks.
+Finally, wire the thread-mode temporary worktree path for scheduled runs by extracting the low-level managed bare-parent logic out of the existing interactive task workspace manager. Do not try to fake an interactive task row just to reuse the current API. Scheduled runs are instance-scoped automation, not hidden user tasks.
 
 ## Concrete Steps
 
@@ -325,8 +325,8 @@ This plan is complete when all of the following are true:
 - scheduled-task definitions persist in SQLite and survive restart
 - due occurrences are admitted once even across restart
 - scheduled runs always start fresh Codex threads
-- `daily` mode scheduled runs execute directly in `CLAW_CODEX_WORKDIR`
-- `task` mode scheduled runs execute in fresh temporary worktrees that are removed after completion
+- `journal` mode scheduled runs execute directly in `CLAW_CODEX_WORKDIR`
+- `thread` mode scheduled runs execute in fresh temporary worktrees that are removed after completion
 - Discord delivery uses either the per-task `report_target` or `CLAW_SCHEDULED_REPORT_TARGET`
 - delivery status is recorded separately from execution status
 - infrastructure failure retries a due run once and records the retry clearly
@@ -337,7 +337,7 @@ The acceptance bar is behavioral. A contributor should be able to create a sched
 
 ## Idempotence and Recovery
 
-All schema changes must be additive and safe to rerun through the existing migration runner. A failed scheduled run must never delete the task definition. A failed Discord delivery must never retroactively mark the Codex run as failed. Temporary worktree cleanup in `task` mode is best-effort after the run reaches a terminal result; if cleanup fails, record the failure, leave the run result intact, and make the cleanup path safe to retry manually.
+All schema changes must be additive and safe to rerun through the existing migration runner. A failed scheduled run must never delete the task definition. A failed Discord delivery must never retroactively mark the Codex run as failed. Temporary worktree cleanup in `thread` mode is best-effort after the run reaches a terminal result; if cleanup fails, record the failure, leave the run result intact, and make the cleanup path safe to retry manually.
 
 The scheduler itself must be restart-safe. If the process exits after admitting a due run but before delivery completes, the next startup should inspect durable run state and avoid admitting the same due occurrence again while still allowing incomplete terminal transitions to be repaired or reported.
 
@@ -348,7 +348,7 @@ The most important proof artifacts to capture during implementation are:
 - the exact `--config` override shape needed for the local MCP server
 - a short event transcript showing an `mcp_tool_call` item for a scheduled-task management tool
 - SQLite test evidence that one due occurrence is admitted once
-- task-mode test evidence that a scheduled run creates and removes a temporary worktree under `${CLAW_DATADIR}/scheduled-worktrees/<run-id>`
+- thread-mode test evidence that a scheduled run creates and removes a temporary worktree under `${CLAW_DATADIR}/scheduled-worktrees/<run-id>`
 - Discord runtime evidence that delivery failure is recorded separately from run failure
 
 Example end-to-end behavior to preserve:
@@ -397,7 +397,7 @@ Implement the feature with these concrete interfaces and package directions:
   - scheduler service startup and shutdown
   - bot-initiated Discord delivery helper
 
-- in `internal/app/task_workspace.go`, extract reusable managed-repository helpers so scheduled runs in `task` mode can create temporary worktrees without creating fake interactive tasks.
+- in `internal/app/task_workspace.go`, extract reusable managed-repository helpers so scheduled runs in `thread` mode can create temporary worktrees without creating fake interactive tasks.
 
 - add `github.com/robfig/cron/v3` for cron parsing unless a simpler in-repository parser is introduced and documented here first.
 

@@ -19,28 +19,28 @@ type Refresher struct {
 
 func (r Refresher) RefreshBeforeFirstDailyTurn(ctx context.Context, session app.DailySession) error {
 	if r.Store == nil {
-		return errors.New("daily memory refresher store must not be nil")
+		return errors.New("journal memory refresher store must not be nil")
 	}
 
 	if r.Gateway == nil {
-		return errors.New("daily memory refresher gateway must not be nil")
+		return errors.New("journal memory refresher gateway must not be nil")
 	}
 
 	workdir := strings.TrimSpace(r.Workdir)
 	if workdir == "" {
-		return errors.New("daily memory refresher workdir must not be empty")
+		return errors.New("journal memory refresher workdir must not be empty")
 	}
 
 	if strings.TrimSpace(session.LogicalThreadKey) == "" {
-		return errors.New("daily memory refresher logical thread key must not be empty")
+		return errors.New("journal memory refresher logical thread key must not be empty")
 	}
 
 	if strings.TrimSpace(session.LocalDate) == "" || session.Generation < 1 {
-		return errors.New("daily memory refresher session metadata is incomplete")
+		return errors.New("journal memory refresher session metadata is incomplete")
 	}
 
-	if _, ok, err := r.Store.GetThreadBinding(ctx, "daily", session.LogicalThreadKey); err != nil {
-		return fmt.Errorf("load current daily thread binding: %w", err)
+	if _, ok, err := r.Store.GetThreadBinding(ctx, "journal", session.LogicalThreadKey); err != nil {
+		return fmt.Errorf("load current journal thread binding: %w", err)
 	} else if ok {
 		return nil
 	}
@@ -49,9 +49,9 @@ func (r Refresher) RefreshBeforeFirstDailyTurn(ctx context.Context, session app.
 		return nil
 	}
 
-	previousBinding, ok, err := r.Store.GetThreadBinding(ctx, "daily", session.PreviousLogicalThreadKey)
+	previousBinding, ok, err := r.Store.GetThreadBinding(ctx, "journal", session.PreviousLogicalThreadKey)
 	if err != nil {
-		return fmt.Errorf("load previous daily thread binding: %w", err)
+		return fmt.Errorf("load previous journal thread binding: %w", err)
 	}
 
 	if !ok {
@@ -84,7 +84,7 @@ func (r Refresher) RefreshBeforeFirstDailyTurn(ctx context.Context, session app.
 		WorkingDirectory: workdir,
 	})
 	if err != nil {
-		return fmt.Errorf("run daily memory refresh turn: %w", err)
+		return fmt.Errorf("run journal memory refresh turn: %w", err)
 	}
 
 	if err := validateRefreshResponse(result.ResponseText, memoryPath, bridgePath); err != nil {
@@ -114,7 +114,7 @@ func ensureBridgeNote(path string, previousThreadID string, previousLogicalKey s
 
 func buildRefreshPrompt(previousLogicalKey string, currentLogicalKey string, bridgeFilename string) string {
 	return fmt.Sprintf(
-		"Before handling the first visible user message of the new daily generation, read `.agents/skills/39claw-daily-memory-refresh/SKILL.md` and follow it now.\n\nUse the resumed previous daily generation as the source of truth.\n\nToday's bridge note path is:\n- AGENT_MEMORY/%s\n\nThe primary durable memory file is:\n- AGENT_MEMORY/MEMORY.md\n\nThe previous logical key is %s.\nThe new logical key is %s.\n\nReturn the required completion format after the refresh is complete.",
+		"Before handling the first visible user message of the new journal generation, read `.agents/skills/39claw-journal-memory-refresh/SKILL.md` and follow it now.\n\nUse the resumed previous journal generation as the source of truth.\n\nToday's bridge note path is:\n- AGENT_MEMORY/%s\n\nThe primary durable memory file is:\n- AGENT_MEMORY/MEMORY.md\n\nThe previous logical key is %s.\nThe new logical key is %s.\n\nReturn the required completion format after the refresh is complete.",
 		bridgeFilename,
 		previousLogicalKey,
 		currentLogicalKey,
@@ -125,13 +125,13 @@ func validateRefreshResponse(responseText string, memoryPath string, bridgePath 
 	normalized := strings.ReplaceAll(strings.TrimSpace(responseText), "\r\n", "\n")
 	expected := "MEMORY_REFRESH_OK\nUpdated:\n- " + memoryPath + "\n- " + bridgePath
 	if normalized != expected {
-		return fmt.Errorf("unexpected daily memory refresh response: %q", responseText)
+		return fmt.Errorf("unexpected journal memory refresh response: %q", responseText)
 	}
 
 	return nil
 }
 
-const initialBridgeNoteTemplate = "# Daily Memory Bridge for CURRENT-LOGICAL-KEY\n\n" +
+const initialBridgeNoteTemplate = "# Journal Memory Bridge for CURRENT-LOGICAL-KEY\n\n" +
 	"## Source\n\n" +
 	"- Previous thread id: `<previous-thread-id>`\n" +
 	"- Source logical key: `<source-logical-key>`\n\n" +
@@ -142,4 +142,4 @@ const initialBridgeNoteTemplate = "# Daily Memory Bridge for CURRENT-LOGICAL-KEY
 	"## Rejected Candidates\n\n" +
 	"- None yet.\n\n" +
 	"## Notes\n\n" +
-	"- Created by the 39claw daily memory preflight before the first visible turn of the new generation.\n"
+	"- Created by the 39claw journal memory preflight before the first visible turn of the new generation.\n"

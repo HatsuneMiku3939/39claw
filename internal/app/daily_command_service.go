@@ -59,14 +59,14 @@ func (s *DefaultDailyCommandService) Clear(ctx context.Context, _ string, receiv
 
 	active, err := ResolveActiveDailySession(ctx, s.store, localDate)
 	if err != nil {
-		return MessageResponse{}, fmt.Errorf("resolve active daily session: %w", err)
+		return MessageResponse{}, fmt.Errorf("resolve active journal session: %w", err)
 	}
 
-	snapshot := s.coordinator.Snapshot(buildExecutionKey(config.ModeDaily, active.LogicalThreadKey))
+	snapshot := s.coordinator.Snapshot(buildExecutionKey(config.ModeJournal, active.LogicalThreadKey))
 	if snapshot.InFlight || snapshot.Queued > 0 {
 		return dailyCommandResponse(
 			fmt.Sprintf(
-				"Today's shared daily conversation is still busy. Wait for pending replies to finish, then retry `/%s action:clear`.",
+				"Today's shared journal conversation is still busy. Wait for pending replies to finish, then retry `/%s action:clear`.",
 				s.commands.commandName,
 			),
 		), nil
@@ -74,12 +74,12 @@ func (s *DefaultDailyCommandService) Clear(ctx context.Context, _ string, receiv
 
 	next, err := s.store.RotateDailySession(ctx, localDate, DailySessionActivationClear)
 	if err != nil {
-		return MessageResponse{}, fmt.Errorf("rotate daily session: %w", err)
+		return MessageResponse{}, fmt.Errorf("rotate journal session: %w", err)
 	}
 
 	return dailyCommandResponse(
 		fmt.Sprintf(
-			"Started a fresh shared daily conversation for today. The active generation is now `%s`.",
+			"Started a fresh shared journal conversation for today. The active generation is now `%s`.",
 			next.LogicalThreadKey,
 		),
 	), nil

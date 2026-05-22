@@ -127,17 +127,17 @@ func TestRun(t *testing.T) {
 		{
 			name: "returns config validation error when required env is missing",
 			env: map[string]string{
-				"CLAW_MODE": "daily",
+				"CLAW_MODE": "journal",
 			},
 			wantErr: "missing required environment variable CLAW_TIMEZONE",
 		},
 		{
 			name: "boots foundation path and exits cleanly on canceled context",
 			env: map[string]string{
-				"CLAW_MODE":                 "daily",
+				"CLAW_MODE":                 "journal",
 				"CLAW_TIMEZONE":             "Asia/Tokyo",
 				"CLAW_DISCORD_TOKEN":        "discord-token",
-				"CLAW_DISCORD_COMMAND_NAME": "daily",
+				"CLAW_DISCORD_COMMAND_NAME": "journal",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
 				"CLAW_DATADIR":              "",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
@@ -154,7 +154,7 @@ func TestRun(t *testing.T) {
 		{
 			name: "injects configured codex home into codex process environment",
 			env: map[string]string{
-				"CLAW_MODE":                 "task",
+				"CLAW_MODE":                 "thread",
 				"CLAW_TIMEZONE":             "Asia/Tokyo",
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "release",
@@ -175,7 +175,7 @@ func TestRun(t *testing.T) {
 		{
 			name: "passes configured codex thread options to gateway",
 			env: map[string]string{
-				"CLAW_MODE":                         "task",
+				"CLAW_MODE":                         "thread",
 				"CLAW_TIMEZONE":                     "Asia/Tokyo",
 				"CLAW_DISCORD_TOKEN":                "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME":         "release",
@@ -203,23 +203,23 @@ func TestRun(t *testing.T) {
 			},
 		},
 		{
-			name: "rejects read-only sandbox in daily mode",
+			name: "rejects read-only sandbox in journal mode",
 			env: map[string]string{
-				"CLAW_MODE":                 "daily",
+				"CLAW_MODE":                 "journal",
 				"CLAW_TIMEZONE":             "Asia/Tokyo",
 				"CLAW_DISCORD_TOKEN":        "discord-token",
-				"CLAW_DISCORD_COMMAND_NAME": "daily",
+				"CLAW_DISCORD_COMMAND_NAME": "journal",
 				"CLAW_CODEX_WORKDIR":        "/workspace/project",
 				"CLAW_DATADIR":              "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
 				"CLAW_CODEX_SANDBOX_MODE":   "read-only",
 			},
-			wantErr: "daily memory bridge requires CLAW_CODEX_SANDBOX_MODE to allow writes inside CLAW_CODEX_WORKDIR",
+			wantErr: "journal memory bridge requires CLAW_CODEX_SANDBOX_MODE to allow writes inside CLAW_CODEX_WORKDIR",
 		},
 		{
-			name: "rejects non-git workdir in task mode during startup",
+			name: "rejects non-git workdir in thread mode during startup",
 			env: map[string]string{
-				"CLAW_MODE":                 "task",
+				"CLAW_MODE":                 "thread",
 				"CLAW_TIMEZONE":             "Asia/Tokyo",
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "release",
@@ -227,12 +227,12 @@ func TestRun(t *testing.T) {
 				"CLAW_DATADIR":              "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
 			},
-			wantErr: "task mode requires CLAW_CODEX_WORKDIR to exist",
+			wantErr: "thread mode requires CLAW_CODEX_WORKDIR to exist",
 		},
 		{
-			name: "rejects git workdir without origin remote in task mode during startup",
+			name: "rejects git workdir without origin remote in thread mode during startup",
 			env: map[string]string{
-				"CLAW_MODE":                 "task",
+				"CLAW_MODE":                 "thread",
 				"CLAW_TIMEZONE":             "Asia/Tokyo",
 				"CLAW_DISCORD_TOKEN":        "discord-token",
 				"CLAW_DISCORD_COMMAND_NAME": "release",
@@ -240,7 +240,7 @@ func TestRun(t *testing.T) {
 				"CLAW_DATADIR":              "/tmp/39claw-data",
 				"CLAW_CODEX_EXECUTABLE":     "codex",
 			},
-			wantErr: "task mode requires CLAW_CODEX_WORKDIR to have an origin remote",
+			wantErr: "thread mode requires CLAW_CODEX_WORKDIR to have an origin remote",
 		},
 	}
 
@@ -279,22 +279,22 @@ func TestRun(t *testing.T) {
 				env["CLAW_DATADIR"] = t.TempDir()
 			}
 
-			if env["CLAW_MODE"] == "daily" {
-				workdir := filepath.Join(t.TempDir(), "daily-workdir")
+			if env["CLAW_MODE"] == "journal" {
+				workdir := filepath.Join(t.TempDir(), "journal-workdir")
 				if err := os.MkdirAll(workdir, 0o755); err != nil {
-					t.Fatalf("MkdirAll(daily-workdir) error = %v", err)
+					t.Fatalf("MkdirAll(journal-workdir) error = %v", err)
 				}
 				env["CLAW_CODEX_WORKDIR"] = workdir
 				tt.wantThreadOptions.WorkingDirectory = workdir
 			}
 
-			if env["CLAW_MODE"] == "task" && tt.wantErr == "" {
+			if env["CLAW_MODE"] == "thread" && tt.wantErr == "" {
 				workdir := createTaskModeRemoteBackedRepository(t)
 				env["CLAW_CODEX_WORKDIR"] = workdir
 				tt.wantThreadOptions.WorkingDirectory = workdir
 			}
 
-			if env["CLAW_MODE"] == "task" && strings.Contains(tt.wantErr, "origin remote") {
+			if env["CLAW_MODE"] == "thread" && strings.Contains(tt.wantErr, "origin remote") {
 				env["CLAW_CODEX_WORKDIR"] = createTaskModeLocalRepository(t)
 			}
 
@@ -332,7 +332,7 @@ func TestRun(t *testing.T) {
 					env["CLAW_CODEX_WORKDIR"],
 					".agents",
 					"skills",
-					"39claw-daily-memory-refresh",
+					"39claw-journal-memory-refresh",
 					"SKILL.md",
 				))
 			}
@@ -494,7 +494,7 @@ func TestStartScheduledMCPServerLogsURL(t *testing.T) {
 		context.Background(),
 		noopScheduledTaskStore{},
 		config.Config{
-			Mode:                  config.ModeTask,
+			Mode:                  config.ModeThread,
 			Timezone:              location,
 			ScheduledReportTarget: "channel:1234567890",
 		},
@@ -607,7 +607,7 @@ func createTaskModeRemoteBackedRepository(t *testing.T) string {
 	t.Helper()
 
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Fatalf("git is required for task-mode startup tests: %v", err)
+		t.Fatalf("git is required for thread-mode startup tests: %v", err)
 	}
 
 	root := t.TempDir()
@@ -630,7 +630,7 @@ func createTaskModeLocalRepository(t *testing.T) string {
 	t.Helper()
 
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Fatalf("git is required for task-mode startup tests: %v", err)
+		t.Fatalf("git is required for thread-mode startup tests: %v", err)
 	}
 
 	repo := filepath.Join(t.TempDir(), "source")

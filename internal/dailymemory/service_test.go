@@ -21,8 +21,8 @@ func TestRefresherRefreshBeforeFirstDailyTurnUsesPreviousBinding(t *testing.T) {
 
 	store := &stubThreadStore{
 		bindings: map[string]app.ThreadBinding{
-			"daily:2026-04-05#1": {
-				Mode:             "daily",
+			"journal:2026-04-05#1": {
+				Mode:             "journal",
 				LogicalThreadKey: "2026-04-05#1",
 				CodexThreadID:    "thread-previous",
 			},
@@ -79,7 +79,7 @@ func TestRefresherRefreshBeforeFirstDailyTurnUsesPreviousBinding(t *testing.T) {
 		t.Fatalf("ReadFile(bridge note) error = %v", err)
 	}
 
-	expectedBridge := "# Daily Memory Bridge for 2026-04-06#1\n\n" +
+	expectedBridge := "# Journal Memory Bridge for 2026-04-06#1\n\n" +
 		"## Source\n\n" +
 		"- Previous thread id: `thread-previous`\n" +
 		"- Source logical key: `2026-04-05#1`\n\n" +
@@ -90,7 +90,7 @@ func TestRefresherRefreshBeforeFirstDailyTurnUsesPreviousBinding(t *testing.T) {
 		"## Rejected Candidates\n\n" +
 		"- None yet.\n\n" +
 		"## Notes\n\n" +
-		"- Created by the 39claw daily memory preflight before the first visible turn of the new generation.\n"
+		"- Created by the 39claw journal memory preflight before the first visible turn of the new generation.\n"
 	if string(bridgeContents) != expectedBridge {
 		t.Fatalf("bridge note contents = %q, want %q", string(bridgeContents), expectedBridge)
 	}
@@ -102,8 +102,8 @@ func TestRefresherSkipsWhenCurrentBindingExists(t *testing.T) {
 	refresher := Refresher{
 		Store: &stubThreadStore{
 			bindings: map[string]app.ThreadBinding{
-				"daily:2026-04-06#1": {
-					Mode:             "daily",
+				"journal:2026-04-06#1": {
+					Mode:             "journal",
 					LogicalThreadKey: "2026-04-06#1",
 					CodexThreadID:    "thread-current",
 				},
@@ -153,8 +153,8 @@ func TestRefresherReturnsErrorWhenCompletionFormatIsUnexpected(t *testing.T) {
 	refresher := Refresher{
 		Store: &stubThreadStore{
 			bindings: map[string]app.ThreadBinding{
-				"daily:2026-04-05#1": {
-					Mode:             "daily",
+				"journal:2026-04-05#1": {
+					Mode:             "journal",
 					LogicalThreadKey: "2026-04-05#1",
 					CodexThreadID:    "thread-previous",
 				},
@@ -187,8 +187,8 @@ func TestRefresherUsesCallerContextDeadline(t *testing.T) {
 	refresher := Refresher{
 		Store: &stubThreadStore{
 			bindings: map[string]app.ThreadBinding{
-				"daily:2026-04-05#1": {
-					Mode:             "daily",
+				"journal:2026-04-05#1": {
+					Mode:             "journal",
 					LogicalThreadKey: "2026-04-05#1",
 					CodexThreadID:    "thread-previous",
 				},
