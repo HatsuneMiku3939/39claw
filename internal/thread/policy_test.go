@@ -186,7 +186,7 @@ func TestQueueCoordinatorAdmitAndComplete(t *testing.T) {
 
 	admission, err := coordinator.Admit(key, func() {
 		order = append(order, 0)
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
@@ -199,7 +199,7 @@ func TestQueueCoordinatorAdmitAndComplete(t *testing.T) {
 		index := i
 		admission, err := coordinator.Admit(key, func() {
 			order = append(order, index)
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("Admit() queued error = %v", err)
 		}
@@ -209,7 +209,7 @@ func TestQueueCoordinatorAdmitAndComplete(t *testing.T) {
 		}
 	}
 
-	if _, err := coordinator.Admit(key, func() {}); err != app.ErrExecutionQueueFull {
+	if _, err := coordinator.Admit(key, func() {}, nil); err != app.ErrExecutionQueueFull {
 		t.Fatalf("Admit() overflow error = %v, want %v", err, app.ErrExecutionQueueFull)
 	}
 
@@ -248,11 +248,11 @@ func TestQueueCoordinatorSnapshot(t *testing.T) {
 		t.Fatalf("initial snapshot = %+v, want zero value", snapshot)
 	}
 
-	if _, err := coordinator.Admit(key, func() {}); err != nil {
+	if _, err := coordinator.Admit(key, func() {}, nil); err != nil {
 		t.Fatalf("Admit() first error = %v", err)
 	}
 
-	if _, err := coordinator.Admit(key, func() {}); err != nil {
+	if _, err := coordinator.Admit(key, func() {}, nil); err != nil {
 		t.Fatalf("Admit() second error = %v", err)
 	}
 

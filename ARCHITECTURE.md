@@ -259,6 +259,7 @@ Behavior:
 - when the date changes, the active generation resets to `#1` for the new bucket and the next visible turn starts a fresh Codex thread for that new key
 - before the first visible turn of a new generation, 39claw resumes the previous recorded journal generation once and runs a runtime-managed durable-memory refresh into `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/MEMORY.md` plus `${CLAW_CODEX_WORKDIR}/AGENT_MEMORY/YYYY-MM-DD.<generation>.md`
 - `action:clear` is rejected while the current active generation still has in-flight or queued work
+- `/<instance-command> action:stop` cancels the active Codex run for the current generation and drops queued messages for that generation
 - Codex answers by following repository guidance and consulting the documentation in that repository
 
 Properties:
@@ -306,6 +307,7 @@ Behavior:
 - invalid, missing, or closed one-shot override targets are rejected explicitly instead of being guessed
 - `/<instance-command> action:task-reset-context` keeps the active task and worktree unchanged but removes only the saved Codex thread continuity for that task
 - `action:task-reset-context` is rejected while the active task still has in-flight or queued work
+- `/<instance-command> action:stop` cancels the active task's current Codex run and drops queued messages for that task
 - each task maps to a distinct Codex conversation thread, so switching tasks also switches execution context and working directory once the task worktree exists
 
 Minimum v1 UX requirements:

@@ -15,7 +15,7 @@ func TestQueueCoordinatorCompletesQueuedWorkInOrder(t *testing.T) {
 	coordinator := thread.NewQueueCoordinator()
 	var executed []int
 
-	admission, err := coordinator.Admit("thread-1", func() { executed = append(executed, 1) })
+	admission, err := coordinator.Admit("thread-1", func() { executed = append(executed, 1) }, nil)
 	if err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
@@ -25,7 +25,7 @@ func TestQueueCoordinatorCompletesQueuedWorkInOrder(t *testing.T) {
 
 	for i := range []int{2, 3} {
 		value := i + 2
-		admission, err = coordinator.Admit("thread-1", func() { executed = append(executed, value) })
+		admission, err = coordinator.Admit("thread-1", func() { executed = append(executed, value) }, nil)
 		if err != nil {
 			t.Fatalf("Admit() error = %v", err)
 		}
@@ -66,7 +66,7 @@ func TestQueueCoordinatorRejectsWhenQueueIsFull(t *testing.T) {
 
 	coordinator := thread.NewQueueCoordinator()
 
-	firstAdmission, err := coordinator.Admit("thread-1", func() {})
+	firstAdmission, err := coordinator.Admit("thread-1", func() {}, nil)
 	if err != nil {
 		t.Fatalf("Admit() error = %v", err)
 	}
@@ -75,7 +75,7 @@ func TestQueueCoordinatorRejectsWhenQueueIsFull(t *testing.T) {
 	}
 
 	for position := 1; position <= 5; position++ {
-		admission, err := coordinator.Admit("thread-1", func() {})
+		admission, err := coordinator.Admit("thread-1", func() {}, nil)
 		if err != nil {
 			t.Fatalf("Admit() error = %v", err)
 		}
@@ -84,8 +84,41 @@ func TestQueueCoordinatorRejectsWhenQueueIsFull(t *testing.T) {
 		}
 	}
 
-	_, err = coordinator.Admit("thread-1", func() {})
+	_, err = coordinator.Admit("thread-1", func() {}, nil)
 	if !errors.Is(err, app.ErrExecutionQueueFull) {
 		t.Fatalf("Admit() error = %v, want %v", err, app.ErrExecutionQueueFull)
+	}
+}
+
+func TestQueueCoordinatorDropQueuedLeavesRunningEntry(t *testing.T) {
+	t.Parallel()
+
+	coordinator := thread.NewQueueCoordinator()
+	dropped := 0
+
+	if _, err := coordinator.Admit("thread-1", func() {}, nil); err != nil {
+		t.Fatalf("Admit() first error = %v", err)
+	}
+	if _, err := coordinator.Admit("thread-1", func() {}, func() { dropped++ }); err != nil {
+		t.Fatalf("Admit() second error = %v", err)
+	}
+	if _, err := coordinator.Admit("thread-1", func() {}, func() { dropped++ }); err != nil {
+		t.Fatalf("Admit() third error = %v", err)
+	}
+
+	if droppedCount := coordinator.DropQueued("thread-1"); droppedCount != 2 {
+		t.Fatalf("DropQueued() = %d, want %d", droppedCount, 2)
+	}
+
+	if dropped != 2 {
+		t.Fatalf("drop callback count = %d, want %d", dropped, 2)
+	}
+
+	if snapshot := coordinator.Snapshot("thread-1"); snapshot != (app.QueueSnapshot{InFlight: true}) {
+		t.Fatalf("Snapshot() = %#v, want in-flight with empty queue", snapshot)
+	}
+
+	if next, ok := coordinator.Complete("thread-1"); ok || next != nil {
+		t.Fatalf("Complete() = (nil:%t, ok:%t), want (nil:true, ok:false)", next == nil, ok)
 	}
 }

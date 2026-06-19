@@ -20,6 +20,10 @@ func registeredCommands(cfg config.Config) []*discordgo.ApplicationCommand {
 			Name:  actionHelp,
 			Value: actionHelp,
 		},
+		{
+			Name:  actionStop,
+			Value: actionStop,
+		},
 	}
 
 	if cfg.Mode == config.ModeJournal {
@@ -85,6 +89,7 @@ func helpResponse(commandName string, mode config.Mode) app.MessageResponse {
 		"- Mention the bot in a message to start or continue the conversation.",
 		"Available actions:",
 		fmt.Sprintf("- `/%s action:%s` shows this help message.", commandName, actionHelp),
+		fmt.Sprintf("- `/%s action:%s` stops the active Codex run and drops queued messages for the current conversation.", commandName, actionStop),
 	}
 
 	if mode == config.ModeJournal {
@@ -120,13 +125,23 @@ func taskUnavailableJournalMode(commandName string) string {
 
 func unsupportedActionText(commandName string, mode config.Mode) string {
 	if mode != config.ModeThread {
-		return fmt.Sprintf("Unsupported action. Use `/%s action:%s` or `/%s action:%s`.", commandName, actionHelp, commandName, actionClear)
+		return fmt.Sprintf(
+			"Unsupported action. Use `/%s action:%s`, `/%s action:%s`, or `/%s action:%s`.",
+			commandName,
+			actionHelp,
+			commandName,
+			actionStop,
+			commandName,
+			actionClear,
+		)
 	}
 
 	return fmt.Sprintf(
-		"Unsupported action. Use `/%s action:%s`, `/%s action:%s`, `/%s action:%s`, `/%s action:%s task_name:<name>`, `/%s action:%s task_name:<name>`, `/%s action:%s task_name:<name>`, or `/%s action:%s`.",
+		"Unsupported action. Use `/%s action:%s`, `/%s action:%s`, `/%s action:%s`, `/%s action:%s`, `/%s action:%s task_name:<name>`, `/%s action:%s task_name:<name>`, `/%s action:%s task_name:<name>`, or `/%s action:%s`.",
 		commandName,
 		actionHelp,
+		commandName,
+		actionStop,
 		commandName,
 		actionTaskCurrent,
 		commandName,

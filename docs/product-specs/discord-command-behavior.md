@@ -91,6 +91,7 @@ If the turn starts immediately, the bot may first post a short placeholder reply
 When a normal-message reply finishes successfully, the bot may add a small completion marker such as a `✅` reaction to its reply message when Discord permissions allow it.
 If another turn for the same logical conversation is already running, the bot should acknowledge queued acceptance immediately and post the real answer later as a reply to the original triggering message.
 If five waiting messages are already queued for that logical conversation, the bot should return a clear retry-later response instead of queueing more work.
+If a user invokes `/<instance-command> action:stop`, the bot should cancel the active Codex run for the current conversation context and drop waiting queued messages for that same context.
 
 ### 3. Command interactions should always be explicit
 
@@ -137,6 +138,8 @@ Every instance should also support:
 
 - `/<instance-command> action:help`
   - show the commands available for that bot instance
+- `/<instance-command> action:stop`
+  - stop the active Codex run for the current conversation context and drop its queued messages
 
 Instances running in `journal` mode should also support:
 

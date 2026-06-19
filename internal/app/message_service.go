@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 )
 
 type ThreadPolicy interface {
@@ -56,13 +57,18 @@ type CodexGateway interface {
 }
 
 type QueueCoordinator interface {
-	Admit(key string, work func()) (QueueAdmission, error)
+	Admit(key string, work func(), onDrop func()) (QueueAdmission, error)
 	Complete(key string) (func(), bool)
 	Snapshot(key string) QueueSnapshot
+	DropQueued(key string) int
 }
 
 type MessageService interface {
 	HandleMessage(ctx context.Context, request MessageRequest, sink DeferredReplySink) (MessageResponse, error)
+}
+
+type StoppableMessageService interface {
+	StopCurrent(ctx context.Context, userID string, receivedAt time.Time) (MessageResponse, error)
 }
 
 type DrainableMessageService interface {

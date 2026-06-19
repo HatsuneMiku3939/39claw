@@ -61,16 +61,20 @@ func TestRuntimeStartRegistersCommands(t *testing.T) {
 		t.Fatalf("action option name = %q, want %q", actionOption.Name, optionAction)
 	}
 
-	if len(actionOption.Choices) != 2 {
-		t.Fatalf("action choice count = %d, want %d", len(actionOption.Choices), 2)
+	if len(actionOption.Choices) != 3 {
+		t.Fatalf("action choice count = %d, want %d", len(actionOption.Choices), 3)
 	}
 
 	if actionOption.Choices[0].Value != actionHelp {
 		t.Fatalf("action choice value = %v, want %q", actionOption.Choices[0].Value, actionHelp)
 	}
 
-	if actionOption.Choices[1].Value != actionClear {
-		t.Fatalf("second action choice value = %v, want %q", actionOption.Choices[1].Value, actionClear)
+	if actionOption.Choices[1].Value != actionStop {
+		t.Fatalf("second action choice value = %v, want %q", actionOption.Choices[1].Value, actionStop)
+	}
+
+	if actionOption.Choices[2].Value != actionClear {
+		t.Fatalf("third action choice value = %v, want %q", actionOption.Choices[2].Value, actionClear)
 	}
 }
 
@@ -93,8 +97,8 @@ func TestRuntimeStartRegistersTaskModeChoices(t *testing.T) {
 	}
 
 	actionOption := command.Options[0]
-	if len(actionOption.Choices) != 7 {
-		t.Fatalf("action choice count = %d, want %d", len(actionOption.Choices), 7)
+	if len(actionOption.Choices) != 8 {
+		t.Fatalf("action choice count = %d, want %d", len(actionOption.Choices), 8)
 	}
 
 	if command.Options[1].Name != optionTaskName {
@@ -1036,6 +1040,54 @@ func TestRuntimeHelpActionReturnsConfiguredCommandInfo(t *testing.T) {
 
 	if !strings.Contains(response.Data.Content, "action:clear") {
 		t.Fatalf("response content = %q, want clear action guidance", response.Data.Content)
+	}
+
+	if !strings.Contains(response.Data.Content, "action:stop") {
+		t.Fatalf("response content = %q, want stop action guidance", response.Data.Content)
+	}
+}
+
+func TestRuntimeStopActionRoutesToMessageService(t *testing.T) {
+	t.Parallel()
+
+	messageService := &fakeMessageService{
+		stopResponse: app.MessageResponse{
+			Text:      "Stopping the current Codex run.",
+			Ephemeral: true,
+		},
+	}
+	fakeSession := newFakeSession("bot-user")
+	runtime := newTestRuntimeWithServices(t, config.ModeJournal, fakeSession, messageService, &fakeTaskCommandService{})
+
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = runtime.Close()
+	})
+
+	fakeSession.dispatchInteraction(commandInteractionEvent("release", "user-1", actionStop, "", ""))
+
+	if len(messageService.stopCalls) != 1 {
+		t.Fatalf("stop call count = %d, want %d", len(messageService.stopCalls), 1)
+	}
+	if messageService.stopCalls[0].userID != "user-1" {
+		t.Fatalf("stop user id = %q, want %q", messageService.stopCalls[0].userID, "user-1")
+	}
+
+	if len(fakeSession.interactionResponses) != 1 {
+		t.Fatalf("interaction response count = %d, want %d", len(fakeSession.interactionResponses), 1)
+	}
+
+	response := fakeSession.interactionResponses[0]
+	if response.Data == nil {
+		t.Fatal("response data = nil, want non-nil")
+	}
+	if response.Data.Flags != discordgo.MessageFlagsEphemeral {
+		t.Fatalf("response flags = %v, want ephemeral", response.Data.Flags)
+	}
+	if response.Data.Content != "Stopping the current Codex run." {
+		t.Fatalf("response content = %q, want stop response", response.Data.Content)
 	}
 }
 
