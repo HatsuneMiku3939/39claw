@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -462,6 +464,21 @@ func runHelperProcess() error {
 	case "process-failed":
 		_, _ = fmt.Fprintln(os.Stderr, "helper process failed")
 		return errors.New("helper process failed")
+	case "spawn-child-wait":
+		child := exec.Command("sleep", "60")
+		if err := child.Start(); err != nil {
+			return fmt.Errorf("start child: %w", err)
+		}
+
+		childPIDFile := os.Getenv("CODEX_TEST_CHILD_PID_FILE")
+		if childPIDFile == "" {
+			return errors.New("CODEX_TEST_CHILD_PID_FILE must not be empty")
+		}
+		if err := os.WriteFile(childPIDFile, []byte(strconv.Itoa(child.Process.Pid)), 0o644); err != nil {
+			return fmt.Errorf("write child pid: %w", err)
+		}
+
+		return child.Wait()
 	case "stream-progress":
 		writeHelperEvent(map[string]any{"type": "thread.started", "thread_id": "thread_stream"})
 		writeHelperEvent(map[string]any{"type": "turn.started"})

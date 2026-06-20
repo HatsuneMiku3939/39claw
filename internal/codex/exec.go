@@ -48,6 +48,7 @@ func (e *executor) run(ctx context.Context, request execRequest, handleLine func
 	commandArgs := e.buildArgs(request)
 	//nolint:gosec // The executable path is intentionally configurable for tests and local Codex installations.
 	cmd := exec.CommandContext(ctx, e.executablePath, commandArgs...)
+	prepareCommandForCancellation(cmd)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -233,14 +234,6 @@ func readJSONLLine(reader *bufio.Reader) (string, error) {
 	}
 
 	return strings.TrimRight(line, "\r\n"), nil
-}
-
-func killProcess(cmd *exec.Cmd) error {
-	if cmd.Process == nil {
-		return nil
-	}
-
-	return cmd.Process.Kill()
 }
 
 func shutdownProcess(cmd *exec.Cmd) {
