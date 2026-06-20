@@ -565,6 +565,13 @@ func (r *Runtime) routeCommand(ctx context.Context, request commandRequest) (app
 	switch request.Action {
 	case actionHelp:
 		return helpResponse(r.config.DiscordCommandName, r.config.Mode), nil
+	case actionStop:
+		stopper, ok := r.message.(app.StoppableMessageService)
+		if !ok {
+			return app.MessageResponse{}, errors.New("message service does not support stop")
+		}
+
+		return stopper.StopCurrent(ctx, request.UserID, time.Now())
 	case actionClear:
 		if r.config.Mode != config.ModeJournal {
 			return app.MessageResponse{

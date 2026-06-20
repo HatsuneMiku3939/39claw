@@ -1079,6 +1079,99 @@ func TestMessageServiceHandleMessageQueuesBusyTurnAndDeliversDeferredReply(t *te
 	}
 }
 
+func TestMessageServiceStopCurrentCancelsRunningTurnAndDropsQueuedMessages(t *testing.T) {
+	t.Parallel()
+
+	store := &memoryThreadStore{}
+	gateway := newCancellableCodexGateway()
+	service := newDailyMessageService(t, store, gateway, thread.NewQueueCoordinator())
+
+	firstDone := make(chan app.MessageResponse, 1)
+	firstErr := make(chan error, 1)
+	go func() {
+		response, err := service.HandleMessage(context.Background(), app.MessageRequest{
+			MessageID:  "message-1",
+			Content:    "start long turn",
+			Mentioned:  true,
+			ReceivedAt: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		}, nil)
+		firstDone <- response
+		firstErr <- err
+	}()
+
+	waitForSignal(t, gateway.started, "first codex turn start")
+
+	delivered := make(chan app.MessageResponse, 1)
+	queuedCleaned := make(chan struct{}, 1)
+	queuedResponse, err := service.HandleMessage(context.Background(), app.MessageRequest{
+		MessageID:  "message-2",
+		Content:    "queued turn",
+		Mentioned:  true,
+		ReceivedAt: time.Date(2026, time.April, 5, 0, 1, 0, 0, time.UTC),
+		Cleanup: func() {
+			queuedCleaned <- struct{}{}
+		},
+	}, app.DeferredReplySinkFunc(func(ctx context.Context, response app.MessageResponse) error {
+		delivered <- response
+		return nil
+	}))
+	if err != nil {
+		t.Fatalf("HandleMessage() queued error = %v", err)
+	}
+	if !queuedResponse.Deferred {
+		t.Fatalf("queued Deferred = false, want true")
+	}
+
+	stopResponse, err := service.StopCurrent(
+		context.Background(),
+		"user-1",
+		time.Date(2026, time.April, 5, 0, 2, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatalf("StopCurrent() error = %v", err)
+	}
+	if !stopResponse.Ephemeral {
+		t.Fatalf("StopCurrent() Ephemeral = false, want true")
+	}
+	if stopResponse.Text != "Stopping the current Codex run and dropped 1 queued message(s)." {
+		t.Fatalf("StopCurrent() text = %q", stopResponse.Text)
+	}
+
+	select {
+	case err := <-firstErr:
+		if err != nil {
+			t.Fatalf("first HandleMessage() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first error result")
+	}
+
+	select {
+	case response := <-firstDone:
+		if response.Text != "Stopped the current Codex run." {
+			t.Fatalf("first response text = %q", response.Text)
+		}
+		if response.ReplyToID != "message-1" {
+			t.Fatalf("first ReplyToID = %q, want %q", response.ReplyToID, "message-1")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first response")
+	}
+
+	select {
+	case response := <-delivered:
+		t.Fatalf("unexpected deferred response after dropped queue = %+v", response)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	waitForSignal(t, queuedCleaned, "queued cleanup after drop")
+
+	calls := gateway.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("RunTurn() call count = %d, want %d", len(calls), 1)
+	}
+}
+
 func TestMessageServiceWaitForDrainWaitsForDeferredReplyDelivery(t *testing.T) {
 	t.Parallel()
 
@@ -1746,9 +1839,10 @@ type stubQueueCoordinator struct {
 	admission app.QueueAdmission
 	err       error
 	snapshot  app.QueueSnapshot
+	dropped   int
 }
 
-func (c *stubQueueCoordinator) Admit(string, func()) (app.QueueAdmission, error) {
+func (c *stubQueueCoordinator) Admit(string, func(), func()) (app.QueueAdmission, error) {
 	if c.err != nil {
 		return app.QueueAdmission{}, c.err
 	}
@@ -1766,6 +1860,10 @@ func (c *stubQueueCoordinator) Complete(string) (func(), bool) {
 
 func (c *stubQueueCoordinator) Snapshot(string) app.QueueSnapshot {
 	return c.snapshot
+}
+
+func (c *stubQueueCoordinator) DropQueued(string) int {
+	return c.dropped
 }
 
 type fakeCodexGateway struct {
@@ -1841,6 +1939,13 @@ type blockingCodexGateway struct {
 	startOnce sync.Once
 }
 
+type cancellableCodexGateway struct {
+	mu        sync.Mutex
+	calls     []runTurnCall
+	started   chan struct{}
+	startOnce sync.Once
+}
+
 type noopDailyMemoryRefresher struct{}
 
 func (noopDailyMemoryRefresher) RefreshBeforeFirstDailyTurn(context.Context, app.DailySession) error {
@@ -1890,6 +1995,12 @@ func newBlockingCodexGateway(results ...app.RunTurnResult) *blockingCodexGateway
 	}
 }
 
+func newCancellableCodexGateway() *cancellableCodexGateway {
+	return &cancellableCodexGateway{
+		started: make(chan struct{}),
+	}
+}
+
 func newScriptedCodexGateway(results []app.RunTurnResult, blockers []chan struct{}) *scriptedCodexGateway {
 	clonedResults := append([]app.RunTurnResult(nil), results...)
 	clonedBlockers := append([]chan struct{}(nil), blockers...)
@@ -1932,6 +2043,36 @@ func (g *blockingCodexGateway) RunTurn(_ context.Context, threadID string, input
 	}
 
 	return result, nil
+}
+
+func (g *cancellableCodexGateway) RunTurn(ctx context.Context, threadID string, input app.CodexTurnInput) (app.RunTurnResult, error) {
+	g.mu.Lock()
+	g.calls = append(g.calls, runTurnCall{
+		threadID:         threadID,
+		workingDirectory: input.WorkingDirectory,
+		input: app.CodexTurnInput{
+			Prompt:           input.Prompt,
+			ImagePaths:       append([]string(nil), input.ImagePaths...),
+			WorkingDirectory: input.WorkingDirectory,
+		},
+	})
+	g.mu.Unlock()
+
+	g.startOnce.Do(func() {
+		close(g.started)
+	})
+
+	<-ctx.Done()
+	return app.RunTurnResult{}, ctx.Err()
+}
+
+func (g *cancellableCodexGateway) Calls() []runTurnCall {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	calls := make([]runTurnCall, len(g.calls))
+	copy(calls, g.calls)
+	return calls
 }
 
 func (g *blockingCodexGateway) Calls() []runTurnCall {

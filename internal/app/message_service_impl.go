@@ -16,6 +16,7 @@ import (
 const (
 	queueFullMessage           = "This conversation already has five queued messages. Please retry in a moment."
 	queuedInternalErrorMessage = "Something went wrong while handling your queued message. Please retry in a moment."
+	stoppedTurnMessage         = "Stopped the current Codex run."
 )
 
 type MessageServiceDependencies struct {
@@ -41,6 +42,13 @@ type DefaultMessageService struct {
 	gateway     CodexGateway
 	coordinator QueueCoordinator
 	queueWG     sync.WaitGroup
+	stopMu      sync.Mutex
+	inFlight    map[string]*inFlightExecution
+}
+
+type inFlightExecution struct {
+	cancel  context.CancelFunc
+	stopped bool
 }
 
 func NewMessageService(deps MessageServiceDependencies) (*DefaultMessageService, error) {
@@ -119,9 +127,15 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 	logger := s.messageLogger(prepared)
 	queuedPrepared := prepared
 	queuedPrepared.input.ProgressSink = nil
-	admission, err := s.coordinator.Admit(executionKey, func() {
-		s.processQueuedMessage(ctx, queuedPrepared)
-	})
+	admission, err := s.coordinator.Admit(
+		executionKey,
+		func() {
+			s.processQueuedMessage(ctx, queuedPrepared)
+		},
+		func() {
+			runCleanup(queuedPrepared.cleanup)
+		},
+	)
 	if err != nil {
 		if errors.Is(err, ErrExecutionQueueFull) {
 			logger.Warn(
@@ -179,7 +193,13 @@ func (s *DefaultMessageService) HandleMessage(ctx context.Context, request Messa
 		"execute_now",
 	)
 	cleanup = nil
-	response, execErr := s.executePreparedMessage(ctx, prepared)
+	execCtx, unregister := s.registerInFlight(ctx, executionKey)
+	response, execErr := s.executePreparedMessage(execCtx, prepared)
+	stopped := unregister()
+	if stopped && errors.Is(execErr, context.Canceled) {
+		response = stoppedMessage(prepared.replyToID)
+		execErr = nil
+	}
 	s.completeExecution(executionKey)
 	return response, execErr
 }
@@ -452,6 +472,7 @@ func (s *DefaultMessageService) executePreparedMessage(ctx context.Context, prep
 
 func (s *DefaultMessageService) processQueuedMessage(ctx context.Context, prepared preparedMessage) {
 	logger := s.messageLogger(prepared)
+	executionKey := buildExecutionKey(s.mode, prepared.logicalKey)
 	queueWaitMs := elapsedMillisecondsSince(prepared.receivedAt)
 	logger.Info(
 		"queued turn started",
@@ -461,9 +482,24 @@ func (s *DefaultMessageService) processQueuedMessage(ctx context.Context, prepar
 		queueWaitMs,
 	)
 
-	response, err := s.executePreparedMessage(ctx, prepared)
+	execCtx, unregister := s.registerInFlight(ctx, executionKey)
+	response, err := s.executePreparedMessage(execCtx, prepared)
+	stopped := unregister()
 	switch {
 	case err == nil:
+	case stopped && errors.Is(err, context.Canceled):
+		logger.Warn(
+			"queued message stopped by command",
+			"event",
+			"queued_turn_finished",
+			"outcome",
+			"stopped",
+			"queue_wait_ms",
+			queueWaitMs,
+			"error",
+			err,
+		)
+		response = stoppedMessage(prepared.replyToID)
 	case isLifecycleContextError(err):
 		logger.Warn(
 			"queued message canceled during shutdown",
@@ -561,6 +597,125 @@ func (s *DefaultMessageService) drainQueue(executionKey string, work func()) {
 		}
 
 		work = next
+	}
+}
+
+func (s *DefaultMessageService) StopCurrent(ctx context.Context, userID string, receivedAt time.Time) (MessageResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return MessageResponse{}, err
+	}
+
+	logicalKey, response, handled, err := s.resolveStopLogicalKey(ctx, userID, receivedAt)
+	if err != nil || handled {
+		return response, err
+	}
+
+	executionKey := buildExecutionKey(s.mode, logicalKey)
+	droppedQueued := s.coordinator.DropQueued(executionKey)
+	stopped := s.stopInFlight(executionKey)
+
+	if !stopped && droppedQueued == 0 {
+		return stopCommandResponse("No Codex run or queued message is active for this conversation."), nil
+	}
+
+	if stopped && droppedQueued > 0 {
+		return stopCommandResponse(
+			fmt.Sprintf("Stopping the current Codex run and dropped %d queued message(s).", droppedQueued),
+		), nil
+	}
+
+	if stopped {
+		return stopCommandResponse("Stopping the current Codex run."), nil
+	}
+
+	return stopCommandResponse(
+		fmt.Sprintf("Dropped %d queued message(s). No Codex run was active.", droppedQueued),
+	), nil
+}
+
+func (s *DefaultMessageService) resolveStopLogicalKey(
+	ctx context.Context,
+	userID string,
+	receivedAt time.Time,
+) (string, MessageResponse, bool, error) {
+	request := MessageRequest{
+		UserID:     userID,
+		ReceivedAt: receivedAt,
+	}
+
+	logicalKey, err := s.policy.ResolveMessageKey(ctx, request)
+	if err != nil {
+		if s.mode == config.ModeThread && errors.Is(err, ErrNoActiveTask) {
+			return "", stopCommandResponse(s.noActiveTaskMessage()), true, nil
+		}
+
+		return "", MessageResponse{}, false, fmt.Errorf("resolve stop logical thread key: %w", err)
+	}
+
+	if s.mode != config.ModeJournal {
+		return logicalKey, MessageResponse{}, false, nil
+	}
+
+	active, ok, err := s.store.GetActiveDailySession(ctx, logicalKey)
+	if err != nil {
+		return "", MessageResponse{}, false, fmt.Errorf("load active journal session: %w", err)
+	}
+
+	if !ok {
+		return "", stopCommandResponse("No shared journal conversation is active for today."), true, nil
+	}
+
+	return active.LogicalThreadKey, MessageResponse{}, false, nil
+}
+
+func (s *DefaultMessageService) registerInFlight(ctx context.Context, executionKey string) (context.Context, func() bool) {
+	execCtx, cancel := context.WithCancel(ctx)
+	state := &inFlightExecution{cancel: cancel}
+
+	s.stopMu.Lock()
+	if s.inFlight == nil {
+		s.inFlight = make(map[string]*inFlightExecution)
+	}
+	s.inFlight[executionKey] = state
+	s.stopMu.Unlock()
+
+	return execCtx, func() bool {
+		s.stopMu.Lock()
+		defer s.stopMu.Unlock()
+
+		if current := s.inFlight[executionKey]; current == state {
+			delete(s.inFlight, executionKey)
+		}
+		cancel()
+		return state.stopped
+	}
+}
+
+func (s *DefaultMessageService) stopInFlight(executionKey string) bool {
+	s.stopMu.Lock()
+	defer s.stopMu.Unlock()
+
+	state, ok := s.inFlight[executionKey]
+	if !ok {
+		return false
+	}
+
+	state.stopped = true
+	state.cancel()
+	return true
+}
+
+func stopCommandResponse(text string) MessageResponse {
+	return MessageResponse{
+		Text:      text,
+		Ephemeral: true,
+	}
+}
+
+func stoppedMessage(replyToID string) MessageResponse {
+	return MessageResponse{
+		Text:      stoppedTurnMessage,
+		ReplyToID: replyToID,
 	}
 }
 

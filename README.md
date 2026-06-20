@@ -169,6 +169,8 @@ For every instance:
 
 - `/<instance-command> action:help`
   - show the supported command surface for the current bot instance
+- `/<instance-command> action:stop`
+  - stop the active Codex run for the current conversation and drop its queued messages
 
 In `journal` mode, the same root command also supports:
 
@@ -204,6 +206,7 @@ Examples:
 - queued messages receive a short acknowledgment immediately
 - the final answer arrives later as a reply to the queued message
 - if the queue is already full, the bot returns a retry-later response
+- `/<instance-command> action:stop` cancels the active Codex run for that conversation context and drops any waiting queued messages for the same context
 
 Queued messages are held in memory, so they are lost if the bot process exits before they run.
 

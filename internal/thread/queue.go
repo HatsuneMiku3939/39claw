@@ -15,7 +15,12 @@ type QueueCoordinator struct {
 
 type queueEntry struct {
 	running bool
-	waiting []func()
+	waiting []queuedWork
+}
+
+type queuedWork struct {
+	run    func()
+	onDrop func()
 }
 
 func NewQueueCoordinator() *QueueCoordinator {
@@ -24,7 +29,7 @@ func NewQueueCoordinator() *QueueCoordinator {
 	}
 }
 
-func (c *QueueCoordinator) Admit(key string, work func()) (app.QueueAdmission, error) {
+func (c *QueueCoordinator) Admit(key string, work func(), onDrop func()) (app.QueueAdmission, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -40,7 +45,10 @@ func (c *QueueCoordinator) Admit(key string, work func()) (app.QueueAdmission, e
 		return app.QueueAdmission{}, app.ErrExecutionQueueFull
 	}
 
-	entry.waiting = append(entry.waiting, work)
+	entry.waiting = append(entry.waiting, queuedWork{
+		run:    work,
+		onDrop: onDrop,
+	})
 	return app.QueueAdmission{
 		Queued:   true,
 		Position: len(entry.waiting),
@@ -61,7 +69,7 @@ func (c *QueueCoordinator) Complete(key string) (func(), bool) {
 		return nil, false
 	}
 
-	next := entry.waiting[0]
+	next := entry.waiting[0].run
 	entry.waiting = entry.waiting[1:]
 	return next, true
 }
@@ -79,4 +87,23 @@ func (c *QueueCoordinator) Snapshot(key string) app.QueueSnapshot {
 		InFlight: entry.running,
 		Queued:   len(entry.waiting),
 	}
+}
+
+func (c *QueueCoordinator) DropQueued(key string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	entry, ok := c.entries[key]
+	if !ok {
+		return 0
+	}
+
+	dropped := len(entry.waiting)
+	for _, waiting := range entry.waiting {
+		if waiting.onDrop != nil {
+			waiting.onDrop()
+		}
+	}
+	entry.waiting = nil
+	return dropped
 }

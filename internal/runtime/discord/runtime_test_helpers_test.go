@@ -519,6 +519,12 @@ type fakeMessageService struct {
 	err          error
 	handle       func(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error)
 	waitForDrain func(ctx context.Context) error
+	stopCalls    []struct {
+		userID     string
+		receivedAt time.Time
+	}
+	stopResponse app.MessageResponse
+	stopErr      error
 }
 
 func (s *fakeMessageService) HandleMessage(ctx context.Context, request app.MessageRequest, sink app.DeferredReplySink) (app.MessageResponse, error) {
@@ -545,6 +551,22 @@ func (s *fakeMessageService) WaitForDrain(ctx context.Context) error {
 	}
 
 	return s.waitForDrain(ctx)
+}
+
+func (s *fakeMessageService) StopCurrent(ctx context.Context, userID string, receivedAt time.Time) (app.MessageResponse, error) {
+	s.stopCalls = append(s.stopCalls, struct {
+		userID     string
+		receivedAt time.Time
+	}{
+		userID:     userID,
+		receivedAt: receivedAt,
+	})
+
+	if s.stopErr != nil {
+		return app.MessageResponse{}, s.stopErr
+	}
+
+	return s.stopResponse, nil
 }
 
 type fakeTaskCommandService struct {
@@ -642,7 +664,7 @@ type stubQueueCoordinator struct {
 	snapshot app.QueueSnapshot
 }
 
-func (c *stubQueueCoordinator) Admit(string, func()) (app.QueueAdmission, error) {
+func (c *stubQueueCoordinator) Admit(string, func(), func()) (app.QueueAdmission, error) {
 	return app.QueueAdmission{ExecuteNow: true}, nil
 }
 
@@ -652,6 +674,10 @@ func (c *stubQueueCoordinator) Complete(string) (func(), bool) {
 
 func (c *stubQueueCoordinator) Snapshot(string) app.QueueSnapshot {
 	return c.snapshot
+}
+
+func (c *stubQueueCoordinator) DropQueued(string) int {
+	return 0
 }
 
 type noopDailyMemoryRefresher struct{}
