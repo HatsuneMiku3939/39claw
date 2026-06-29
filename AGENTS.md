@@ -137,6 +137,16 @@ Store active plans under `docs/exec-plans/active` and move them to `docs/exec-pl
 Store repository-local Codex skills under `.agents/skills`.
 Keep repository-skill instructions in English and update them when the repository workflow or document locations they depend on change.
 
+## Development Rules
+
+### 1. CHANGELOGS
+
+When update accpeted or A state similar to accpeted PRD or Design documents (or something similar), Do not missing update `CHANGELOGS` session. If, `CHANGELOG` session is not exists, write a new one.
+
+### 2. Keep `Reference Documents` is fresh
+
+When create a new document under `docs`, Keep `Reference Documents` in `AGENTS.md` is fresh.
+
 ## Maintenance Rule
 
 If a future contributor needs to violate this guide to move the project forward, they should update the relevant architecture documents in the same change so the repository remains self-consistent.
